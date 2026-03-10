@@ -99,10 +99,15 @@ export function CheckInSheet({
         if (!unit) return new Date()
         const isDorm = unit.type === 'DORM'
         const d = new Date(checkInDate)
-        d.setDate(d.getDate() + numberOfDays)
         if (isDorm) {
+            d.setDate(d.getDate() + numberOfDays)
             d.setHours(10, 0, 0, 0)
         } else {
+            if (checkInDate.getHours() < 12) {
+                d.setDate(d.getDate() + (numberOfDays - 1))
+            } else {
+                d.setDate(d.getDate() + numberOfDays)
+            }
             d.setHours(11, 0, 0, 0)
         }
         return d

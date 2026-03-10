@@ -98,10 +98,14 @@ export function calculateCheckOut(
     checkIn: Date
 ): Date {
     if (unitType === 'ROOM') {
-        // Room: next day 11:00 AM IST
+        // Room: check-in < 12 PM = today 11 AM. check-in >= 12 PM = tomorrow 11 AM
         const checkOut = new Date(checkIn)
-        checkOut.setDate(checkOut.getDate() + 1)
-        checkOut.setHours(11, 0, 0, 0)
+        if (checkIn.getHours() < 12) {
+            checkOut.setHours(11, 0, 0, 0)
+        } else {
+            checkOut.setDate(checkOut.getDate() + 1)
+            checkOut.setHours(11, 0, 0, 0)
+        }
         return checkOut
     }
 

@@ -6,6 +6,7 @@ import { UnitCard } from './UnitCard'
 import { CheckInSheet } from './CheckInSheet'
 import { CheckoutSheet } from './CheckoutSheet'
 import { MaintenanceSheet } from './MaintenanceSheet'
+import { ExtendSheet } from './ExtendSheet'
 import { toast } from 'sonner'
 import type { UnitType, UnitStatus } from '@/lib/types'
 
@@ -30,6 +31,7 @@ export function UnitGrid({
     const [checkInOpen, setCheckInOpen] = useState(false)
     const [checkoutOpen, setCheckoutOpen] = useState(false)
     const [maintenanceOpen, setMaintenanceOpen] = useState(false)
+    const [extendOpen, setExtendOpen] = useState(false)
     const [actionMenuOpen, setActionMenuOpen] = useState(false)
 
     useEffect(() => {
@@ -132,6 +134,7 @@ export function UnitGrid({
         setCheckInOpen(false)
         setCheckoutOpen(false)
         setMaintenanceOpen(false)
+        setExtendOpen(false)
         setActionMenuOpen(false)
         setSelectedUnit(null)
         fetchUnitsWithBookings(hotelId)
@@ -191,6 +194,13 @@ export function UnitGrid({
                 onSuccess={handleDone}
             />
 
+            <ExtendSheet
+                unit={selectedUnit}
+                open={extendOpen}
+                onOpenChange={setExtendOpen}
+                onSuccess={handleDone}
+            />
+
             {/* Action Menu for all clickable statuses */}
             {actionMenuOpen && selectedUnit && (
                 <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
@@ -226,18 +236,33 @@ export function UnitGrid({
 
                             {/* CHECKOUT (only for OCCUPIED) */}
                             {selectedUnit.status === 'OCCUPIED' && (
-                                <button
-                                    onClick={() => { setActionMenuOpen(false); setCheckoutOpen(true) }}
-                                    className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left hover:bg-red-50 transition-colors group"
-                                >
-                                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100 text-red-600 group-hover:bg-red-200 transition-colors">
-                                        <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
-                                    </div>
-                                    <div>
-                                        <p className="text-sm font-semibold text-slate-800">Check-Out</p>
-                                        <p className="text-[10px] text-slate-400">Normal checkout flow</p>
-                                    </div>
-                                </button>
+                                <>
+                                    <button
+                                        onClick={() => { setActionMenuOpen(false); setExtendOpen(true) }}
+                                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left hover:bg-blue-50 transition-colors group"
+                                    >
+                                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-100 text-blue-600 group-hover:bg-blue-200 transition-colors">
+                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-semibold text-slate-800">Extend Stay</p>
+                                            <p className="text-[10px] text-slate-400">Add hours/days to checkout</p>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        onClick={() => { setActionMenuOpen(false); setCheckoutOpen(true) }}
+                                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left hover:bg-red-50 transition-colors group"
+                                    >
+                                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100 text-red-600 group-hover:bg-red-200 transition-colors">
+                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" /></svg>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-semibold text-slate-800">Check-Out</p>
+                                            <p className="text-[10px] text-slate-400">Normal checkout flow</p>
+                                        </div>
+                                    </button>
+                                </>
                             )}
 
                             {/* MAINTENANCE (not for OCCUPIED — use Emergency Vacate instead) */}
