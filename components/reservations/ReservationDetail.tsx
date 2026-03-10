@@ -23,7 +23,11 @@ import {
     Banknote,
     Smartphone,
     ArrowRight,
+    Camera,
+    UploadCloud,
+    CheckCircle2,
 } from 'lucide-react'
+import { supabase } from '@/lib/supabase/client'
 
 interface ReservationDetailProps {
     booking: Booking | null
@@ -43,6 +47,7 @@ export function ReservationDetail({
     const [showPayment, setShowPayment] = useState(false)
     const [amountCash, setAmountCash] = useState('')
     const [amountDigital, setAmountDigital] = useState('')
+    const [uploadingIndex, setUploadingIndex] = useState<number | null>(null)
     const [guestData, setGuestData] = useState<any[]>([])
 
     useEffect(() => {
@@ -110,6 +115,15 @@ export function ReservationDetail({
             return
         }
 
+        const isBypassEnabled = typeof window !== 'undefined' && localStorage.getItem('fajo_bypass_credentials') === 'true'
+        if (!isBypassEnabled) {
+            const missingAadhar = guestData.find((g: any) => !g.aadhar_url)
+            if (missingAadhar) {
+                toast.error(`Aadhar photo is required for ${missingAadhar.name || 'all guests'}`)
+                return
+            }
+        }
+
         setIsConverting(true)
         try {
             const res = await fetch('/api/reservations/convert', {
@@ -139,6 +153,36 @@ export function ReservationDetail({
             toast.error('Network error. Please try again.')
         } finally {
             setIsConverting(false)
+        }
+    }
+
+    const handleAadharUpload = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+
+        try {
+            setUploadingIndex(index)
+            const fileExt = file.name.split('.').pop()
+            const fileName = `${Math.random()}.${fileExt}`
+            const filePath = `aadhar/${fileName}`
+
+            const { error: uploadError } = await supabase.storage
+                .from('documents')
+                .upload(filePath, file)
+
+            if (uploadError) throw uploadError
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('documents')
+                .getPublicUrl(filePath)
+
+            handleGuestChange(guestData[index].id, 'aadhar_url', publicUrl)
+            toast.success('Aadhar document uploaded')
+        } catch (err) {
+            console.error('Upload error:', err)
+            toast.error('Failed to upload document')
+        } finally {
+            setUploadingIndex(null)
         }
     }
 
@@ -270,14 +314,42 @@ export function ReservationDetail({
                                 {showPayment && (
                                     <div className="pl-9 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-300">
                                         <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                            Aadhar Photo URL
+                                            Aadhar Photo *
                                         </Label>
-                                        <Input
-                                            className="h-8 text-xs bg-white border-slate-200"
-                                            placeholder={`Upload/Paste ID URL for ${g.name}`}
-                                            value={g.aadhar_url}
-                                            onChange={(e) => handleGuestChange(g.id, 'aadhar_url', e.target.value)}
-                                        />
+                                        {g.aadhar_url ? (
+                                            <div className="relative rounded-lg border border-emerald-200 bg-emerald-50/50 overflow-hidden">
+                                                <img
+                                                    src={g.aadhar_url}
+                                                    alt={`Aadhar - Guest ${i + 1}`}
+                                                    className="w-full h-28 object-cover"
+                                                />
+                                                <div className="absolute top-2 right-2 flex items-center gap-1 bg-emerald-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
+                                                    <CheckCircle2 className="h-3 w-3" />
+                                                    Uploaded
+                                                </div>
+                                                <label className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-center text-xs py-1.5 cursor-pointer hover:bg-black/60 transition-colors">
+                                                    Replace Photo
+                                                    <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => handleAadharUpload(i, e)} />
+                                                </label>
+                                            </div>
+                                        ) : (
+                                            <div className="grid grid-cols-2 gap-2">
+                                                <label className="flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-slate-300 px-3 py-4 cursor-pointer hover:bg-slate-50 hover:border-slate-400 transition-colors">
+                                                    <Camera className="h-5 w-5 text-slate-400" />
+                                                    <span className="text-[10px] font-semibold text-slate-500">
+                                                        {uploadingIndex === i ? 'Uploading...' : 'Take Photo'}
+                                                    </span>
+                                                    <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={uploadingIndex !== null} onChange={(e) => handleAadharUpload(i, e)} />
+                                                </label>
+                                                <label className="flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-slate-300 px-3 py-4 cursor-pointer hover:bg-slate-50 hover:border-slate-400 transition-colors">
+                                                    <UploadCloud className="h-5 w-5 text-slate-400" />
+                                                    <span className="text-[10px] font-semibold text-slate-500">
+                                                        {uploadingIndex === i ? 'Uploading...' : 'Upload File'}
+                                                    </span>
+                                                    <input type="file" accept="image/*" className="sr-only" disabled={uploadingIndex !== null} onChange={(e) => handleAadharUpload(i, e)} />
+                                                </label>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
                             </div>
