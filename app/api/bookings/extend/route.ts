@@ -5,7 +5,7 @@ export async function PATCH(request: Request) {
     try {
         const supabase = await createClient()
         const body = await request.json()
-        let { bookingId, extendType, amount, fee } = body
+        let { bookingId, extendType, amount, fee, paymentType } = body
 
         if (!bookingId || !extendType || amount === undefined || fee === undefined) {
             return NextResponse.json(
@@ -43,25 +43,25 @@ export async function PATCH(request: Request) {
         }
 
         const oldCheckOut = new Date(booking.check_out)
-        const newCheckOut = new Date(booking.check_out)
+
+        // Use pseudo-IST to prevent Vercel UTC shifts during local hour math
+        const istOffsetMs = 5.5 * 60 * 60 * 1000
+        const pseudoIst = new Date(oldCheckOut.getTime() + istOffsetMs)
 
         if (extendType === 'HOURS') {
-            newCheckOut.setHours(newCheckOut.getHours() + amount)
+            pseudoIst.setUTCHours(pseudoIst.getUTCHours() + amount)
         } else if (extendType === 'DAYS') {
-            newCheckOut.setDate(newCheckOut.getDate() + amount)
-            // If it's a room, it should stay at 11:00 AM. 
-            // If dorm, 10:00 AM.
-            // Since `oldCheckOut` was already calculated with correct hours initially,
-            // adding days to it directly retains the 11/10 hours physically.
-            // But let's be explicit just in case.
+            pseudoIst.setUTCDate(pseudoIst.getUTCDate() + amount)
             if (booking.unit.type === 'DORM') {
-                newCheckOut.setHours(10, 0, 0, 0)
+                pseudoIst.setUTCHours(10, 0, 0, 0)
             } else {
-                newCheckOut.setHours(11, 0, 0, 0)
+                pseudoIst.setUTCHours(11, 0, 0, 0)
             }
         } else {
             return NextResponse.json({ error: 'Invalid extend type' }, { status: 400 })
         }
+
+        const newCheckOut = new Date(pseudoIst.getTime() - istOffsetMs)
 
         // 2. Conflict checking
         const { data: conflicts, error: conflictError } = await supabase
@@ -109,6 +109,33 @@ export async function PATCH(request: Request) {
                 { error: 'Failed to update booking' },
                 { status: 500 }
             )
+        }
+
+        // 4. Update the payments record if there is a fee
+        if (fee > 0 && paymentType) {
+            // Fetch existing payment
+            const { data: paymentRecord } = await supabase
+                .from('payments')
+                .select('*')
+                .eq('booking_id', booking.id)
+                .single()
+
+            if (paymentRecord) {
+                const updatePayload: any = {
+                    total_paid: Number(paymentRecord.total_paid) + fee
+                }
+
+                if (paymentType === 'CASH') {
+                    updatePayload.amount_cash = Number(paymentRecord.amount_cash) + fee
+                } else if (paymentType === 'DIGITAL') {
+                    updatePayload.amount_digital = Number(paymentRecord.amount_digital) + fee
+                }
+
+                await supabase
+                    .from('payments')
+                    .update(updatePayload)
+                    .eq('id', paymentRecord.id)
+            }
         }
 
         return NextResponse.json({ message: 'Stay extended successfully' })

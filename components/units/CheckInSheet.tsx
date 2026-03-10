@@ -206,8 +206,9 @@ export function CheckInSheet({
                 toast.error(`Guest ${i + 1}: Name is required`)
                 return false
             }
-            if (!guests[i].phone.trim()) {
-                toast.error(`Guest ${i + 1}: Phone number is required`)
+            const phoneDigits = guests[i].phone.replace(/\D/g, '')
+            if (phoneDigits.length !== 10) {
+                toast.error(`Guest ${i + 1}: Phone number must be exactly 10 digits`)
                 return false
             }
             if (!guests[i].aadhar_url) {

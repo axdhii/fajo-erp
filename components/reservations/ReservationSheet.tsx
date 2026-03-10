@@ -134,8 +134,13 @@ export function ReservationSheet({
 
         if (!isBypassEnabled) {
             for (let i = 0; i < guests.length; i++) {
-                if (!guests[i].name.trim() || !guests[i].phone.trim()) {
-                    toast.error(`Guest ${i + 1}: Name and phone are required`)
+                if (!guests[i].name.trim()) {
+                    toast.error(`Guest ${i + 1}: Name is required`)
+                    return
+                }
+                const phoneDigits = guests[i].phone.replace(/\D/g, '')
+                if (phoneDigits.length !== 10) {
+                    toast.error(`Guest ${i + 1}: Phone number must be exactly 10 digits`)
                     return
                 }
             }

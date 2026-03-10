@@ -90,29 +90,45 @@ export async function checkConflict(
 
 /**
  * Calculate expected check-out time based on unit type and check-in time.
- * - Rooms: check_in + 24 hours
+ * - Rooms: check-in < 12 PM = today 11 AM. check-in >= 12 PM = tomorrow 11 AM
  * - Dorms: next day 10:00 AM IST
+ * Strictly evaluates time using Indian Standard Time (IST) offset to prevent UTC server issues.
  */
 export function calculateCheckOut(
     unitType: 'ROOM' | 'DORM',
-    checkIn: Date
+    checkIn: Date,
+    numberOfDays: number = 1
 ): Date {
+    // 1. Convert actual UTC time to a pseudo-IST date for calendar math
+    const istOffsetMs = 5.5 * 60 * 60 * 1000
+    const pseudoIst = new Date(checkIn.getTime() + istOffsetMs)
+
+    const istHour = pseudoIst.getUTCHours()
+    let checkoutPseudoIst = new Date(pseudoIst)
+
     if (unitType === 'ROOM') {
         // Room: check-in < 12 PM = today 11 AM. check-in >= 12 PM = tomorrow 11 AM
-        const checkOut = new Date(checkIn)
-        if (checkIn.getHours() < 12) {
-            checkOut.setHours(11, 0, 0, 0)
+        if (istHour < 12) {
+            checkoutPseudoIst.setUTCHours(11, 0, 0, 0)
+            if (numberOfDays > 1) {
+                checkoutPseudoIst.setUTCDate(checkoutPseudoIst.getUTCDate() + (numberOfDays - 1))
+            }
         } else {
-            checkOut.setDate(checkOut.getDate() + 1)
-            checkOut.setHours(11, 0, 0, 0)
+            checkoutPseudoIst.setUTCDate(checkoutPseudoIst.getUTCDate() + 1)
+            checkoutPseudoIst.setUTCHours(11, 0, 0, 0)
+            if (numberOfDays > 1) {
+                checkoutPseudoIst.setUTCDate(checkoutPseudoIst.getUTCDate() + (numberOfDays - 1))
+            }
         }
-        return checkOut
+    } else {
+        // Dorm: next day 10:00 AM IST
+        checkoutPseudoIst.setUTCDate(checkoutPseudoIst.getUTCDate() + 1)
+        checkoutPseudoIst.setUTCHours(10, 0, 0, 0) // 10:00 AM local (IST)
+        if (numberOfDays > 1) {
+            checkoutPseudoIst.setUTCDate(checkoutPseudoIst.getUTCDate() + (numberOfDays - 1))
+        }
     }
 
-    // Dorm: next day 10:00 AM IST
-    // Note: setHours uses local machine time; server runs in IST
-    const checkOut = new Date(checkIn)
-    checkOut.setDate(checkOut.getDate() + 1)
-    checkOut.setHours(10, 0, 0, 0) // 10:00 AM local (IST)
-    return checkOut
+    // 2. Convert back to actual UTC for reliable database storage
+    return new Date(checkoutPseudoIst.getTime() - istOffsetMs)
 }

@@ -26,6 +26,7 @@ export function ExtendSheet({ unit, open, onOpenChange, onSuccess }: ExtendSheet
     const [extendType, setExtendType] = useState<'HOURS' | 'DAYS'>('HOURS')
     const [amount, setAmount] = useState(1)
     const [fee, setFee] = useState('')
+    const [paymentType, setPaymentType] = useState<'CASH' | 'DIGITAL'>('CASH')
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [conflictError, setConflictError] = useState<string | null>(null)
 
@@ -37,6 +38,7 @@ export function ExtendSheet({ unit, open, onOpenChange, onSuccess }: ExtendSheet
             setExtendType('HOURS')
             setAmount(1)
             setFee('')
+            setPaymentType('CASH')
             setConflictError(null)
         }
     }, [open, unit])
@@ -70,6 +72,7 @@ export function ExtendSheet({ unit, open, onOpenChange, onSuccess }: ExtendSheet
                     extendType,
                     amount,
                     fee: Number(fee) || 0,
+                    paymentType: Number(fee) > 0 ? paymentType : null,
                 }),
             })
 
@@ -202,6 +205,31 @@ export function ExtendSheet({ unit, open, onOpenChange, onSuccess }: ExtendSheet
                             This amount will be added to the booking's grand total. Leave 0 if free extension.
                         </p>
                     </div>
+
+                    {/* Payment Type Selection */}
+                    {Number(fee) > 0 && (
+                        <div className="space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                            <Label className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
+                                Payment Method
+                            </Label>
+                            <div className="flex bg-slate-100 p-1 rounded-xl">
+                                <button
+                                    onClick={() => setPaymentType('CASH')}
+                                    className={`flex flex-1 items-center justify-center gap-2 py-2.5 text-sm font-semibold rounded-lg transition-all ${paymentType === 'CASH' ? 'bg-white shadow-sm text-blue-600 border border-slate-200/50' : 'text-slate-500 hover:text-slate-700'
+                                        }`}
+                                >
+                                    Cash
+                                </button>
+                                <button
+                                    onClick={() => setPaymentType('DIGITAL')}
+                                    className={`flex flex-1 items-center justify-center gap-2 py-2.5 text-sm font-semibold rounded-lg transition-all ${paymentType === 'DIGITAL' ? 'bg-white shadow-sm text-blue-600 border border-slate-200/50' : 'text-slate-500 hover:text-slate-700'
+                                        }`}
+                                >
+                                    Digital (UPI/Card)
+                                </button>
+                            </div>
+                        </div>
+                    )}
 
                     {/* Conflict Error */}
                     {conflictError && (

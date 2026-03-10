@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
         const supabase = await createClient()
         const body = await request.json()
 
-        const { bookingId } = body
+        const { bookingId, amountCash = 0, amountDigital = 0, isBypass = false } = body
 
         if (!bookingId) {
             return NextResponse.json(
@@ -17,10 +17,10 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        // Fetch the booking
+        // Fetch the booking and its payment record
         const { data: booking, error: bookingError } = await supabase
             .from('bookings')
-            .select('*, unit:units(*)')
+            .select('*, unit:units(*), payments(*)')
             .eq('id', bookingId)
             .single()
 
@@ -38,12 +38,48 @@ export async function POST(request: NextRequest) {
             )
         }
 
+        const paymentRecord = booking.payments[0]
+        const grandTotal = Number(booking.grand_total)
+        const totalPaid = paymentRecord ? Number(paymentRecord.total_paid) : 0
+        const balanceDue = Math.max(0, grandTotal - totalPaid)
+
+        const incomingCash = Number(amountCash)
+        const incomingDigital = Number(amountDigital)
+        const incomingTotal = incomingCash + incomingDigital
+
+        // Validate payment if balance is due and NOT bypassed
+        if (!isBypass && balanceDue > 0) {
+            if (Math.abs(incomingTotal - balanceDue) > 0.01) {
+                return NextResponse.json(
+                    { error: `Payment of ₹${incomingTotal} does not match balance of ₹${balanceDue}` },
+                    { status: 400 }
+                )
+            }
+        }
+
+        // Update payment record if payment was collected
+        if (incomingTotal > 0 && paymentRecord) {
+            await supabase
+                .from('payments')
+                .update({
+                    amount_cash: Number(paymentRecord.amount_cash) + incomingCash,
+                    amount_digital: Number(paymentRecord.amount_digital) + incomingDigital,
+                    total_paid: Number(paymentRecord.total_paid) + incomingTotal
+                })
+                .eq('id', paymentRecord.id)
+        }
+
+        const newNotes = isBypass
+            ? (booking.notes ? booking.notes + '\n[AUTO] Check-out payment bypassed (Emergency/Shift)' : '[AUTO] Check-out payment bypassed (Emergency/Shift)')
+            : booking.notes
+
         // Update booking to CHECKED_OUT
         const { error: bookingUpdateError } = await supabase
             .from('bookings')
             .update({
                 status: 'CHECKED_OUT',
                 check_out: getDevNow().toISOString(),
+                notes: newNotes,
             })
             .eq('id', bookingId)
 

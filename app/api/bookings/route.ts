@@ -25,11 +25,18 @@ export async function POST(request: NextRequest) {
         const digitalAmount = Number(amountDigital) || 0
         const days = Math.max(1, Math.floor(Number(numberOfDays) || 1))
 
-        // Validate each guest has name and phone
+        // Validate each guest has name, phone, and phone is exactly 10 digits
         for (const guest of guests) {
             if (!guest.name || !guest.phone) {
                 return NextResponse.json(
                     { error: 'Each guest must have a name and phone number' },
+                    { status: 400 }
+                )
+            }
+            const phoneDigits = guest.phone.replace(/\D/g, '')
+            if (phoneDigits.length !== 10) {
+                return NextResponse.json(
+                    { error: `Guest ${guest.name || 'Unnamed'}'s phone number must be exactly 10 digits` },
                     { status: 400 }
                 )
             }
@@ -65,14 +72,11 @@ export async function POST(request: NextRequest) {
             if (!isNaN(overrideDate.getTime()) && overrideDate > checkInDate) {
                 checkOutDate = overrideDate
             } else {
-                checkOutDate = calculateCheckOut(unit.type as UnitType, checkInDate)
+                checkOutDate = calculateCheckOut(unit.type as UnitType, checkInDate, days)
             }
         } else {
-            // Calculate check-out based on unit type and number of days
-            checkOutDate = calculateCheckOut(unit.type as UnitType, checkInDate)
-            if (days > 1) {
-                checkOutDate.setDate(checkOutDate.getDate() + (days - 1))
-            }
+            // Calculate check-out based on unit type and number of days (uses IST internally)
+            checkOutDate = calculateCheckOut(unit.type as UnitType, checkInDate, days)
         }
 
         // Run conflict check against existing reservations (unless bypassed)

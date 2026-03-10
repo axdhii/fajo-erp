@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import type { Booking, Guest } from '@/lib/types'
 import {
     Sheet,
@@ -43,6 +43,27 @@ export function ReservationDetail({
     const [showPayment, setShowPayment] = useState(false)
     const [amountCash, setAmountCash] = useState('')
     const [amountDigital, setAmountDigital] = useState('')
+    const [guestData, setGuestData] = useState<any[]>([])
+
+    useEffect(() => {
+        if (open && booking) {
+            setGuestData(
+                ((booking as any).guests || []).map((g: any) => ({
+                    id: g.id,
+                    name: g.name,
+                    phone: g.phone,
+                    aadhar_number: g.aadhar_number || '',
+                    aadhar_url: g.aadhar_url || '',
+                }))
+            )
+        }
+    }, [open, booking])
+
+    const handleGuestChange = (id: string, field: string, value: string) => {
+        setGuestData((prev) =>
+            prev.map((g) => (g.id === id ? { ...g, [field]: value } : g))
+        )
+    }
 
     if (!booking) return null
 
@@ -98,6 +119,7 @@ export function ReservationDetail({
                     bookingId: booking.id,
                     amountCash: cashNum,
                     amountDigital: digitalNum,
+                    guests: guestData,
                 }),
             })
 
@@ -230,19 +252,34 @@ export function ReservationDetail({
                                 Guests ({guests.length})
                             </p>
                         </div>
-                        {guests.map((g: Guest, i: number) => (
-                            <div key={i} className="flex items-center gap-3 text-sm">
-                                <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold">
-                                    {i + 1}
+                        {guestData.map((g: any, i: number) => (
+                            <div key={g.id} className="space-y-3 border-b border-slate-100 last:border-0 pb-3 last:pb-0">
+                                <div className="flex items-center gap-3 text-sm">
+                                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold shrink-0">
+                                        {i + 1}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="font-medium text-slate-800 truncate">
+                                            {g.name}
+                                        </p>
+                                        <p className="text-xs text-slate-400">
+                                            {g.phone}
+                                        </p>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p className="font-medium text-slate-800">
-                                        {g.name}
-                                    </p>
-                                    <p className="text-xs text-slate-400">
-                                        {g.phone}
-                                    </p>
-                                </div>
+                                {showPayment && (
+                                    <div className="pl-9 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-300">
+                                        <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                                            Aadhar Photo URL
+                                        </Label>
+                                        <Input
+                                            className="h-8 text-xs bg-white border-slate-200"
+                                            placeholder={`Upload/Paste ID URL for ${g.name}`}
+                                            value={g.aadhar_url}
+                                            onChange={(e) => handleGuestChange(g.id, 'aadhar_url', e.target.value)}
+                                        />
+                                    </div>
+                                )}
                             </div>
                         ))}
                     </div>

@@ -100,6 +100,13 @@ export async function POST(request: NextRequest) {
                     { status: 400 }
                 )
             }
+            const phoneDigits = guest.phone.replace(/\D/g, '')
+            if (phoneDigits.length !== 10) {
+                return NextResponse.json(
+                    { error: `Guest ${guest.name || 'Unnamed'}'s phone number must be exactly 10 digits` },
+                    { status: 400 }
+                )
+            }
         }
 
         // Fetch unit to determine type and pricing
@@ -116,12 +123,9 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        // Calculate check-out based on unit type and number of days
+        // Calculate check-out based on unit type and number of days (uses IST internally)
         const checkInDate = new Date(checkIn)
-        const checkOutDate = calculateCheckOut(unit.type as UnitType, checkInDate)
-        if (days > 1) {
-            checkOutDate.setDate(checkOutDate.getDate() + (days - 1))
-        }
+        const checkOutDate = calculateCheckOut(unit.type as UnitType, checkInDate, days)
 
         // Run conflict check
         const conflict = await checkConflict({

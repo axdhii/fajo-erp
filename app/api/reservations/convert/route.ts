@@ -9,7 +9,7 @@ export async function POST(request: NextRequest) {
         const supabase = await createClient()
         const body = await request.json()
 
-        const { bookingId, grandTotalOverride, amountCash, amountDigital } = body
+        const { bookingId, grandTotalOverride, amountCash, amountDigital, guests } = body
 
         if (!bookingId) {
             return NextResponse.json(
@@ -124,6 +124,22 @@ export async function POST(request: NextRequest) {
 
         if (unitUpdateError) {
             console.error('Unit status update error:', unitUpdateError)
+        }
+
+        // Update guest Aadhar URLs if provided
+        if (guests && Array.isArray(guests)) {
+            for (const g of guests) {
+                if (g.id && g.aadhar_url) {
+                    const { error: guestUpdateError } = await supabase
+                        .from('guests')
+                        .update({ aadhar_url: g.aadhar_url })
+                        .eq('id', g.id)
+
+                    if (guestUpdateError) {
+                        console.error(`Guest aadhar update error for ${g.id}:`, guestUpdateError)
+                    }
+                }
+            }
         }
 
         return NextResponse.json({

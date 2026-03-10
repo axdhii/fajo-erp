@@ -39,6 +39,10 @@ export function CheckoutSheet({
 }: CheckoutSheetProps) {
     const [booking, setBooking] = useState<Booking | null>(null)
     const [payment, setPayment] = useState<any>(null)
+    const [amountCash, setAmountCash] = useState('')
+    const [amountDigital, setAmountDigital] = useState('')
+    const [isBypass, setIsBypass] = useState(false)
+    const [bypassTimer, setBypassTimer] = useState(0)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isLoadingBooking, setIsLoadingBooking] = useState(false)
 
@@ -78,6 +82,28 @@ export function CheckoutSheet({
         }
     }, [open, unit])
 
+    // Countdown timer for emergency bypass
+    useEffect(() => {
+        let interval: NodeJS.Timeout
+        if (isBypass && bypassTimer > 0) {
+            interval = setInterval(() => {
+                setBypassTimer((prev) => prev - 1)
+            }, 1000)
+        }
+        return () => clearInterval(interval)
+    }, [isBypass, bypassTimer])
+
+    const toggleBypass = () => {
+        if (!isBypass) {
+            setIsBypass(true)
+            setBypassTimer(5)
+            toast.warning('Emergency Bypass activated: Financial verification disabled for room shifts.')
+        } else {
+            setIsBypass(false)
+            setBypassTimer(0)
+        }
+    }
+
     if (!unit) return null
 
     const handleCheckout = async () => {
@@ -89,11 +115,19 @@ export function CheckoutSheet({
         setIsSubmitting(true)
 
         try {
+            if (!isPaymentValid) {
+                toast.error(`Please collect exactly ₹${balanceDue} before checking out.`)
+                return
+            }
+
             const res = await fetch('/api/bookings/checkout', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     bookingId: booking.id,
+                    amountCash: cashInput,
+                    amountDigital: digitalInput,
+                    isBypass,
                 }),
             })
 
@@ -110,6 +144,8 @@ export function CheckoutSheet({
 
             setBooking(null)
             setPayment(null)
+            setAmountCash('')
+            setAmountDigital('')
             onSuccess()
         } catch (err) {
             toast.error('Network error. Please try again.')
@@ -122,6 +158,10 @@ export function CheckoutSheet({
         if (!openState) {
             setBooking(null)
             setPayment(null)
+            setAmountCash('')
+            setAmountDigital('')
+            setIsBypass(false)
+            setBypassTimer(0)
         }
         onOpenChange(openState)
     }
@@ -143,6 +183,20 @@ export function CheckoutSheet({
             minute: '2-digit',
         })
         : '—'
+
+    const grandTotal = booking ? Number(booking.grand_total) : 0
+    const totalPaid = payment ? Number(payment.total_paid) : 0
+    const balanceDue = Math.max(0, grandTotal - totalPaid)
+
+    const cashInput = Number(amountCash) || 0
+    const digitalInput = Number(amountDigital) || 0
+    const checkoutTotal = cashInput + digitalInput
+
+    // Valid if bypassed, OR if balance is 0, OR if total collected matches balance due
+    const isPaymentValid = isBypass || balanceDue === 0 || Math.abs(checkoutTotal - balanceDue) < 1
+
+    // Disable if submitting, or payment invalid, or if bypass timer is actively counting down
+    const checkoutDisabled = isSubmitting || !isPaymentValid || (isBypass && bypassTimer > 0)
 
     return (
         <Sheet open={open} onOpenChange={resetAndClose}>
@@ -285,6 +339,68 @@ export function CheckoutSheet({
                             </div>
                         </div>
 
+                        {/* Balance Collection (Pay Later) */}
+                        {balanceDue > 0 && (
+                            <div className="rounded-xl border border-rose-200 bg-rose-50/50 p-4 space-y-4">
+                                <div className="flex items-center gap-2">
+                                    <AlertCircle className="h-4 w-4 text-rose-500" />
+                                    <p className="text-[10px] font-bold uppercase tracking-widest text-rose-500">
+                                        Pending Balance Due
+                                    </p>
+                                </div>
+                                <div className="flex justify-between items-center bg-white p-3 rounded-lg border border-rose-100 shadow-sm">
+                                    <span className="text-sm font-semibold text-slate-700">Amount to Collect</span>
+                                    <span className="text-lg font-bold text-rose-600">₹{balanceDue.toLocaleString('en-IN')}</span>
+                                </div>
+                                <div className="space-y-3">
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-slate-600">Cash Received (₹)</label>
+                                        <div className="relative">
+                                            <Banknote className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-green-600" />
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                className="w-full pl-9 h-10 rounded-lg border border-slate-200 bg-white text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-400/20 transition-all font-medium"
+                                                placeholder="0"
+                                                value={amountCash}
+                                                onChange={(e) => setAmountCash(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1.5">
+                                        <label className="text-xs font-semibold text-slate-600">Digital Received (₹)</label>
+                                        <div className="relative">
+                                            <Smartphone className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-600" />
+                                            <input
+                                                type="number"
+                                                min="0"
+                                                className="w-full pl-9 h-10 rounded-lg border border-slate-200 bg-white text-sm focus:border-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-400/20 transition-all font-medium"
+                                                placeholder="0"
+                                                value={amountDigital}
+                                                onChange={(e) => setAmountDigital(e.target.value)}
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Emergency Bypass */}
+                        {balanceDue > 0 && (
+                            <div className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+                                <div className="space-y-0.5">
+                                    <p className="text-sm font-semibold text-slate-700">Payment Bypass</p>
+                                    <p className="text-[10px] sm:text-xs text-slate-500 max-w-[200px]">Skip financial verification (For Emergency Room Shifts)</p>
+                                </div>
+                                <button
+                                    onClick={toggleBypass}
+                                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 ${isBypass ? 'bg-red-500' : 'bg-slate-200'}`}
+                                >
+                                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isBypass ? 'translate-x-6' : 'translate-x-1'}`} />
+                                </button>
+                            </div>
+                        )}
+
                         {/* Checkout Confirmation */}
                         <div className="rounded-xl bg-amber-50 border border-amber-200 p-4">
                             <p className="text-sm text-amber-800 font-medium">
@@ -298,18 +414,26 @@ export function CheckoutSheet({
                         {/* Submit */}
                         <Button
                             onClick={handleCheckout}
-                            disabled={isSubmitting}
-                            className="w-full h-12 text-sm font-semibold rounded-xl transition-all active:scale-[0.98] bg-red-600 hover:bg-red-700 text-white shadow-xl shadow-red-600/20"
+                            disabled={checkoutDisabled}
+                            className={`w-full h-12 text-sm font-semibold rounded-xl transition-all active:scale-[0.98] disabled:bg-slate-300 disabled:text-slate-500 shadow-xl disabled:shadow-none ${isBypass
+                                    ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-600/20'
+                                    : 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20'
+                                }`}
                         >
                             {isSubmitting ? (
                                 <span className="flex items-center gap-2">
                                     <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                                     Processing...
                                 </span>
+                            ) : isBypass && bypassTimer > 0 ? (
+                                <span className="flex items-center gap-2 animate-pulse">
+                                    <AlertCircle className="h-4 w-4" />
+                                    Security Lock: Wait {bypassTimer}s
+                                </span>
                             ) : (
                                 <span className="flex items-center gap-2">
                                     <LogOut className="h-4 w-4" />
-                                    Confirm Check-Out
+                                    {isBypass ? 'Force Emergency Check-Out' : 'Confirm Check-Out & Collect ₹' + checkoutTotal.toLocaleString('en-IN')}
                                 </span>
                             )}
                         </Button>
