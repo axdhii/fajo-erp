@@ -8,7 +8,7 @@ export async function POST(request: NextRequest) {
         const supabase = await createClient()
         const body = await request.json()
 
-        const { bookingId, amountCash = 0, amountDigital = 0, isBypass = false } = body
+        const { bookingId, amountCash = 0, amountDigital = 0 } = body
 
         if (!bookingId) {
             return NextResponse.json(
@@ -47,8 +47,8 @@ export async function POST(request: NextRequest) {
         const incomingDigital = Number(amountDigital)
         const incomingTotal = incomingCash + incomingDigital
 
-        // Validate payment if balance is due and NOT bypassed
-        if (!isBypass && balanceDue > 0) {
+        // Validate payment if balance is due
+        if (balanceDue > 0) {
             if (Math.abs(incomingTotal - balanceDue) > 0.01) {
                 return NextResponse.json(
                     { error: `Payment of ₹${incomingTotal} does not match balance of ₹${balanceDue}` },
@@ -69,9 +69,7 @@ export async function POST(request: NextRequest) {
                 .eq('id', paymentRecord.id)
         }
 
-        const newNotes = isBypass
-            ? (booking.notes ? booking.notes + '\n[AUTO] Check-out payment bypassed (Emergency/Shift)' : '[AUTO] Check-out payment bypassed (Emergency/Shift)')
-            : booking.notes
+        const newNotes = booking.notes
 
         // Update booking to CHECKED_OUT
         const { error: bookingUpdateError } = await supabase

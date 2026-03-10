@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import type { UnitWithBooking } from '@/lib/store/unit-store'
 import type { GuestInput } from '@/lib/types'
 import { calculateBookingPrice } from '@/lib/pricing'
@@ -86,6 +86,30 @@ export function CheckInSheet({
     const [uploadingIndex, setUploadingIndex] = useState<number | null>(null)
     const [payLater, setPayLater] = useState(false)
     const [conflictError, setConflictError] = useState<string | null>(null)
+    const [isBypass, setIsBypass] = useState(false)
+    const [bypassTimer, setBypassTimer] = useState(0)
+
+    // Countdown timer for emergency bypass
+    useEffect(() => {
+        let interval: NodeJS.Timeout
+        if (isBypass && bypassTimer > 0) {
+            interval = setInterval(() => {
+                setBypassTimer((prev) => prev - 1)
+            }, 1000)
+        }
+        return () => clearInterval(interval)
+    }, [isBypass, bypassTimer])
+
+    const toggleBypass = () => {
+        if (!isBypass) {
+            setIsBypass(true)
+            setBypassTimer(5)
+            toast.warning('Emergency Bypass activated: Financial verification disabled for room shifts.')
+        } else {
+            setIsBypass(false)
+            setBypassTimer(0)
+        }
+    }
 
     const now = useCurrentTime()
 
@@ -224,7 +248,7 @@ export function CheckInSheet({
 
         if (!validateGuests(isBypassEnabled)) return
 
-        if (!payLater && !isExactMatch) {
+        if (!payLater && !isBypass && !isExactMatch) {
             toast.error(
                 `Payment must equal ₹${finalTotal.toLocaleString('en-IN')}. Currently ₹${totalPaid.toLocaleString('en-IN')}`
             )
@@ -252,10 +276,11 @@ export function CheckInSheet({
                         grandTotalOverride && !isNaN(Number(grandTotalOverride))
                             ? Number(grandTotalOverride)
                             : null,
-                    amountCash: payLater ? 0 : cashNum,
-                    amountDigital: payLater ? 0 : digitalNum,
-                    payLater: payLater || undefined,
+                    amountCash: (payLater || isBypass) ? 0 : cashNum,
+                    amountDigital: (payLater || isBypass) ? 0 : digitalNum,
+                    payLater: (payLater || isBypass) ? true : undefined,
                     bypassConflict: overrideConflict || undefined,
+                    isBypass,
                 }),
             })
 
@@ -269,7 +294,7 @@ export function CheckInSheet({
                 return
             }
 
-            const payMsg = payLater ? '(Pay Later)' : `₹${finalTotal.toLocaleString('en-IN')} collected`
+            const payMsg = (payLater || isBypass) ? '(Pay Later / Bypassed)' : `₹${finalTotal.toLocaleString('en-IN')} collected`
             toast.success(
                 `Checked in to ${unit.unit_number} for ${numberOfDays} day${numberOfDays > 1 ? 's' : ''} — ${payMsg}`
             )
@@ -291,6 +316,8 @@ export function CheckInSheet({
         setAmountCash('')
         setAmountDigital('')
         setPayLater(false)
+        setIsBypass(false)
+        setBypassTimer(0)
         setConflictError(null)
     }
 
@@ -583,8 +610,23 @@ export function CheckInSheet({
                         </div>
                     )}
 
-                    {/* Split Payment (hidden when payLater) */}
-                    {!payLater && (
+                    {/* Emergency Bypass */}
+                    <div className="flex items-center justify-between p-4 rounded-xl border border-slate-200 bg-white shadow-sm">
+                        <div className="space-y-0.5">
+                            <p className="text-sm font-semibold text-slate-700">Payment Bypass</p>
+                            <p className="text-[10px] sm:text-xs text-slate-500 max-w-[200px]">Skip financial verification (For Emergency Room Shifts)</p>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={toggleBypass}
+                            className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-slate-400 focus:ring-offset-2 ${isBypass ? 'bg-red-500' : 'bg-slate-200'}`}
+                        >
+                            <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${isBypass ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
+                    </div>
+
+                    {/* Split Payment (hidden when payLater or isBypass) */}
+                    {(!payLater && !isBypass) && (
                         <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
                             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                                 Payment Collection
@@ -647,23 +689,33 @@ export function CheckInSheet({
                     {/* Submit */}
                     <Button
                         onClick={() => handleSubmit()}
-                        disabled={isSubmitting || (!payLater && !isExactMatch)}
-                        className={`w-full h-12 text-sm font-semibold rounded-xl transition-all active:scale-[0.98] ${(payLater || isExactMatch)
-                            ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-xl shadow-slate-900/10'
-                            : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                            }`}
+                        disabled={isSubmitting || (!payLater && !isBypass && !isExactMatch) || (isBypass && bypassTimer > 0)}
+                        className={`w-full h-12 text-sm font-semibold rounded-xl transition-all active:scale-[0.98]
+                            ${isBypass 
+                                ? 'bg-red-600 hover:bg-red-700 text-white shadow-red-600/20'
+                                : ((payLater || isExactMatch)
+                                    ? 'bg-slate-900 hover:bg-slate-800 text-white shadow-xl shadow-slate-900/10'
+                                    : 'bg-slate-200 text-slate-400 cursor-not-allowed')}
+                            `}
                     >
                         {isSubmitting ? (
                             <span className="flex items-center gap-2">
                                 <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                                 Processing...
                             </span>
+                        ) : isBypass && bypassTimer > 0 ? (
+                             <span className="flex items-center gap-2 animate-pulse">
+                                 <AlertCircle className="h-4 w-4" />
+                                 Security Lock: Wait {bypassTimer}s
+                             </span>
                         ) : (
                             <span className="flex items-center gap-2">
                                 <UserPlus className="h-4 w-4" />
-                                {isExactMatch
-                                    ? `Check-In · ${numberOfDays} Day${numberOfDays > 1 ? 's' : ''} · ₹${finalTotal.toLocaleString('en-IN')}`
-                                    : 'Payment must match Grand Total'}
+                                {isBypass 
+                                    ? `Force Emergency Check-In`
+                                    : (isExactMatch || payLater
+                                       ? `Check-In · ${numberOfDays} Day${numberOfDays > 1 ? 's' : ''} · ₹${finalTotal.toLocaleString('en-IN')}`
+                                       : 'Payment must match Grand Total')}
                             </span>
                         )}
                     </Button>

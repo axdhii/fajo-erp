@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
         const supabase = await createClient()
         const body = await request.json()
 
-        const { unitId, guests, grandTotalOverride, amountCash, amountDigital, numberOfDays, checkOutOverride, payLater, bypassConflict } = body
+        const { unitId, guests, grandTotalOverride, amountCash, amountDigital, numberOfDays, checkOutOverride, payLater, bypassConflict, isBypass } = body
 
         if (!unitId || !guests || !Array.isArray(guests) || guests.length === 0) {
             return NextResponse.json(
@@ -149,6 +149,7 @@ export async function POST(request: NextRequest) {
                 base_amount: pricing.baseAmount,
                 surcharge: pricing.surcharge,
                 grand_total: finalGrandTotal,
+                notes: isBypass ? '[AUTO] Check-in payment bypassed (Emergency Room Shift)' : null,
                 status: 'CHECKED_IN',
             })
             .select()
