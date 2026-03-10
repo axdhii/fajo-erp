@@ -162,19 +162,18 @@ export function ReservationDetail({
 
         try {
             setUploadingIndex(index)
-            const fileExt = file.name.split('.').pop()
-            const fileName = `${Math.random()}.${fileExt}`
-            const filePath = `aadhar/${fileName}`
+            const fileExt = file.name.split('.').pop() || 'jpg'
+            const fileName = `aadhar-res-${booking.id}-${index}-${Date.now()}.${fileExt}`
 
             const { error: uploadError } = await supabase.storage
-                .from('documents')
-                .upload(filePath, file)
+                .from('aadhars')
+                .upload(fileName, file)
 
             if (uploadError) throw uploadError
 
             const { data: { publicUrl } } = supabase.storage
-                .from('documents')
-                .getPublicUrl(filePath)
+                .from('aadhars')
+                .getPublicUrl(fileName)
 
             handleGuestChange(guestData[index].id, 'aadhar_url', publicUrl)
             toast.success('Aadhar document uploaded')
