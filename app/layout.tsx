@@ -18,7 +18,7 @@ export default function RootLayout({
         className="antialiased"
       >
         {children}
-        {process.env.NODE_ENV === 'development' && <DevToolbar />}
+        {(process.env.NODE_ENV === 'development' || process.env.NEXT_PUBLIC_SHOW_DEV === 'true') && <DevToolbar />}
       </body>
     </html>
   );
