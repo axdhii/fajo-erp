@@ -46,6 +46,13 @@ const emptyGuest = (): GuestInput => ({
     aadhar_url: '',
 })
 
+function formatLocalYYYYMMDD(d: Date): string {
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+}
+
 export function ReservationSheet({
     hotelId,
     unit: preSelectedUnit,
@@ -81,14 +88,14 @@ export function ReservationSheet({
             if (preSelectedUnit) setSelectedUnitId(preSelectedUnit.id)
             if (defaultCheckIn) {
                 setCheckInDate(
-                    defaultCheckIn.toISOString().split('T')[0]
+                    formatLocalYYYYMMDD(defaultCheckIn)
                 )
                 setCheckInTime(
                     `${String(defaultCheckIn.getHours()).padStart(2, '0')}:${String(defaultCheckIn.getMinutes()).padStart(2, '0')}`
                 )
             } else {
                 const now = new Date(devNow)
-                setCheckInDate(now.toISOString().split('T')[0])
+                setCheckInDate(formatLocalYYYYMMDD(now))
             }
         }
     }, [open, preSelectedUnit, defaultCheckIn])

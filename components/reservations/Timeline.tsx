@@ -15,6 +15,13 @@ interface TimelineProps {
     hotelId: string
 }
 
+function formatLocalYYYYMMDD(d: Date): string {
+    const year = d.getFullYear()
+    const month = String(d.getMonth() + 1).padStart(2, '0')
+    const day = String(d.getDate()).padStart(2, '0')
+    return `${year}-${month}-${day}`
+}
+
 const STATUS_COLORS: Record<string, { bg: string; border: string; text: string }> = {
     CONFIRMED: {
         bg: 'bg-blue-500',
@@ -105,11 +112,11 @@ export function Timeline({ hotelId }: TimelineProps) {
     }, [hotelId, startDate, endDate])
 
     // Sync startDate to devNow if it is strictly tracking the current day
-    const devTodayStr = devNow.toISOString().split('T')[0]
+    const devTodayStr = formatLocalYYYYMMDD(devNow)
     useEffect(() => {
         setStartDate((prev) => {
-            const currentStr = prev.toISOString().split('T')[0]
-            if (currentStr !== devTodayStr && currentStr === new Date().toISOString().split('T')[0]) {
+            const currentStr = formatLocalYYYYMMDD(prev)
+            if (currentStr !== devTodayStr && currentStr === formatLocalYYYYMMDD(new Date())) {
                 const d = new Date(devNow)
                 d.setHours(0, 0, 0, 0)
                 return d
