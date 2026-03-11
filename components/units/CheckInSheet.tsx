@@ -37,6 +37,8 @@ import {
     CalendarClock,
     Sun,
     Moon,
+    Wrench,
+    Printer,
 } from 'lucide-react'
 
 interface CheckInSheetProps {
@@ -84,10 +86,11 @@ export function CheckInSheet({
     const [amountDigital, setAmountDigital] = useState('')
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [uploadingIndex, setUploadingIndex] = useState<number | null>(null)
+    const [bypassTimer, setBypassTimer] = useState(0)
     const [payLater, setPayLater] = useState(false)
     const [conflictError, setConflictError] = useState<string | null>(null)
+    const [successBookingId, setSuccessBookingId] = useState<string | null>(null)
     const [isBypass, setIsBypass] = useState(false)
-    const [bypassTimer, setBypassTimer] = useState(0)
 
     // Countdown timer for emergency bypass
     useEffect(() => {
@@ -200,23 +203,24 @@ export function CheckInSheet({
         setUploadingIndex(index)
         try {
             const fileExt = file.name.split('.').pop() || 'jpg'
-            const fileName = `aadhar-${unit.id}-${index}-${Date.now()}.${fileExt}`
+            const guestName = guests[index]?.name?.trim()?.replace(/\s+/g, '_') || `Guest${index + 1}`
+            const dateStr = new Date().toLocaleDateString('en-GB').replace(/\//g, '-')
+            const fileName = `Aadhar_Unit${unit.unit_number}_${guestName}_${dateStr}.${fileExt}`
 
-            const { error: uploadError } = await supabase.storage
-                .from('aadhars')
-                .upload(fileName, file)
+            const objectUrl = URL.createObjectURL(file)
+            
+            const link = document.createElement('a')
+            link.href = objectUrl
+            link.download = fileName
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
 
-            if (uploadError) throw uploadError
-
-            const {
-                data: { publicUrl },
-            } = supabase.storage.from('aadhars').getPublicUrl(fileName)
-
-            updateGuest(index, 'aadhar_url', publicUrl)
-            toast.success(`Aadhar photo uploaded for Guest ${index + 1}`)
+            updateGuest(index, 'aadhar_url', `${objectUrl}#${fileName}`)
+            toast.success(`Aadhar saved locally as ${fileName}`)
         } catch (err) {
-            console.error('Upload error:', err)
-            toast.error('Failed to upload Aadhar photo')
+            console.error('Download error:', err)
+            toast.error('Failed to save Aadhar photo locally')
         } finally {
             setUploadingIndex(null)
         }
@@ -268,7 +272,11 @@ export function CheckInSheet({
                         name: g.name.trim() || (isBypassEnabled ? `Dev Guest ${i + 1}` : ''),
                         phone: g.phone.trim() || (isBypassEnabled ? '0000000000' : ''),
                         aadhar_number: g.aadhar_number.trim() || null,
-                        aadhar_url: g.aadhar_url || (isBypassEnabled ? 'https://ui-avatars.com/api/?name=Dev+Guest' : null),
+                        aadhar_url: isBypassEnabled 
+                            ? 'https://ui-avatars.com/api/?name=Dev+Guest' 
+                            : (g.aadhar_url?.startsWith('blob:') 
+                                ? `LOCAL: ${g.aadhar_url.split('#')[1] || 'Saved_Locally'}` 
+                                : (g.aadhar_url || null)),
                     })),
                     numberOfDays,
                     checkOutOverride: manualCheckout || null,
@@ -299,8 +307,12 @@ export function CheckInSheet({
                 `Checked in to ${unit.unit_number} for ${numberOfDays} day${numberOfDays > 1 ? 's' : ''} — ${payMsg}`
             )
 
-            resetForm()
-            onSuccess()
+            if (!payLater && !isBypass && data.booking?.id) {
+                setSuccessBookingId(data.booking.id)
+            } else {
+                resetForm()
+                onSuccess()
+            }
         } catch (err) {
             toast.error('Network error. Please try again.')
         } finally {
@@ -319,11 +331,52 @@ export function CheckInSheet({
         setIsBypass(false)
         setBypassTimer(0)
         setConflictError(null)
+        setSuccessBookingId(null)
     }
 
     const resetAndClose = (openState: boolean) => {
-        if (!openState) resetForm()
+        if (!openState) {
+            resetForm()
+            onSuccess()
+        }
         onOpenChange(openState)
+    }
+
+    if (successBookingId) {
+        return (
+            <Sheet open={open} onOpenChange={resetAndClose}>
+                <SheetContent className="bg-white/98 backdrop-blur-2xl sm:max-w-md shadow-2xl p-0 flex flex-col items-center justify-center text-center">
+                    <div className="p-12 space-y-6 w-full animate-in zoom-in-95 duration-500">
+                        <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-inner">
+                            <CheckCircle2 className="h-12 w-12" />
+                        </div>
+                        <div>
+                            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Check-In Complete!</h2>
+                            <p className="text-slate-500 mt-2 text-sm">Room {unit.unit_number} has been officially locked. Payment received in full.</p>
+                        </div>
+                        <div className="pt-8 space-y-3">
+                            <Button 
+                                onClick={() => window.open(`/invoice/${successBookingId}`, '_blank')}
+                                className="w-full h-14 text-base font-bold bg-slate-900 hover:bg-slate-800 text-white rounded-xl flex items-center justify-center gap-2 shadow-xl shadow-slate-900/20 active:scale-[0.98] transition-all"
+                            >
+                                <Printer className="h-5 w-5" />
+                                Print Invoice
+                            </Button>
+                            <Button 
+                                variant="outline" 
+                                onClick={() => {
+                                    resetForm()
+                                    onSuccess()
+                                }}
+                                className="w-full h-12 text-sm font-semibold text-slate-600 rounded-xl"
+                            >
+                                Done
+                            </Button>
+                        </div>
+                    </div>
+                </SheetContent>
+            </Sheet>
+        )
     }
 
     return (

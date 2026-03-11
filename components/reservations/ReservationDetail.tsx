@@ -126,6 +126,13 @@ export function ReservationDetail({
 
         setIsConverting(true)
         try {
+            const formattedGuests = guestData.map((g: any) => ({
+                ...g,
+                aadhar_url: g.aadhar_url?.startsWith('blob:') 
+                    ? `LOCAL: ${g.aadhar_url.split('#')[1] || 'Saved_Locally'}` 
+                    : (g.aadhar_url || null)
+            }))
+
             const res = await fetch('/api/reservations/convert', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -133,7 +140,7 @@ export function ReservationDetail({
                     bookingId: booking.id,
                     amountCash: cashNum,
                     amountDigital: digitalNum,
-                    guests: guestData,
+                    guests: formattedGuests,
                 }),
             })
 
@@ -163,23 +170,25 @@ export function ReservationDetail({
         try {
             setUploadingIndex(index)
             const fileExt = file.name.split('.').pop() || 'jpg'
-            const fileName = `aadhar-res-${booking.id}-${index}-${Date.now()}.${fileExt}`
+            const guestName = guestData[index]?.name?.trim()?.replace(/\s+/g, '_') || `Guest${index + 1}`
+            const dateStr = new Date().toLocaleDateString('en-GB').replace(/\//g, '-')
+            const unitNumber = (booking as any).unit?.unit_number || 'UNKNOWN'
+            const fileName = `Aadhar_Unit${unitNumber}_${guestName}_${dateStr}.${fileExt}`
 
-            const { error: uploadError } = await supabase.storage
-                .from('aadhars')
-                .upload(fileName, file)
+            const objectUrl = URL.createObjectURL(file)
+            
+            const link = document.createElement('a')
+            link.href = objectUrl
+            link.download = fileName
+            document.body.appendChild(link)
+            link.click()
+            document.body.removeChild(link)
 
-            if (uploadError) throw uploadError
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('aadhars')
-                .getPublicUrl(fileName)
-
-            handleGuestChange(guestData[index].id, 'aadhar_url', publicUrl)
-            toast.success('Aadhar document uploaded')
+            handleGuestChange(guestData[index].id, 'aadhar_url', `${objectUrl}#${fileName}`)
+            toast.success(`Aadhar saved locally as ${fileName}`)
         } catch (err) {
-            console.error('Upload error:', err)
-            toast.error('Failed to upload document')
+            console.error('Download error:', err)
+            toast.error('Failed to save Aadhar photo locally')
         } finally {
             setUploadingIndex(null)
         }

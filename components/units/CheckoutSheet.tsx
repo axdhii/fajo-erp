@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import type { UnitWithBooking } from '@/lib/store/unit-store'
-import type { Booking, Guest } from '@/lib/types'
+import { Booking, Unit, Guest, Payment } from '@/lib/types'
 import {
     Sheet,
     SheetContent,
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase/client'
 import {
+    X,
     LogOut,
     Users,
     Clock,
@@ -22,6 +23,8 @@ import {
     Banknote,
     Smartphone,
     IndianRupee,
+    Printer,
+    CheckCircle2
 } from 'lucide-react'
 
 interface CheckoutSheetProps {
@@ -38,9 +41,10 @@ export function CheckoutSheet({
     onSuccess,
 }: CheckoutSheetProps) {
     const [booking, setBooking] = useState<Booking | null>(null)
-    const [payment, setPayment] = useState<any>(null)
+    const [payment, setPayment] = useState<Payment | null>(null)
     const [amountCash, setAmountCash] = useState('')
     const [amountDigital, setAmountDigital] = useState('')
+    const [successBookingId, setSuccessBookingId] = useState<string | null>(null)
     const [isBypass, setIsBypass] = useState(false)
     const [bypassTimer, setBypassTimer] = useState(0)
     const [isSubmitting, setIsSubmitting] = useState(false)
@@ -121,11 +125,7 @@ export function CheckoutSheet({
                 `Checked out ${unit.unit_number} successfully`
             )
 
-            setBooking(null)
-            setPayment(null)
-            setAmountCash('')
-            setAmountDigital('')
-            onSuccess()
+            setSuccessBookingId(booking.id)
         } catch (err) {
             toast.error('Network error. Please try again.')
         } finally {
@@ -139,8 +139,44 @@ export function CheckoutSheet({
             setPayment(null)
             setAmountCash('')
             setAmountDigital('')
+            if (successBookingId) onSuccess()
+            setSuccessBookingId(null)
         }
         onOpenChange(openState)
+    }
+
+    if (successBookingId) {
+        return (
+            <Sheet open={open} onOpenChange={resetAndClose}>
+                <SheetContent className="bg-white/98 backdrop-blur-2xl sm:max-w-md shadow-2xl p-0 flex flex-col items-center justify-center text-center">
+                    <div className="p-12 space-y-6 w-full animate-in zoom-in-95 duration-500">
+                        <div className="mx-auto flex h-24 w-24 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 shadow-inner">
+                            <CheckCircle2 className="h-12 w-12" />
+                        </div>
+                        <div>
+                            <h2 className="text-2xl font-black text-slate-900 tracking-tight">Check-Out Complete!</h2>
+                            <p className="text-slate-500 mt-2 text-sm">Room {unit.unit_number} has been checked out successfully.</p>
+                        </div>
+                        <div className="pt-8 space-y-3">
+                            <Button 
+                                onClick={() => window.open(`/invoice/${successBookingId}`, '_blank')}
+                                className="w-full h-14 text-base font-bold bg-slate-900 hover:bg-slate-800 text-white rounded-xl flex items-center justify-center gap-2 shadow-xl shadow-slate-900/20 active:scale-[0.98] transition-all"
+                            >
+                                <Printer className="h-5 w-5" />
+                                Print Invoice
+                            </Button>
+                            <Button 
+                                variant="outline" 
+                                onClick={() => resetAndClose(false)}
+                                className="w-full h-12 text-sm font-semibold text-slate-600 rounded-xl"
+                            >
+                                Done
+                            </Button>
+                        </div>
+                    </div>
+                </SheetContent>
+            </Sheet>
+        )
     }
 
     const checkInTime = booking
