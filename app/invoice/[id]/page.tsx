@@ -53,10 +53,10 @@ export default async function InvoicePage(props: InvoicePageProps) {
 
     const primaryGuest = booking.guests?.[0] || { name: 'Unknown', phone: '—' }
     
-    // Calculate extension fee
     const extensionFee = booking.extension_fee || 0 // If we added this to the schema later
     const advanceAmount = Number(booking.advance_amount) || 0
-    const paymentsTotal = booking.payments?.reduce((sum: number, p: any) => sum + Number(p.total_paid), 0) || 0
+    const paymentsArray = Array.isArray(booking.payments) ? booking.payments : (booking.payments ? [booking.payments] : [])
+    const paymentsTotal = paymentsArray.reduce((sum: number, p: any) => sum + Number(p.total_paid), 0)
     const totalPaid = advanceAmount + paymentsTotal
     const balanceDue = Math.max(0, Number(booking.grand_total) - totalPaid)
 

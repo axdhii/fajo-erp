@@ -38,7 +38,8 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        const paymentRecord = booking.payments[0]
+        // Handle both Array and Object returns from Supabase
+        const paymentRecord = Array.isArray(booking.payments) ? booking.payments[0] : booking.payments
         const grandTotal = Number(booking.grand_total)
         const totalPaid = paymentRecord ? Number(paymentRecord.total_paid) : 0
         const balanceDue = Math.max(0, grandTotal - totalPaid)
