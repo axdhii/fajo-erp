@@ -1,10 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
 import type { UnitStatus } from '@/lib/types'
 
 // PATCH /api/housekeeping — Update unit cleaning status
 export async function PATCH(request: NextRequest) {
     try {
+        const auth = await requireAuth()
+        if (!auth.authenticated) return auth.response
+
         const supabase = await createClient()
         const body = await request.json()
 

@@ -16,7 +16,7 @@ export default async function FrontDeskPage() {
     // Server-side profile fetch
     const { data: profile } = await supabase
         .from('staff')
-        .select('hotel_id, role')
+        .select('id, hotel_id, role')
         .eq('user_id', user.id)
         .single()
 
@@ -33,5 +33,5 @@ export default async function FrontDeskPage() {
         )
     }
 
-    return <FrontDeskClient hotelId={profile.hotel_id} />
+    return <FrontDeskClient hotelId={profile.hotel_id} staffId={profile.id} />
 }

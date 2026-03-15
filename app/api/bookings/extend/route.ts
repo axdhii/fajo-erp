@@ -1,11 +1,17 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireAuth } from '@/lib/auth'
+import { checkConflict } from '@/lib/conflict'
 
 export async function PATCH(request: Request) {
     try {
+        const auth = await requireAuth()
+        if (!auth.authenticated) return auth.response
+
         const supabase = await createClient()
         const body = await request.json()
-        let { bookingId, extendType, amount, fee, paymentType } = body
+        const { bookingId, extendType, paymentType } = body
+        let { amount, fee } = body
 
         if (!bookingId || !extendType || amount === undefined || fee === undefined) {
             return NextResponse.json(
@@ -17,7 +23,7 @@ export async function PATCH(request: Request) {
         amount = Number(amount)
         fee = Number(fee)
 
-        if (amount <= 0 && fee < 0) {
+        if (amount <= 0 || fee < 0) {
             return NextResponse.json({ error: 'Invalid extension amount/fee' }, { status: 400 })
         }
 
@@ -63,27 +69,15 @@ export async function PATCH(request: Request) {
 
         const newCheckOut = new Date(pseudoIst.getTime() - istOffsetMs)
 
-        // 2. Conflict checking
-        const { data: conflicts, error: conflictError } = await supabase
-            .from('bookings')
-            .select('id, check_in, check_out, status')
-            .eq('unit_id', booking.unit_id)
-            .neq('id', booking.id)
-            .in('status', ['PENDING', 'CONFIRMED'])
-            .gte('check_out', new Date().toISOString()) // Look at active/future ones
-
-        if (conflictError) {
-            return NextResponse.json({ error: 'Failed to verify conflicts' }, { status: 500 })
-        }
-
-        // Check if our new check_out overlaps with any future booking's check_in
-        const hasConflict = conflicts?.some(conflict => {
-            const conflictIn = new Date(conflict.check_in)
-            // If the incoming guest checks in BEFORE our new checkout time, it's a conflict
-            return conflictIn < newCheckOut
+        // 2. Conflict checking using canonical conflict engine
+        const conflictResult = await checkConflict({
+            unitId: booking.unit_id,
+            checkIn: new Date(booking.check_in),
+            checkOut: newCheckOut,
+            excludeBookingId: booking.id,
         })
 
-        if (hasConflict) {
+        if (conflictResult.hasConflict) {
             return NextResponse.json(
                 { error: 'Cannot extend: conflicts with an upcoming reservation.' },
                 { status: 409 }
@@ -121,7 +115,7 @@ export async function PATCH(request: Request) {
                 .single()
 
             if (paymentRecord) {
-                const updatePayload: any = {
+                const updatePayload: Record<string, number> = {
                     total_paid: Number(paymentRecord.total_paid) + fee
                 }
 

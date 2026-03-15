@@ -18,7 +18,6 @@ import {
     CalendarCheck,
     CalendarPlus,
     User,
-    Sparkles,
     AlertTriangle,
     Loader2,
     Wrench,
@@ -50,7 +49,7 @@ function isTodayCheck(d: Date, devNow: Date): boolean {
 }
 
 // Live unit status styles (for today view) — BOLD, saturated colors that stand out
-const UNIT_STATUS_STYLES: Record<string, { bg: string; border: string; accent: string; badge: string; badgeText: string; textColor: string; icon: any }> = {
+const UNIT_STATUS_STYLES: Record<string, { bg: string; border: string; accent: string; badge: string; badgeText: string; textColor: string; icon: React.ElementType }> = {
     OCCUPIED: {
         bg: 'bg-red-50',
         border: 'border-red-200',
@@ -165,10 +164,9 @@ export function ReservationsClient({ hotelId }: ReservationsClientProps) {
 
         setIsLoading(true)
         try {
-            const from = new Date(selectedDate)
-            from.setHours(0, 0, 0, 0)
-            const to = new Date(selectedDate)
-            to.setHours(23, 59, 59, 999)
+            const dateStr = toDateString(selectedDate) // YYYY-MM-DD
+            const from = new Date(dateStr + 'T00:00:00+05:30')
+            const to = new Date(dateStr + 'T23:59:59.999+05:30')
 
             const res = await fetch(
                 `/api/reservations?hotelId=${hotelId}&from=${from.toISOString()}&to=${to.toISOString()}`,
@@ -176,8 +174,8 @@ export function ReservationsClient({ hotelId }: ReservationsClientProps) {
             )
             const data = await res.json()
             if (data.bookings) setBookings(data.bookings)
-        } catch (err: any) {
-            if (err.name === 'AbortError') return
+        } catch (err: unknown) {
+            if (err instanceof Error && err.name === 'AbortError') return
             console.error('Failed to fetch bookings:', err)
         } finally {
             setIsLoading(false)
@@ -269,7 +267,7 @@ export function ReservationsClient({ hotelId }: ReservationsClientProps) {
                 badge: bookingStyle.badge,
                 badgeText: bookingStyle.badgeText,
                 textColor: bookingStyle.textColor,
-                guestName: (reservation as any)?.guests?.[0]?.name || 'Guest',
+                guestName: reservation?.guests?.[0]?.name || 'Guest',
                 reservation,
                 liveIssueText, // Pass the warning down to the render
             }
@@ -540,8 +538,7 @@ export function ReservationsClient({ hotelId }: ReservationsClientProps) {
 
             {/* Sheets */}
             <ReservationSheet
-                hotelId={hotelId}
-                unit={selectedUnit as any}
+                unit={selectedUnit as UnitWithBooking | null}
                 defaultCheckIn={selectedDate}
                 open={reservationSheetOpen}
                 onOpenChange={setReservationSheetOpen}

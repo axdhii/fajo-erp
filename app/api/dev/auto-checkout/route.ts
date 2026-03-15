@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getDevNow } from '@/lib/dev-time'
+import { requireAuth } from '@/lib/auth'
 
 // POST /api/dev/auto-checkout — Trigger dorm auto-checkout using simulated time
 export async function POST() {
@@ -9,6 +10,9 @@ export async function POST() {
     }
 
     try {
+        const auth = await requireAuth()
+        if (!auth.authenticated) return auth.response
+
         const supabase = await createClient()
         const now = getDevNow()
 
@@ -26,7 +30,7 @@ export async function POST() {
 
         // Filter to dorm bookings only
         const dormBookings = (expiredBookings || []).filter(
-            (b: any) => b.unit?.type === 'DORM'
+            (b: Record<string, unknown>) => (b.unit as Record<string, unknown>)?.type === 'DORM'
         )
 
         if (dormBookings.length === 0) {
@@ -54,7 +58,7 @@ export async function POST() {
                     .update({ status: 'DIRTY' })
                     .eq('id', booking.unit_id)
 
-                const unitNum = (booking as any).unit?.unit_number || booking.unit_id
+                const unitNum = (booking as Record<string, unknown>).unit ? ((booking as Record<string, unknown>).unit as Record<string, string>).unit_number : booking.unit_id
                 results.push(`${unitNum}: CHECKED_OUT → DIRTY`)
             }
         }

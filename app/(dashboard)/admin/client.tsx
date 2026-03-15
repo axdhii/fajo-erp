@@ -1,137 +1,179 @@
-"use client"
-import { useEffect, useState } from 'react'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
+'use client'
+
+import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import { BarChart3, TrendingUp, Users, Building2, MapPin } from 'lucide-react'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
+import {
+    Shield,
+    LayoutDashboard,
+    Users,
+    Eye,
+    UserCog,
+    DollarSign,
+    Wrench,
+    Briefcase,
+    Calendar,
+    MapPin,
+    Loader2,
+} from 'lucide-react'
+import { CommandCenter } from '@/components/admin/CommandCenter'
+import { GuestHistory } from '@/components/admin/GuestHistory'
+import { LiveOccupancy } from '@/components/admin/LiveOccupancy'
+import { StaffManager } from '@/components/admin/StaffManager'
+import { Financials } from '@/components/admin/Financials'
+import { OpsOverview } from '@/components/admin/OpsOverview'
+import { HROverview } from '@/components/admin/HROverview'
+import { ReservationsOverview } from '@/components/admin/ReservationsOverview'
 
-export function AdminClient() {
-    const [hotels, setHotels] = useState<any[]>([])
-    const [selectedHotelId, setSelectedHotelId] = useState<string>('')
-    const [stats, setStats] = useState({
-        totalRooms: 0,
-        occupiedRooms: 0,
-        occupancyRate: 0,
-        activeStaff: 0
-    })
+// ============================================================
+// Shared props interface for all admin tab components
+// ============================================================
+export interface AdminTabProps {
+    hotelId: string | null  // null = all hotels
+    hotels: { id: string; name: string; city: string; status: string }[]
+    staffId: string
+}
 
-    // 1. Fetch available hotels
+// ============================================================
+// Tab definitions
+// ============================================================
+type TabKey = 'command' | 'guests' | 'live' | 'staff' | 'financials' | 'ops' | 'hr' | 'reservations'
+
+const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
+    { key: 'command',      label: 'Command Center', icon: <LayoutDashboard className="h-4 w-4" /> },
+    { key: 'guests',       label: 'Guest History',  icon: <Users className="h-4 w-4" /> },
+    { key: 'live',         label: 'Live Occupancy', icon: <Eye className="h-4 w-4" /> },
+    { key: 'staff',        label: 'Staff',          icon: <UserCog className="h-4 w-4" /> },
+    { key: 'financials',   label: 'Financials',     icon: <DollarSign className="h-4 w-4" /> },
+    { key: 'ops',          label: 'Operations',     icon: <Wrench className="h-4 w-4" /> },
+    { key: 'hr',           label: 'HR & Payroll',   icon: <Briefcase className="h-4 w-4" /> },
+    { key: 'reservations', label: 'Reservations',   icon: <Calendar className="h-4 w-4" /> },
+]
+
+// ============================================================
+// Admin Shell Component
+// ============================================================
+interface AdminClientProps {
+    hotelId: string
+    staffId: string
+}
+
+export function AdminClient({ hotelId, staffId }: AdminClientProps) {
+    const [tab, setTab] = useState<TabKey>('command')
+    const [hotels, setHotels] = useState<{ id: string; name: string; city: string; status: string }[]>([])
+    const [selectedHotelId, setSelectedHotelId] = useState<string | null>(null) // null = all hotels
+    const [loadingHotels, setLoadingHotels] = useState(true)
+
+    // Fetch all hotels on mount
     useEffect(() => {
         async function fetchHotels() {
-            const { data } = await supabase.from('hotels').select('*').order('name')
-            if (data) {
-                setHotels(data)
-                if (data.length > 0) setSelectedHotelId(data[0].id)
-            }
+            const { data } = await supabase
+                .from('hotels')
+                .select('id, name, city, status')
+                .order('name')
+            if (data) setHotels(data)
+            setLoadingHotels(false)
         }
         fetchHotels()
     }, [])
 
-    // 2. Fetch stats when hotel changes
-    useEffect(() => {
-        if (!selectedHotelId) return
+    // Resolve the hotel selector value for the Select component
+    // 'all' string maps to null in our state
+    const selectorValue = selectedHotelId ?? 'all'
 
-        async function fetchStats() {
-            const { data: rooms } = await supabase.from('rooms').select('status').eq('hotel_id', selectedHotelId)
-            const { data: staff } = await supabase.from('staff').select('id').eq('hotel_id', selectedHotelId).eq('is_idle', false)
+    const handleHotelChange = (value: string) => {
+        setSelectedHotelId(value === 'all' ? null : value)
+    }
 
-            if (rooms) {
-                const occupied = rooms.filter(r => r.status === 'Occupied').length
-                const total = rooms.length
-                setStats({
-                    totalRooms: total,
-                    occupiedRooms: occupied,
-                    occupancyRate: total > 0 ? Math.round((occupied / total) * 100) : 0,
-                    activeStaff: staff?.length || 0
-                })
-            }
-        }
-        fetchStats()
-    }, [selectedHotelId])
+    // Props passed to every tab component
+    const tabProps: AdminTabProps = {
+        hotelId: selectedHotelId,
+        hotels,
+        staffId,
+    }
+
+    if (loadingHotels) {
+        return (
+            <div className="flex items-center justify-center py-32">
+                <Loader2 className="h-8 w-8 animate-spin text-slate-500" />
+            </div>
+        )
+    }
 
     return (
-        <div className="space-y-8 animate-in fade-in duration-500 max-w-6xl mx-auto">
+        <div className="space-y-6 animate-in fade-in duration-500 max-w-7xl mx-auto">
+            {/* ==================== Header ==================== */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-                <div>
-                    <h1 className="text-3xl font-bold tracking-tight text-slate-900">Admin Dashboard</h1>
-                    <p className="text-slate-500 mt-1">High-level overview of hotel operations and occupancy.</p>
+                <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm">
+                        <Shield className="h-5 w-5" />
+                    </div>
+                    <div>
+                        <h1 className="text-3xl font-bold tracking-tight text-slate-900">
+                            Admin &mdash; God Mode
+                        </h1>
+                        <p className="text-slate-500 mt-0.5 text-sm">
+                            Complete system control and visibility
+                        </p>
+                    </div>
                 </div>
 
-                <div className="w-full sm:w-64">
-                    <Select value={selectedHotelId} onValueChange={setSelectedHotelId}>
+                {/* Hotel Selector */}
+                <div className="w-full sm:w-72">
+                    <Select value={selectorValue} onValueChange={handleHotelChange}>
                         <SelectTrigger className="w-full bg-white border-slate-200">
-                            <MapPin className="h-4 w-4 mr-2 text-emerald-600" />
-                            <SelectValue placeholder="Select a hotel" />
+                            <MapPin className="h-4 w-4 mr-2 text-slate-500" />
+                            <SelectValue placeholder="Select scope" />
                         </SelectTrigger>
                         <SelectContent>
+                            <SelectItem value="all">All Hotels</SelectItem>
                             {hotels.map(h => (
-                                <SelectItem key={h.id} value={h.id}>{h.name}</SelectItem>
+                                <SelectItem key={h.id} value={h.id}>
+                                    {h.name} &mdash; {h.city}
+                                </SelectItem>
                             ))}
                         </SelectContent>
                     </Select>
                 </div>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card className="border-emerald-500/10 shadow-sm bg-white overflow-hidden relative group">
-                    <div className="absolute inset-x-0 bottom-0 h-1 bg-emerald-500 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left"></div>
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-slate-500">Total Occupancy</CardTitle>
-                        <TrendingUp className="h-4 w-4 text-emerald-500" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold text-slate-900">{stats.occupancyRate}%</div>
-                        <p className="text-xs text-slate-500 mt-1">For selected property</p>
-                    </CardContent>
-                </Card>
-
-                <Card className="shadow-sm bg-white border-slate-200">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-slate-500">Rooms Occupied</CardTitle>
-                        <Building2 className="h-4 w-4 text-slate-400" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold text-slate-900">{stats.occupiedRooms} <span className="text-lg font-normal text-slate-400">/ {stats.totalRooms}</span></div>
-                        <p className="text-xs text-slate-500 mt-1">Currently booked</p>
-                    </CardContent>
-                </Card>
-
-                <Card className="shadow-sm bg-white border-slate-200">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-slate-500">Active Staff</CardTitle>
-                        <Users className="h-4 w-4 text-slate-400" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold text-slate-900">{stats.activeStaff}</div>
-                        <p className="text-xs text-slate-500 mt-1">On shift right now</p>
-                    </CardContent>
-                </Card>
-
-                <Card className="shadow-sm bg-white border-slate-200">
-                    <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-slate-500">Revenue (Today)</CardTitle>
-                        <BarChart3 className="h-4 w-4 text-slate-400" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-3xl font-bold text-slate-900">₹45,200</div>
-                        <p className="text-xs text-emerald-600 mt-1 flex items-center gap-1 font-medium">
-                            <TrendingUp className="h-3 w-3" /> +12% from yesterday
-                        </p>
-                    </CardContent>
-                </Card>
+            {/* ==================== Tab Bar ==================== */}
+            <div className="overflow-x-auto -mx-2 px-2 pb-1">
+                <div className="flex bg-white rounded-xl p-1 border border-slate-200 shadow-sm w-fit min-w-fit">
+                    {TABS.map(t => (
+                        <button
+                            key={t.key}
+                            onClick={() => setTab(t.key)}
+                            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg cursor-pointer transition-all whitespace-nowrap ${
+                                tab === t.key
+                                    ? 'bg-slate-900 text-white shadow-sm'
+                                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                            }`}
+                        >
+                            {t.icon}
+                            {t.label}
+                        </button>
+                    ))}
+                </div>
             </div>
 
-            <Card className="col-span-4 border-slate-200 shadow-sm mt-8">
-                <CardHeader>
-                    <CardTitle className="text-lg font-medium">Property Overview</CardTitle>
-                </CardHeader>
-                <CardContent className="h-[300px] flex items-center justify-center border-t border-dashed bg-slate-50/50 m-4 rounded-xl">
-                    <div className="text-center text-slate-400">
-                        <BarChart3 className="h-12 w-12 mx-auto mb-3 opacity-20" />
-                        Chart visualization will appear here
-                    </div>
-                </CardContent>
-            </Card>
+            {/* ==================== Active Tab Content ==================== */}
+            <div>
+                {tab === 'command'      && <CommandCenter {...tabProps} />}
+                {tab === 'guests'       && <GuestHistory {...tabProps} />}
+                {tab === 'live'         && <LiveOccupancy {...tabProps} />}
+                {tab === 'staff'        && <StaffManager {...tabProps} />}
+                {tab === 'financials'   && <Financials {...tabProps} />}
+                {tab === 'ops'          && <OpsOverview {...tabProps} />}
+                {tab === 'hr'           && <HROverview {...tabProps} />}
+                {tab === 'reservations' && <ReservationsOverview {...tabProps} />}
+            </div>
         </div>
     )
 }

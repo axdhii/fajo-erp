@@ -1,11 +1,15 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDevNow } from '@/lib/dev-time'
+import { requireAuth } from '@/lib/auth'
 
 // POST /api/overrides/emergency-vacate
 // Override #6: Emergency Vacate — force checkout an OCCUPIED unit + set to MAINTENANCE
 export async function POST(request: NextRequest) {
     try {
+        const auth = await requireAuth()
+        if (!auth.authenticated) return auth.response
+
         const supabase = await createClient()
         const body = await request.json()
 

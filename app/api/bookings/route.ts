@@ -3,11 +3,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { calculateBookingPrice } from '@/lib/pricing'
 import { checkConflict, calculateCheckOut } from '@/lib/conflict'
 import { getDevNow } from '@/lib/dev-time'
-import type { UnitType } from '@/lib/types'
+import { requireAuth } from '@/lib/auth'
+import type { UnitType, GuestInput } from '@/lib/types'
 
 // POST /api/bookings — Walk-in Check-in (with conflict check)
 export async function POST(request: NextRequest) {
     try {
+        const auth = await requireAuth()
+        if (!auth.authenticated) return auth.response
+
         const supabase = await createClient()
         const body = await request.json()
 
@@ -104,19 +108,23 @@ export async function POST(request: NextRequest) {
                 checkOut: checkOutDate,
             })
             if (conflict.hasConflict) {
-                const conflictIds = conflict.conflictingBookings.map(c => c.id)
-                await supabase
-                    .from('bookings')
-                    .update({
-                        status: 'CANCELLED',
-                        notes: '[AUTO-CANCELLED] Overridden by CRE walk-in check-in',
-                    })
-                    .in('id', conflictIds)
+                // Only auto-cancel PENDING/CONFIRMED reservations, never CHECKED_IN
+                const cancellableIds = conflict.conflictingBookings
+                    .filter(c => c.status === 'PENDING' || c.status === 'CONFIRMED')
+                    .map(c => c.id)
+                if (cancellableIds.length > 0) {
+                    await supabase
+                        .from('bookings')
+                        .update({
+                            status: 'CANCELLED',
+                            notes: '[AUTO-CANCELLED] Overridden by CRE walk-in check-in',
+                        })
+                        .in('id', cancellableIds)
+                }
             }
         }
 
         // Calculate pricing — multi-day: base_price × days for both rooms and dorms
-        const isDorm = unit.type === 'DORM'
         const perDayBase = Number(unit.base_price)
         const totalBase = perDayBase * days
         const pricing = calculateBookingPrice(
@@ -164,7 +172,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Insert all guests
-        const guestRecords = guests.map((g: any) => ({
+        const guestRecords = guests.map((g: GuestInput) => ({
             booking_id: booking.id,
             name: g.name,
             phone: g.phone,

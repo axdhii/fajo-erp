@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import type { Booking, Guest } from '@/lib/types'
 import {
     Sheet,
@@ -19,7 +19,6 @@ import {
     XCircle,
     Users,
     Clock,
-    IndianRupee,
     Banknote,
     Smartphone,
     ArrowRight,
@@ -27,13 +26,22 @@ import {
     UploadCloud,
     CheckCircle2,
 } from 'lucide-react'
-import { supabase } from '@/lib/supabase/client'
 
 interface ReservationDetailProps {
     booking: Booking | null
     open: boolean
     onOpenChange: (open: boolean) => void
     onSuccess: () => void
+}
+
+interface GuestDataItem {
+    id: string
+    booking_id: string
+    name: string
+    phone: string
+    aadhar_number: string
+    aadhar_url: string
+    unit_number: string
 }
 
 export function ReservationDetail({
@@ -48,21 +56,58 @@ export function ReservationDetail({
     const [amountCash, setAmountCash] = useState('')
     const [amountDigital, setAmountDigital] = useState('')
     const [uploadingIndex, setUploadingIndex] = useState<number | null>(null)
-    const [guestData, setGuestData] = useState<any[]>([])
+    const [guestData, setGuestData] = useState<GuestDataItem[]>([])
+    const [groupBookings, setGroupBookings] = useState<Booking[]>([])
 
+    // Fetch group siblings when booking has group_id
+    useEffect(() => {
+        if (open && booking?.group_id) {
+            fetch(`/api/reservations/group?groupId=${booking.group_id}`)
+                .then((r) => r.json())
+                .then((data) => setGroupBookings(data.bookings || []))
+                .catch(() => setGroupBookings([]))
+        } else {
+            setGroupBookings([])
+        }
+    }, [open, booking?.group_id])
+
+    const isGroupBooking = groupBookings.length > 1
+
+    // Populate guest data from booking or group
     useEffect(() => {
         if (open && booking) {
-            setGuestData(
-                ((booking as any).guests || []).map((g: any) => ({
-                    id: g.id,
-                    name: g.name,
-                    phone: g.phone,
-                    aadhar_number: g.aadhar_number || '',
-                    aadhar_url: g.aadhar_url || '',
-                }))
-            )
+            // Guard: if booking has a group_id but group data hasn't loaded yet, wait
+            // If group fetch failed (empty array), fall through to single-booking path
+            if (booking.group_id && groupBookings.length === 0) return
+
+            if (isGroupBooking) {
+                const allGuests: GuestDataItem[] = groupBookings.flatMap((b) =>
+                    (b.guests || []).map((g: Guest) => ({
+                        id: g.id,
+                        booking_id: b.id,
+                        name: g.name,
+                        phone: g.phone,
+                        aadhar_number: g.aadhar_number || '',
+                        aadhar_url: g.aadhar_url || '',
+                        unit_number: (b.unit as { unit_number?: string } | undefined)?.unit_number || '',
+                    }))
+                )
+                setGuestData(allGuests)
+            } else {
+                setGuestData(
+                    (booking.guests || []).map((g: Guest) => ({
+                        id: g.id,
+                        booking_id: booking.id,
+                        name: g.name,
+                        phone: g.phone,
+                        aadhar_number: g.aadhar_number || '',
+                        aadhar_url: g.aadhar_url || '',
+                        unit_number: booking.unit?.unit_number || '',
+                    }))
+                )
+            }
         }
-    }, [open, booking])
+    }, [open, booking, isGroupBooking, groupBookings])
 
     const handleGuestChange = (id: string, field: string, value: string) => {
         setGuestData((prev) =>
@@ -72,16 +117,19 @@ export function ReservationDetail({
 
     if (!booking) return null
 
-    const unitNumber = (booking as any).unit?.unit_number || '—'
-    const guests = (booking as any).guests || []
-    const advanceAmount = Number(booking.advance_amount) || 0
-    const grandTotal = Number(booking.grand_total)
+    // Combined totals for group bookings
+    const grandTotal = isGroupBooking
+        ? groupBookings.reduce((sum, b) => sum + Number(b.grand_total), 0)
+        : Number(booking.grand_total)
+    const advanceAmount = isGroupBooking
+        ? groupBookings.reduce((sum, b) => sum + (Number(b.advance_amount) || 0), 0)
+        : Number(booking.advance_amount) || 0
     const balanceDue = Math.max(0, grandTotal - advanceAmount)
 
     const cashNum = Number(amountCash) || 0
     const digitalNum = Number(amountDigital) || 0
     const totalPaid = cashNum + digitalNum
-    const paymentValid = Math.abs(totalPaid - balanceDue) < 1
+    const paymentValid = Math.abs(totalPaid - balanceDue) <= 0.01
 
     const checkInDate = new Date(booking.check_in).toLocaleString('en-IN', {
         weekday: 'short',
@@ -117,7 +165,7 @@ export function ReservationDetail({
 
         const isBypassEnabled = typeof window !== 'undefined' && localStorage.getItem('fajo_bypass_credentials') === 'true'
         if (!isBypassEnabled) {
-            const missingAadhar = guestData.find((g: any) => !g.aadhar_url)
+            const missingAadhar = guestData.find((g) => !g.aadhar_url)
             if (missingAadhar) {
                 toast.error(`Aadhar photo is required for ${missingAadhar.name || 'all guests'}`)
                 return
@@ -126,10 +174,10 @@ export function ReservationDetail({
 
         setIsConverting(true)
         try {
-            const formattedGuests = guestData.map((g: any) => ({
+            const formattedGuests = guestData.map((g) => ({
                 ...g,
-                aadhar_url: g.aadhar_url?.startsWith('blob:') 
-                    ? `LOCAL: ${g.aadhar_url.split('#')[1] || 'Saved_Locally'}` 
+                aadhar_url: g.aadhar_url?.startsWith('blob:')
+                    ? `LOCAL: ${g.aadhar_url.split('#')[1] || 'Saved_Locally'}`
                     : (g.aadhar_url || null)
             }))
 
@@ -152,11 +200,13 @@ export function ReservationDetail({
             }
 
             toast.success(
-                `${unitNumber} checked in! Payment ₹${totalPaid.toLocaleString('en-IN')} recorded`
+                isGroupBooking
+                    ? `${groupBookings.length} dorm beds checked in! Payment ₹${totalPaid.toLocaleString('en-IN')} recorded`
+                    : `${booking.unit?.unit_number || 'Unit'} checked in! Payment ₹${totalPaid.toLocaleString('en-IN')} recorded`
             )
             resetPayment()
             onSuccess()
-        } catch (err) {
+        } catch {
             toast.error('Network error. Please try again.')
         } finally {
             setIsConverting(false)
@@ -172,11 +222,11 @@ export function ReservationDetail({
             const fileExt = file.name.split('.').pop() || 'jpg'
             const guestName = guestData[index]?.name?.trim()?.replace(/\s+/g, '_') || `Guest${index + 1}`
             const dateStr = new Date().toLocaleDateString('en-GB').replace(/\//g, '-')
-            const unitNumber = (booking as any).unit?.unit_number || 'UNKNOWN'
-            const fileName = `Aadhar_Unit${unitNumber}_${guestName}_${dateStr}.${fileExt}`
+            const aadharUnitNumber = guestData[index]?.unit_number || booking.unit?.unit_number || 'UNKNOWN'
+            const fileName = `Aadhar_Unit${aadharUnitNumber}_${guestName}_${dateStr}.${fileExt}`
 
             const objectUrl = URL.createObjectURL(file)
-            
+
             const link = document.createElement('a')
             link.href = objectUrl
             link.download = fileName
@@ -213,9 +263,14 @@ export function ReservationDetail({
                 return
             }
 
-            toast.success(data.message || `Reservation for ${unitNumber} cancelled`)
+            toast.success(
+                data.message ||
+                    (isGroupBooking
+                        ? `Dorm group reservation cancelled (${groupBookings.length} beds)`
+                        : `Reservation for ${booking.unit?.unit_number || 'unit'} cancelled`)
+            )
             onSuccess()
-        } catch (err) {
+        } catch {
             toast.error('Failed to cancel reservation')
         } finally {
             setIsCancelling(false)
@@ -244,10 +299,12 @@ export function ReservationDetail({
                             </div>
                             <div>
                                 <SheetTitle className="text-xl font-semibold tracking-tight">
-                                    Room {unitNumber}
+                                    {isGroupBooking
+                                        ? `Dorm Group — ${groupBookings.length} Beds`
+                                        : `Room ${booking.unit?.unit_number || '—'}`}
                                 </SheetTitle>
                                 <SheetDescription className="text-xs mt-0.5">
-                                    Reservation Details
+                                    {isGroupBooking ? 'Dorm Group Reservation' : 'Reservation Details'}
                                 </SheetDescription>
                             </div>
                         </div>
@@ -269,6 +326,25 @@ export function ReservationDetail({
                             </span>
                         )}
                     </div>
+
+                    {/* Dorm Beds List (group only) */}
+                    {isGroupBooking && (
+                        <div className="rounded-xl border border-violet-200 bg-violet-50/50 p-4">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-violet-400 mb-2">
+                                Assigned Beds
+                            </p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {groupBookings.map((b) => (
+                                    <span
+                                        key={b.id}
+                                        className="px-2.5 py-1 rounded-lg bg-violet-100 text-violet-700 text-xs font-semibold"
+                                    >
+                                        {(b.unit as { unit_number?: string } | undefined)?.unit_number || '—'}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    )}
 
                     {/* Stay Dates */}
                     <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
@@ -301,11 +377,11 @@ export function ReservationDetail({
                         <div className="flex items-center gap-2">
                             <Users className="h-4 w-4 text-slate-400" />
                             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                                Guests ({guests.length})
+                                Guests ({guestData.length})
                             </p>
                         </div>
-                        {guestData.map((g: any, i: number) => (
-                            <div key={g.id} className="space-y-3 border-b border-slate-100 last:border-0 pb-3 last:pb-0">
+                        {guestData.map((g, i) => (
+                            <div key={g.id || `guest-${i}`} className="space-y-3 border-b border-slate-100 last:border-0 pb-3 last:pb-0">
                                 <div className="flex items-center gap-3 text-sm">
                                     <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold shrink-0">
                                         {i + 1}
@@ -316,6 +392,11 @@ export function ReservationDetail({
                                         </p>
                                         <p className="text-xs text-slate-400">
                                             {g.phone}
+                                            {isGroupBooking && g.unit_number && (
+                                                <span className="ml-2 text-violet-500 font-medium">
+                                                    · Bed {g.unit_number}
+                                                </span>
+                                            )}
                                         </p>
                                     </div>
                                 </div>
@@ -367,7 +448,7 @@ export function ReservationDetail({
                     {/* Billing */}
                     <div className="rounded-xl border border-slate-200 bg-gradient-to-b from-slate-50 to-white p-4 space-y-2 text-sm">
                         <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                            Billing
+                            Billing{isGroupBooking ? ' (Combined)' : ''}
                         </p>
                         <div className="flex justify-between text-slate-600">
                             <span>Grand Total</span>
@@ -383,7 +464,7 @@ export function ReservationDetail({
                                     ) : (
                                         <Smartphone className="h-3 w-3" />
                                     )}
-                                    Advance ({booking.advance_type})
+                                    Advance ({booking.advance_type || 'CASH'})
                                 </span>
                                 <span>
                                     -₹{advanceAmount.toLocaleString('en-IN')}
@@ -419,7 +500,9 @@ export function ReservationDetail({
                                     >
                                         <span className="flex items-center gap-2">
                                             <UserCheck className="h-4 w-4" />
-                                            Convert to Check-In
+                                            {isGroupBooking
+                                                ? `Convert ${groupBookings.length} Beds to Check-In`
+                                                : 'Convert to Check-In'}
                                         </span>
                                     </Button>
                                     <Button
@@ -436,7 +519,9 @@ export function ReservationDetail({
                                         ) : (
                                             <span className="flex items-center gap-2">
                                                 <XCircle className="h-4 w-4" />
-                                                Cancel Reservation
+                                                {isGroupBooking
+                                                    ? `Cancel All ${groupBookings.length} Beds`
+                                                    : 'Cancel Reservation'}
                                             </span>
                                         )}
                                     </Button>
@@ -504,7 +589,9 @@ export function ReservationDetail({
                                         ) : (
                                             <span className="flex items-center gap-2">
                                                 <UserCheck className="h-4 w-4" />
-                                                Confirm Check-In · ₹{totalPaid.toLocaleString('en-IN')}
+                                                {isGroupBooking
+                                                    ? `Check-In ${groupBookings.length} Beds · ₹${totalPaid.toLocaleString('en-IN')}`
+                                                    : `Confirm Check-In · ₹${totalPaid.toLocaleString('en-IN')}`}
                                             </span>
                                         )}
                                     </Button>

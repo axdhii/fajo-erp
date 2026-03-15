@@ -134,10 +134,35 @@ ALTER TABLE bookings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE guests ENABLE ROW LEVEL SECURITY;
 ALTER TABLE payments ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Authenticated full access on units" ON units FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Authenticated full access on bookings" ON bookings FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Authenticated full access on guests" ON guests FOR ALL TO authenticated USING (true) WITH CHECK (true);
-CREATE POLICY "Authenticated full access on payments" ON payments FOR ALL TO authenticated USING (true) WITH CHECK (true);
+-- units: SELECT + UPDATE only (no INSERT/DELETE via client)
+CREATE POLICY "units_select" ON units
+    FOR SELECT TO authenticated USING (true);
+CREATE POLICY "units_update" ON units
+    FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+-- bookings: SELECT + INSERT + UPDATE (no DELETE)
+CREATE POLICY "bookings_select" ON bookings
+    FOR SELECT TO authenticated USING (true);
+CREATE POLICY "bookings_insert" ON bookings
+    FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "bookings_update" ON bookings
+    FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+-- guests: SELECT + INSERT + UPDATE (no DELETE)
+CREATE POLICY "guests_select" ON guests
+    FOR SELECT TO authenticated USING (true);
+CREATE POLICY "guests_insert" ON guests
+    FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "guests_update" ON guests
+    FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
+
+-- payments: SELECT + INSERT + UPDATE (no DELETE)
+CREATE POLICY "payments_select" ON payments
+    FOR SELECT TO authenticated USING (true);
+CREATE POLICY "payments_insert" ON payments
+    FOR INSERT TO authenticated WITH CHECK (true);
+CREATE POLICY "payments_update" ON payments
+    FOR UPDATE TO authenticated USING (true) WITH CHECK (true);
 
 -- ============================================================
 -- DORM AUTO-CHECKOUT FUNCTION (called by pg_cron or API)

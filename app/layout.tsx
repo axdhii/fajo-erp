@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { DevToolbar } from "@/components/dev/DevToolbar";
 
-const metadata: Metadata = {
+export const metadata: Metadata = {
   title: "FAJO ERP",
   description: "Hotel Management System",
 };

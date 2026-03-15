@@ -38,23 +38,20 @@ const emptyChecklist = (): CleaningChecklist => ({
 
 export function HousekeepingClient({
     hotelId,
-    staffId,
 }: HousekeepingClientProps) {
-    const { units, fetchUnits, subscribeToUnits, startPolling, updateUnitStatus } =
+    const { units, fetchUnits, subscribeToUnits, updateUnitStatus } =
         useUnitStore()
     const [processingIds, setProcessingIds] = useState<Set<string>>(new Set())
     const [checklists, setChecklists] = useState<
         Record<string, CleaningChecklist>
     >({})
+    const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        fetchUnits(hotelId)
+        fetchUnits(hotelId).finally(() => setLoading(false))
 
-        // Real-time subscription (instant updates if Supabase RT is enabled)
+        // Real-time subscription (instant updates via Supabase WebSocket)
         const unsubscribeRT = subscribeToUnits(hotelId)
-
-        // Polling fallback (guaranteed updates every 10s)
-        const stopPolling = startPolling(hotelId, false, 10000)
 
         // Dev toolbar event listener
         const handleDevChange = () => fetchUnits(hotelId)
@@ -62,10 +59,9 @@ export function HousekeepingClient({
 
         return () => {
             unsubscribeRT()
-            stopPolling()
             window.removeEventListener('dev-data-changed', handleDevChange)
         }
-    }, [hotelId, fetchUnits, subscribeToUnits, startPolling])
+    }, [hotelId, fetchUnits, subscribeToUnits])
 
     // Show only DIRTY and IN_PROGRESS units
     const actionableUnits = units.filter(
@@ -143,7 +139,7 @@ export function HousekeepingClient({
                     return next
                 })
             }
-        } catch (err) {
+        } catch {
             toast.error('Network error. Please try again.')
         } finally {
             setProcessingIds((prev) => {
@@ -402,7 +398,11 @@ export function HousekeepingClient({
                 })}
 
                 {/* Empty State */}
-                {actionableUnits.length === 0 && (
+                {loading ? (
+                    <div className="flex items-center justify-center py-16">
+                        <Loader2 className="h-8 w-8 text-slate-300 animate-spin" />
+                    </div>
+                ) : actionableUnits.length === 0 && (
                     <div className="text-center py-16 px-6 rounded-2xl border-2 border-dashed border-emerald-200 bg-emerald-50/50">
                         <Sparkles className="h-14 w-14 mx-auto mb-4 text-emerald-400 opacity-50" />
                         <h3 className="text-lg font-bold text-emerald-800">

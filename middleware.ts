@@ -35,7 +35,7 @@ export async function middleware(request: NextRequest) {
     // Allow public routes
     if (publicRoutes.includes(pathname)) {
         if (user && pathname === '/login') {
-            return NextResponse.redirect(new URL('/front-desk', request.url))
+            return NextResponse.redirect(new URL('/', request.url))
         }
         return supabaseResponse
     }
@@ -55,12 +55,53 @@ export async function middleware(request: NextRequest) {
     // Role-based route protection for admin
     if (pathname.startsWith('/admin')) {
         const { data: profile } = await supabase
-            .from('profiles')
+            .from('staff')
             .select('role')
-            .eq('id', user.id)
+            .eq('user_id', user.id)
             .single()
 
-        if (!profile || !['Admin', 'General Manager'].includes(profile.role)) {
+        if (!profile || profile.role !== 'Admin') {
+            return NextResponse.redirect(new URL('/front-desk', request.url))
+        }
+    }
+
+    // Role-based route protection for Zonal Manager
+    if (pathname.startsWith('/zonal')) {
+        const { data: profile } = await supabase
+            .from('staff')
+            .select('role')
+            .eq('user_id', user.id)
+            .single()
+
+        if (!profile || !['Admin', 'ZonalManager'].includes(profile.role)) {
+            const redirectPath = profile?.role === 'HR' ? '/hr' : profile?.role === 'Housekeeping' ? '/housekeeping' : '/front-desk'
+            return NextResponse.redirect(new URL(redirectPath, request.url))
+        }
+    }
+
+    // Role-based route protection for Operations Manager
+    if (pathname.startsWith('/ops')) {
+        const { data: profile } = await supabase
+            .from('staff')
+            .select('role')
+            .eq('user_id', user.id)
+            .single()
+
+        if (!profile || !['Admin', 'OpsManager'].includes(profile.role)) {
+            const redirectPath = profile?.role === 'HR' ? '/hr' : profile?.role === 'ZonalManager' ? '/zonal' : profile?.role === 'Housekeeping' ? '/housekeeping' : '/front-desk'
+            return NextResponse.redirect(new URL(redirectPath, request.url))
+        }
+    }
+
+    // Role-based route protection for HR
+    if (pathname.startsWith('/hr')) {
+        const { data: profile } = await supabase
+            .from('staff')
+            .select('role')
+            .eq('user_id', user.id)
+            .single()
+
+        if (!profile || !['Admin', 'HR'].includes(profile.role)) {
             return NextResponse.redirect(new URL('/front-desk', request.url))
         }
     }

@@ -70,20 +70,20 @@ export async function checkConflict(
     if (hasConflict) {
         console.log(`[Conflict Check] CONFLICT FOUND! ${conflicts!.length} overlapping booking(s):`)
         for (const c of conflicts!) {
-            console.log(`  - Booking ${(c as any).id}: ${(c as any).check_in} → ${(c as any).check_out} (${(c as any).status})`)
+            console.log(`  - Booking ${c.id}: ${c.check_in} → ${c.check_out} (${c.status})`)
         }
     } else {
-        console.log(`[Conflict Check] No conflicts found ✓`)
+        console.log(`[Conflict Check] No conflicts found`)
     }
 
     return {
         hasConflict,
-        conflictingBookings: (conflicts ?? []).map((c: any) => ({
+        conflictingBookings: (conflicts ?? []).map((c) => ({
             id: c.id,
             check_in: c.check_in,
             check_out: c.check_out,
             status: c.status,
-            guest_name: c.guests?.[0]?.name ?? null,
+            guest_name: (c.guests as { name: string }[] | null)?.[0]?.name ?? null,
         })),
     }
 }
@@ -104,7 +104,7 @@ export function calculateCheckOut(
     const pseudoIst = new Date(checkIn.getTime() + istOffsetMs)
 
     const istHour = pseudoIst.getUTCHours()
-    let checkoutPseudoIst = new Date(pseudoIst)
+    const checkoutPseudoIst = new Date(pseudoIst)
 
     if (unitType === 'ROOM') {
         // Room: check-in < 12 PM = today 11 AM. check-in >= 12 PM = tomorrow 11 AM

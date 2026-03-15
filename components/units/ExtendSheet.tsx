@@ -43,6 +43,11 @@ export function ExtendSheet({ unit, open, onOpenChange, onSuccess }: ExtendSheet
         }
     }, [open, unit])
 
+    // Reset amount when switching between Hours/Days
+    useEffect(() => {
+        setAmount(1)
+    }, [extendType])
+
     const oldCheckOut = booking?.check_out ? new Date(booking.check_out) : null
 
     const newCheckOutPreview = useMemo(() => {
@@ -91,7 +96,7 @@ export function ExtendSheet({ unit, open, onOpenChange, onSuccess }: ExtendSheet
 
             toast.success('Stay extended successfully!')
             onSuccess()
-        } catch (err) {
+        } catch {
             toast.error('Network error')
         } finally {
             setIsSubmitting(false)
@@ -202,7 +207,7 @@ export function ExtendSheet({ unit, open, onOpenChange, onSuccess }: ExtendSheet
                             className="h-12 text-lg bg-white border-slate-200 shadow-sm transition-colors focus:border-blue-400 focus:ring-blue-400/20"
                         />
                         <p className="text-[10px] text-slate-500">
-                            This amount will be added to the booking's grand total. Leave 0 if free extension.
+                            This amount will be added to the booking&apos;s grand total. Leave 0 if free extension.
                         </p>
                     </div>
 

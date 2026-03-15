@@ -1,6 +1,11 @@
 const { Client } = require('pg');
 
-const DATABASE_URL = 'postgresql://postgres:aadhilishaan1234@db.pxpkwnyylynhqkbnpstc.supabase.co:5432/postgres';
+const DATABASE_URL = process.env.DATABASE_URL;
+if (!DATABASE_URL) {
+    console.error('❌ DATABASE_URL environment variable is required.');
+    console.error('   Set it: export DATABASE_URL="postgresql://postgres:PASSWORD@db.XXXXX.supabase.co:5432/postgres"');
+    process.exit(1);
+}
 
 async function run() {
     const client = new Client({

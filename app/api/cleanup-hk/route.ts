@@ -1,9 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 
 // POST /api/cleanup-hk — Remove hk2-hk5 accounts, keep only hk1
-export async function POST(request: NextRequest) {
+export async function POST() {
     try {
+        if (process.env.NODE_ENV === 'production') {
+            return NextResponse.json({ error: 'Not available in production' }, { status: 403 })
+        }
+
         const supabase = await createClient()
 
         const { data: { user } } = await supabase.auth.getUser()
@@ -11,10 +15,19 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
         }
 
-        // Delete staff records for hk2-hk5
-        const emailsToDelete = ['hk2@fajo.com', 'hk3@fajo.com', 'hk4@fajo.com', 'hk5@fajo.com']
+        // Verify staff role is Admin
+        const { data: staff } = await supabase
+            .from('staff')
+            .select('role')
+            .eq('user_id', user.id)
+            .single()
 
-        // Get user_ids from staff table via a workaround - 
+        if (!staff || staff.role !== 'Admin') {
+            return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
+        }
+
+        // Delete staff records for hk2-hk5
+        // Get user_ids from staff table via a workaround -
         // we can't query auth.users from client, but we can delete staff records
         // The auth users will just be orphaned (harmless)
         const { data: staffToDelete, error: fetchError } = await supabase
@@ -36,7 +49,6 @@ export async function POST(request: NextRequest) {
         }
 
         // Keep the first, delete the rest
-        const keepId = hkStaff[0].id
         const deleteIds = hkStaff.slice(1).map(s => s.id)
 
         const { error: deleteError } = await supabase
@@ -54,7 +66,7 @@ export async function POST(request: NextRequest) {
             kept: hkStaff[0],
             deleted: deleteIds.length,
         })
-    } catch (err) {
+    } catch {
         return NextResponse.json({ error: 'Internal error' }, { status: 500 })
     }
 }

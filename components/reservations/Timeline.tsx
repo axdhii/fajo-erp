@@ -5,7 +5,6 @@ import type { Booking } from '@/lib/types'
 import type { UnitWithBooking } from '@/lib/store/unit-store'
 import { useUnitStore } from '@/lib/store/unit-store'
 import { useCurrentTime } from '@/lib/hooks/use-current-time'
-import { supabase } from '@/lib/supabase/client'
 import { ReservationSheet } from './ReservationSheet'
 import { ReservationDetail } from './ReservationDetail'
 import { ChevronLeft, ChevronRight, CalendarDays, Plus } from 'lucide-react'
@@ -73,7 +72,7 @@ export function Timeline({ hotelId }: TimelineProps) {
     const [selectedSlotTime, setSelectedSlotTime] = useState<Date | null>(null)
     const [reservationSheetOpen, setReservationSheetOpen] = useState(false)
     const [detailOpen, setDetailOpen] = useState(false)
-    const [isLoading, setIsLoading] = useState(false)
+    const [, setIsLoading] = useState(false)
     const activeFetch = useRef<AbortController | null>(null)
 
     const endDate = useMemo(() => {
@@ -103,8 +102,8 @@ export function Timeline({ hotelId }: TimelineProps) {
             )
             const data = await res.json()
             if (data.bookings) setBookings(data.bookings)
-        } catch (err: any) {
-            if (err.name === 'AbortError') return
+        } catch (err: unknown) {
+            if (err instanceof Error && err.name === 'AbortError') return
             console.error('Failed to fetch bookings:', err)
         } finally {
             setIsLoading(false)
@@ -365,7 +364,7 @@ export function Timeline({ hotelId }: TimelineProps) {
                                                 STATUS_COLORS.CONFIRMED
 
                                             const guestName =
-                                                (booking as any).guests?.[0]
+                                                (booking as Booking & { guests?: { name: string }[] }).guests?.[0]
                                                     ?.name || 'Guest'
 
                                             return (
@@ -406,7 +405,6 @@ export function Timeline({ hotelId }: TimelineProps) {
 
             {/* Sheets */}
             <ReservationSheet
-                hotelId={hotelId}
                 unit={selectedUnit}
                 defaultCheckIn={selectedSlotTime}
                 open={reservationSheetOpen}

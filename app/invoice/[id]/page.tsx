@@ -52,11 +52,10 @@ export default async function InvoicePage(props: InvoicePageProps) {
     }
 
     const primaryGuest = booking.guests?.[0] || { name: 'Unknown', phone: '—' }
-    
-    const extensionFee = booking.extension_fee || 0 // If we added this to the schema later
+
     const advanceAmount = Number(booking.advance_amount) || 0
     const paymentsArray = Array.isArray(booking.payments) ? booking.payments : (booking.payments ? [booking.payments] : [])
-    const paymentsTotal = paymentsArray.reduce((sum: number, p: any) => sum + Number(p.total_paid), 0)
+    const paymentsTotal = paymentsArray.reduce((sum: number, p: { total_paid: number }) => sum + Number(p.total_paid), 0)
     const totalPaid = advanceAmount + paymentsTotal
     const balanceDue = Math.max(0, Number(booking.grand_total) - totalPaid)
 
@@ -156,7 +155,7 @@ export default async function InvoicePage(props: InvoicePageProps) {
                     </div>
                     <div>
                         <h3 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
-                            Expected Checkout
+                            Check-Out Time
                         </h3>
                         <p className="text-sm font-bold text-slate-900">
                             {formatDate(booking.check_out)}
@@ -197,17 +196,6 @@ export default async function InvoicePage(props: InvoicePageProps) {
                             </tr>
                         )}
 
-                        {extensionFee > 0 && (
-                            <tr>
-                                <td className="py-4 font-medium text-slate-900">
-                                    Extension Fees
-                                    <span className="block text-xs text-slate-500 font-normal mt-0.5">Additional charges for extended stay duration</span>
-                                </td>
-                                <td className="py-4 font-semibold text-slate-900 text-right">
-                                    {extensionFee.toLocaleString('en-IN')}
-                                </td>
-                            </tr>
-                        )}
                     </tbody>
                 </table>
             </div>

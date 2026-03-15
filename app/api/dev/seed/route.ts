@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { getDevNow } from '@/lib/dev-time'
+import { requireAuth } from '@/lib/auth'
 
 // POST /api/dev/seed — Create dummy test data
 export async function POST() {
@@ -9,6 +10,9 @@ export async function POST() {
     }
 
     try {
+        const auth = await requireAuth()
+        if (!auth.authenticated) return auth.response
+
         const supabase = await createClient()
         const now = getDevNow()
 

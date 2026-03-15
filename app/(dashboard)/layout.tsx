@@ -10,7 +10,7 @@ export default function DashboardLayout({
 }: {
     children: React.ReactNode
 }) {
-    const { user, profile, checkAuth, isLoading } = useAuthStore()
+    const { user, checkAuth, isLoading } = useAuthStore()
     const router = useRouter()
 
     useEffect(() => {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect } from 'react'
 import {
     Clock,
     FastForward,
@@ -8,8 +8,6 @@ import {
     Trash2,
     Database,
     Zap,
-    ChevronDown,
-    ChevronUp,
     Wrench,
     X,
     ShieldOff,
@@ -38,20 +36,40 @@ export function DevToolbar() {
         }
     }, [])
 
-    const toggleBypass = () => {
-        const newVal = !bypassCredentials
-        setBypassCredentials(newVal)
-        localStorage.setItem('fajo_bypass_credentials', String(newVal))
-        window.dispatchEvent(new CustomEvent('dev-bypass-changed'))
-        addLog(newVal ? '🔓 Credential validation bypassed' : '🔒 Strict validation enabled')
-    }
+    // Poll time every 2s when open — hook must be called unconditionally
+    useEffect(() => {
+        if (process.env.NODE_ENV !== 'development') return
 
-    // Only render in development
+        const doFetch = async () => {
+            try {
+                const res = await fetch('/api/dev/time')
+                const data = await res.json()
+                setTimeState(data)
+            } catch {
+                // Silently fail
+            }
+        }
+
+        doFetch()
+        if (!isOpen) return
+        const interval = setInterval(doFetch, 2000)
+        return () => clearInterval(interval)
+    }, [isOpen])
+
+    // Only render in development — AFTER all hooks
     if (process.env.NODE_ENV !== 'development') return null
 
     const addLog = (msg: string) => {
         const ts = new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
         setLog(prev => [`${ts} — ${msg}`, ...prev].slice(0, 20))
+    }
+
+    const toggleBypass = () => {
+        const newVal = !bypassCredentials
+        setBypassCredentials(newVal)
+        localStorage.setItem('fajo_bypass_credentials', String(newVal))
+        window.dispatchEvent(new CustomEvent('dev-bypass-changed'))
+        addLog(newVal ? 'Credential validation bypassed' : 'Strict validation enabled')
     }
 
     const fetchTime = async () => {
@@ -64,15 +82,7 @@ export function DevToolbar() {
         }
     }
 
-    // Poll time every 2s when open
-    useEffect(() => {
-        fetchTime()
-        if (!isOpen) return
-        const interval = setInterval(fetchTime, 2000)
-        return () => clearInterval(interval)
-    }, [isOpen])
-
-    const apiCall = async (url: string, body: any, label: string) => {
+    const apiCall = async (url: string, body: Record<string, unknown>, label: string) => {
         setLoading(label)
         try {
             const res = await fetch(url, {
@@ -82,7 +92,7 @@ export function DevToolbar() {
             })
             const data = await res.json()
             if (data.success) {
-                addLog(`✅ ${label}: ${data.message}`)
+                addLog(`${label}: ${data.message}`)
                 if (data.scenarios) {
                     data.scenarios.forEach((s: string) => addLog(`   ${s}`))
                 }
@@ -92,12 +102,12 @@ export function DevToolbar() {
                 // Signal other components to refresh their data
                 window.dispatchEvent(new CustomEvent('dev-data-changed'))
             } else {
-                addLog(`❌ ${label}: ${data.error}`)
+                addLog(`${label}: ${data.error}`)
             }
             await fetchTime()
             return data
-        } catch (err) {
-            addLog(`❌ ${label}: Network error`)
+        } catch {
+            addLog(`${label}: Network error`)
         } finally {
             setLoading(null)
         }
@@ -131,7 +141,7 @@ export function DevToolbar() {
                 DEV
                 {timeState?.isSimulated && (
                     <span className="ml-1 px-1.5 py-0.5 rounded-full bg-amber-500 text-[9px] font-bold animate-pulse">
-                        ⏱ SIM
+                        SIM
                     </span>
                 )}
             </button>
@@ -294,7 +304,7 @@ export function DevToolbar() {
                     </div>
                     <button
                         onClick={() => {
-                            if (confirm('⚠️ This will DELETE all bookings, guests, and payments. Continue?')) {
+                            if (confirm('This will DELETE all bookings, guests, and payments. Continue?')) {
                                 apiCall('/api/dev/reset', {}, 'Wipe All Data')
                             }
                         }}

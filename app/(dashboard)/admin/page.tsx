@@ -14,7 +14,7 @@ export default async function AdminPage() {
 
     const { data: profile } = await supabase
         .from('staff')
-        .select('role')
+        .select('id, role, hotel_id')
         .eq('user_id', user.id)
         .single()
 
@@ -28,5 +28,5 @@ export default async function AdminPage() {
         )
     }
 
-    return <AdminClient />
+    return <AdminClient hotelId={profile.hotel_id} staffId={profile.id} />
 }

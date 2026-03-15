@@ -33,6 +33,7 @@ export interface Booking {
     expected_arrival: string | null
     advance_amount: number
     advance_type: 'CASH' | 'DIGITAL' | null
+    group_id: string | null
     created_at: string
     updated_at: string
     // Joined data
@@ -72,6 +73,13 @@ export interface CheckInRequest {
     unitId: string
     guests: GuestInput[]
     grandTotalOverride?: number | null
+    amountCash?: number
+    amountDigital?: number
+    numberOfDays?: number
+    checkOutOverride?: string | null
+    payLater?: boolean
+    bypassConflict?: boolean
+    isBypass?: boolean
 }
 
 export interface CheckOutRequest {
@@ -80,13 +88,116 @@ export interface CheckOutRequest {
 
 // Reservation form types
 export interface ReservationRequest {
-    unitId: string
+    unitId?: string
+    unitIds?: string[]     // For dorm bulk bookings
     checkIn: string        // ISO datetime
-    checkOut: string       // ISO datetime
+    numberOfDays?: number
     guests: GuestInput[]
     expectedArrival?: string
     advanceAmount?: number
     advancePaid?: 'CASH' | 'DIGITAL'
     grandTotalOverride?: number | null
     notes?: string
+}
+
+// ============================================================
+// HR Module Types
+// ============================================================
+
+export type ShiftType = 'DAY' | 'NIGHT'
+export type AttendanceStatus = 'CLOCKED_IN' | 'CLOCKED_OUT'
+export type IncidentCategory = 'LATE_ARRIVAL' | 'EARLY_DEPARTURE' | 'ABSENCE' | 'UNIFORM_VIOLATION' | 'GROOMING' | 'MISCONDUCT' | 'DAMAGE' | 'OTHER'
+export type PayrollStatus = 'DRAFT' | 'FINALIZED' | 'PAID'
+export type ValidationStatus = 'PENDING_REVIEW' | 'APPROVED' | 'LATE'
+
+export interface StaffMember {
+    id: string
+    user_id: string
+    hotel_id: string
+    role: string
+    name: string | null
+    phone: string | null
+    base_salary: number
+}
+
+export interface Attendance {
+    id: string
+    staff_id: string
+    hotel_id: string
+    shift: ShiftType
+    clock_in: string
+    clock_out: string | null
+    clock_in_photo: string | null
+    status: AttendanceStatus
+    validation_status: ValidationStatus
+    validated_by: string | null
+    validated_at: string | null
+    created_at: string
+    staff?: StaffMember
+}
+
+export interface StaffIncident {
+    id: string
+    staff_id: string
+    hotel_id: string
+    category: IncidentCategory
+    description: string | null
+    penalty_amount: number
+    incident_date: string
+    recorded_by: string | null
+    created_at: string
+    staff?: StaffMember
+}
+
+export interface Payroll {
+    id: string
+    staff_id: string
+    hotel_id: string
+    month: string
+    base_salary: number
+    total_penalties: number
+    total_days_present: number
+    total_days_absent: number
+    net_salary: number
+    status: PayrollStatus
+    paid_at: string | null
+    notes: string | null
+    created_at: string
+    staff?: StaffMember
+}
+
+// ============================================================
+// Operations Manager Module Types
+// ============================================================
+
+// Restock
+export interface RestockRequest {
+    id: string
+    unit_id: string
+    hotel_id: string
+    items: string
+    status: 'PENDING' | 'DONE'
+    requested_by: string | null
+    completed_by: string | null
+    created_at: string
+    completed_at: string | null
+    unit?: { unit_number: string }
+    staff?: { name: string | null }
+}
+
+// Maintenance
+export interface MaintenanceTicket {
+    id: string
+    unit_id: string | null
+    hotel_id: string
+    description: string
+    priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT'
+    status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED'
+    reported_by: string | null
+    resolved_by: string | null
+    resolution_notes: string | null
+    created_at: string
+    resolved_at: string | null
+    unit?: { unit_number: string }
+    staff?: { name: string | null }
 }

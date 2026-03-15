@@ -1,12 +1,15 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { useUnitStore, UnitWithBooking } from '@/lib/store/unit-store'
+import { useAuthStore } from '@/lib/store/auth-store'
 import { UnitCard } from './UnitCard'
 import { CheckInSheet } from './CheckInSheet'
 import { CheckoutSheet } from './CheckoutSheet'
 import { MaintenanceSheet } from './MaintenanceSheet'
 import { ExtendSheet } from './ExtendSheet'
+
+import { ReportIssueSheet } from './ReportIssueSheet'
 import { toast } from 'sonner'
 import type { UnitType, UnitStatus } from '@/lib/types'
 
@@ -23,8 +26,10 @@ export function UnitGrid({
     statusFilter = 'ALL',
     now,
 }: UnitGridProps) {
-    const { units, fetchUnitsWithBookings, subscribeToUnits, startPolling, isLoading } =
+    const { units, fetchUnitsWithBookings, subscribeToUnits, isLoading } =
         useUnitStore()
+    const { profile } = useAuthStore()
+    const staffId = profile?.id || ''
     const [selectedUnit, setSelectedUnit] = useState<UnitWithBooking | null>(
         null
     )
@@ -32,16 +37,14 @@ export function UnitGrid({
     const [checkoutOpen, setCheckoutOpen] = useState(false)
     const [maintenanceOpen, setMaintenanceOpen] = useState(false)
     const [extendOpen, setExtendOpen] = useState(false)
+    const [reportIssueOpen, setReportIssueOpen] = useState(false)
     const [actionMenuOpen, setActionMenuOpen] = useState(false)
 
     useEffect(() => {
         fetchUnitsWithBookings(hotelId)
 
-        // Real-time subscription (instant updates if Supabase RT is enabled)
+        // Real-time subscription (instant updates via Supabase WebSocket)
         const unsubscribeRT = subscribeToUnits(hotelId, true)
-
-        // Polling fallback (guaranteed updates every 10s)
-        const stopPolling = startPolling(hotelId, true, 10000)
 
         // Dev toolbar event listener (instant refresh on seed/reset/etc.)
         const handleDevChange = () => fetchUnitsWithBookings(hotelId)
@@ -49,22 +52,14 @@ export function UnitGrid({
 
         return () => {
             unsubscribeRT()
-            stopPolling()
             window.removeEventListener('dev-data-changed', handleDevChange)
         }
-    }, [hotelId, fetchUnitsWithBookings, subscribeToUnits, startPolling])
+    }, [hotelId, fetchUnitsWithBookings, subscribeToUnits])
 
     const handleUnitClick = (unit: UnitWithBooking) => {
         setSelectedUnit(unit)
-        if (unit.status === 'OCCUPIED') {
-            // For occupied: show action menu with checkout + emergency vacate
-            setActionMenuOpen(true)
-        } else if (unit.status === 'MAINTENANCE') {
-            setMaintenanceOpen(true)
-        } else {
-            // AVAILABLE, DIRTY, IN_PROGRESS — all open action menu
-            setActionMenuOpen(true)
-        }
+        // All statuses go through the action menu
+        setActionMenuOpen(true)
     }
 
     const filteredUnits = units.filter((unit) => {
@@ -135,6 +130,7 @@ export function UnitGrid({
         setCheckoutOpen(false)
         setMaintenanceOpen(false)
         setExtendOpen(false)
+        setReportIssueOpen(false)
         setActionMenuOpen(false)
         setSelectedUnit(null)
         fetchUnitsWithBookings(hotelId)
@@ -199,6 +195,14 @@ export function UnitGrid({
                 open={extendOpen}
                 onOpenChange={setExtendOpen}
                 onSuccess={handleDone}
+            />
+
+            <ReportIssueSheet
+                unit={selectedUnit}
+                open={reportIssueOpen}
+                onOpenChange={setReportIssueOpen}
+                hotelId={hotelId}
+                staffId={staffId}
             />
 
             {/* Action Menu for all clickable statuses */}
@@ -282,6 +286,20 @@ export function UnitGrid({
                                     </div>
                                 </button>
                             )}
+
+                            {/* REPORT ISSUE (all statuses) */}
+                            <button
+                                onClick={() => { setActionMenuOpen(false); setReportIssueOpen(true) }}
+                                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left hover:bg-red-50 transition-colors group"
+                            >
+                                <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-100 text-red-600 group-hover:bg-red-200 transition-colors">
+                                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></svg>
+                                </div>
+                                <div>
+                                    <p className="text-sm font-semibold text-slate-800">Report Issue</p>
+                                    <p className="text-[10px] text-slate-400">Log a maintenance problem</p>
+                                </div>
+                            </button>
                         </div>
 
                         {/* Emergency Override Section */}

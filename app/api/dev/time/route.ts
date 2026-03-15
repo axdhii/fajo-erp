@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getDevNow, setDevTime, getDevTimeValue, advanceDevTime, isDevTimeActive } from '@/lib/dev-time'
+import { requireAuth } from '@/lib/auth'
 
 function devOnly() {
     if (process.env.NODE_ENV !== 'development') {
@@ -12,6 +13,9 @@ function devOnly() {
 export async function GET() {
     const blocked = devOnly()
     if (blocked) return blocked
+
+    const auth = await requireAuth()
+    if (!auth.authenticated) return auth.response
 
     const simulated = getDevTimeValue()
     const now = getDevNow()
@@ -28,6 +32,9 @@ export async function GET() {
 export async function POST(request: NextRequest) {
     const blocked = devOnly()
     if (blocked) return blocked
+
+    const auth = await requireAuth()
+    if (!auth.authenticated) return auth.response
 
     const body = await request.json()
     const { action, time, advanceMs, advanceHours, advanceDays } = body

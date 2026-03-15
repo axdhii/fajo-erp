@@ -36,16 +36,23 @@ export default function LoginPage() {
 
             // Use hard navigation so the proxy/RSC picks up the fresh session cookies
             const role = staffData?.role
-            if (role === 'Admin' || role === 'General Manager') {
+            if (role === 'Admin') {
                 window.location.href = '/admin'
+            } else if (role === 'HR') {
+                window.location.href = '/hr'
+            } else if (role === 'ZonalManager') {
+                window.location.href = '/zonal'
+            } else if (role === 'OpsManager') {
+                window.location.href = '/ops'
             } else if (role === 'Housekeeping') {
                 window.location.href = '/housekeeping'
             } else {
                 window.location.href = '/front-desk'
             }
 
-        } catch (error: any) {
-            toast.error(error.message || 'Failed to login')
+        } catch (error: unknown) {
+            const message = error instanceof Error ? error.message : 'Failed to login'
+            toast.error(message)
             setLoading(false)
         }
     }
@@ -60,7 +67,7 @@ export default function LoginPage() {
                     Sign in to FAJO ERP
                 </h2>
                 <p className="mt-2 text-center text-sm text-slate-600">
-                    Demo: Use <strong className="text-emerald-600">frontdesk@fajo.com</strong> / <strong className="text-emerald-600">password123</strong>
+                    Hotel management system
                 </p>
             </div>
 

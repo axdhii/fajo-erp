@@ -1,10 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDevNow } from '@/lib/dev-time'
+import { requireAuth } from '@/lib/auth'
 
 // POST /api/bookings/checkout — Simple checkout (payment already collected at check-in)
 export async function POST(request: NextRequest) {
     try {
+        const auth = await requireAuth()
+        if (!auth.authenticated) return auth.response
+
         const supabase = await createClient()
         const body = await request.json()
 
@@ -70,15 +74,12 @@ export async function POST(request: NextRequest) {
                 .eq('id', paymentRecord.id)
         }
 
-        const newNotes = booking.notes
-
         // Update booking to CHECKED_OUT
         const { error: bookingUpdateError } = await supabase
             .from('bookings')
             .update({
                 status: 'CHECKED_OUT',
                 check_out: getDevNow().toISOString(),
-                notes: newNotes,
             })
             .eq('id', bookingId)
 

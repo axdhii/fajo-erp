@@ -28,7 +28,8 @@ export function useCurrentTime(intervalMs = 30000) {
     }, [])
 
     useEffect(() => {
-        fetchTime()
+        // Use microtask to avoid synchronous setState in effect
+        Promise.resolve().then(fetchTime)
         const interval = setInterval(fetchTime, intervalMs)
         return () => clearInterval(interval)
     }, [fetchTime, intervalMs])

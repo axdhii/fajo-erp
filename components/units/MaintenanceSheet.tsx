@@ -65,7 +65,7 @@ export function MaintenanceSheet({
             toast.success(`${unit.unit_number} is now under maintenance`)
             setReason('')
             onSuccess()
-        } catch (err) {
+        } catch {
             toast.error('Failed to set maintenance mode')
         } finally {
             setIsProcessing(false)
@@ -89,7 +89,7 @@ export function MaintenanceSheet({
             toast.success(`${unit.unit_number} is back to Available`)
             setReason('')
             onSuccess()
-        } catch (err) {
+        } catch {
             toast.error('Failed to clear maintenance')
         } finally {
             setIsProcessing(false)

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { requireAuth } from '@/lib/auth'
 
 // POST /api/dev/reset — Wipe all test data and reset units
 export async function POST() {
@@ -8,6 +9,9 @@ export async function POST() {
     }
 
     try {
+        const auth = await requireAuth()
+        if (!auth.authenticated) return auth.response
+
         const supabase = await createClient()
 
         // Delete in dependency order: payments → guests → bookings

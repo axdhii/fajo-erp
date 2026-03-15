@@ -1,9 +1,14 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
 
 // PATCH /api/reservations — Cancel or update a reservation
+// Supports group bookings: if the booking has a group_id, all bookings in the group are affected
 export async function PATCH(request: NextRequest) {
     try {
+        const auth = await requireAuth()
+        if (!auth.authenticated) return auth.response
+
         const supabase = await createClient()
         const body = await request.json()
 
@@ -39,10 +44,28 @@ export async function PATCH(request: NextRequest) {
                 )
             }
 
+            // Check if this is a group booking
+            const isGroup = !!booking.group_id
+            let bookingIds = [bookingId]
+
+            if (isGroup) {
+                const { data: groupBookings, error: groupError } = await supabase
+                    .from('bookings')
+                    .select('id, status')
+                    .eq('group_id', booking.group_id)
+
+                if (!groupError && groupBookings) {
+                    // Only cancel bookings that are still PENDING or CONFIRMED
+                    bookingIds = groupBookings
+                        .filter((b: { status: string }) => ['PENDING', 'CONFIRMED'].includes(b.status))
+                        .map((b: { id: string }) => b.id)
+                }
+            }
+
             const { error: updateError } = await supabase
                 .from('bookings')
                 .update({ status: 'CANCELLED' })
-                .eq('id', bookingId)
+                .in('id', bookingIds)
 
             if (updateError) {
                 console.error('Cancel error:', updateError)
@@ -54,7 +77,9 @@ export async function PATCH(request: NextRequest) {
 
             return NextResponse.json({
                 success: true,
-                message: `Reservation for ${(booking.unit as any)?.unit_number || 'unit'} has been cancelled`,
+                message: isGroup
+                    ? `Dorm group reservation cancelled (${bookingIds.length} beds)`
+                    : `Reservation for ${(booking.unit as Record<string, string> | null)?.unit_number || 'unit'} has been cancelled`,
             })
         }
 
@@ -86,7 +111,7 @@ export async function PATCH(request: NextRequest) {
                 'notes',
             ]
 
-            const sanitizedUpdates: Record<string, any> = {}
+            const sanitizedUpdates: Record<string, unknown> = {}
             for (const key of allowedFields) {
                 if (updates[key] !== undefined) {
                     sanitizedUpdates[key] = updates[key]
@@ -118,7 +143,7 @@ export async function PATCH(request: NextRequest) {
                 // Delete existing guests and re-insert
                 await supabase.from('guests').delete().eq('booking_id', bookingId)
 
-                const guestRecords = updates.guests.map((g: any) => ({
+                const guestRecords = updates.guests.map((g: { name: string; phone: string; aadhar_number?: string; aadhar_url?: string }) => ({
                     booking_id: bookingId,
                     name: g.name,
                     phone: g.phone,

@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Exclude root-level CommonJS migration scripts from TS lint rules
+    "*.js",
   ]),
 ]);
 

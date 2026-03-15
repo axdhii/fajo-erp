@@ -1,12 +1,16 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDevNow } from '@/lib/dev-time'
+import { requireAuth } from '@/lib/auth'
 
 // POST /api/overrides/force-status
 // Override #1: Force any unit to any status (except OCCUPIED — use check-in for that)
 // Override #3: Force Release — set an OCCUPIED unit to DIRTY without a booking
 export async function POST(request: NextRequest) {
     try {
+        const auth = await requireAuth()
+        if (!auth.authenticated) return auth.response
+
         const supabase = await createClient()
         const body = await request.json()
 
@@ -65,7 +69,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Update unit status
-        const updateData: Record<string, any> = { status: newStatus }
+        const updateData: Record<string, string | null> = { status: newStatus }
         if (newStatus === 'MAINTENANCE') {
             updateData.maintenance_reason = reason || 'Emergency override'
         } else if (previousStatus === 'MAINTENANCE') {
@@ -83,6 +87,21 @@ export async function POST(request: NextRequest) {
                 { error: 'Failed to update unit status' },
                 { status: 500 }
             )
+        }
+
+        // Auto-create a maintenance ticket when unit is set to MAINTENANCE
+        if (newStatus === 'MAINTENANCE') {
+            const { data: callerStaff } = await supabase
+                .from('staff').select('id').eq('user_id', auth.userId).single()
+
+            await supabase.from('maintenance_tickets').insert({
+                unit_id: unitId,
+                hotel_id: unit.hotel_id,
+                description: reason || 'Unit set to maintenance',
+                priority: 'MEDIUM',
+                reported_by: callerStaff?.id || null,
+                status: 'OPEN',
+            })
         }
 
         return NextResponse.json({

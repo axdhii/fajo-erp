@@ -28,10 +28,10 @@ import {
     Smartphone,
     Clock,
     AlertTriangle,
+    Check,
 } from 'lucide-react'
 
 interface ReservationSheetProps {
-    hotelId: string
     unit: UnitWithBooking | null
     defaultCheckIn: Date | null
     open: boolean
@@ -54,7 +54,6 @@ function formatLocalYYYYMMDD(d: Date): string {
 }
 
 export function ReservationSheet({
-    hotelId,
     unit: preSelectedUnit,
     defaultCheckIn,
     open,
@@ -65,6 +64,8 @@ export function ReservationSheet({
     const devNow = useCurrentTime()
 
     const [selectedUnitId, setSelectedUnitId] = useState<string>('')
+    const [bookingMode, setBookingMode] = useState<'ROOM' | 'DORM'>('ROOM')
+    const [selectedDormIds, setSelectedDormIds] = useState<string[]>([])
     const [checkInDate, setCheckInDate] = useState('')
     const [checkInTime, setCheckInTime] = useState('12:00')
     const [guests, setGuests] = useState<GuestInput[]>([emptyGuest()])
@@ -77,19 +78,38 @@ export function ReservationSheet({
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [conflictError, setConflictError] = useState<string | null>(null)
 
-    // Show rooms always; show dorms only when 5+ guests (bulk booking)
-    const availableUnits = useMemo(() => {
-        return units.filter((u) => u.type === 'ROOM' || (u.type === 'DORM' && guests.length >= 5))
-    }, [units, guests.length])
+    // Room-only units for dropdown
+    const roomUnits = useMemo(() => {
+        return units.filter((u) => u.type === 'ROOM')
+    }, [units])
+
+    // Available dorm beds for multi-select (sorted by bed number)
+    const dormBeds = useMemo(() => {
+        return units
+            .filter((u) => u.type === 'DORM')
+            .sort((a, b) => {
+                const numA = parseInt(a.unit_number.replace(/\D/g, ''))
+                const numB = parseInt(b.unit_number.replace(/\D/g, ''))
+                return numA - numB
+            })
+    }, [units])
+
+    const isDormEligible = guests.length >= 5
+
+    // Reset dorm mode when guest count drops below 5
+    useEffect(() => {
+        if (!isDormEligible) {
+            setBookingMode('ROOM')
+            setSelectedDormIds([])
+        }
+    }, [isDormEligible])
 
     // Populate defaults when sheet opens
     useEffect(() => {
         if (open) {
             if (preSelectedUnit) setSelectedUnitId(preSelectedUnit.id)
             if (defaultCheckIn) {
-                setCheckInDate(
-                    formatLocalYYYYMMDD(defaultCheckIn)
-                )
+                setCheckInDate(formatLocalYYYYMMDD(defaultCheckIn))
                 setCheckInTime(
                     `${String(defaultCheckIn.getHours()).padStart(2, '0')}:${String(defaultCheckIn.getMinutes()).padStart(2, '0')}`
                 )
@@ -98,26 +118,56 @@ export function ReservationSheet({
                 setCheckInDate(formatLocalYYYYMMDD(now))
             }
         }
-    }, [open, preSelectedUnit, defaultCheckIn])
+    }, [open, preSelectedUnit, defaultCheckIn, devNow])
 
-    const selectedUnit = availableUnits.find((r) => r.id === selectedUnitId)
+    const toggleDormBed = (id: string) => {
+        setSelectedDormIds((prev) => {
+            if (prev.includes(id)) return prev.filter((x) => x !== id)
+            if (prev.length >= guests.length) {
+                toast.error(`Maximum ${guests.length} beds (1 per guest)`)
+                return prev
+            }
+            return [...prev, id]
+        })
+    }
 
-    const pricing = useMemo(() => {
-        if (!selectedUnit) return null
+    const selectedUnit = roomUnits.find((r) => r.id === selectedUnitId)
+
+    // Pricing for room mode
+    const roomPricing = useMemo(() => {
+        if (bookingMode !== 'ROOM' || !selectedUnit) return null
         const perDayBase = Number(selectedUnit.base_price) * numberOfDays
-        return calculateBookingPrice(
-            selectedUnit.type,
-            perDayBase,
-            guests.length
+        return calculateBookingPrice(selectedUnit.type, perDayBase, guests.length)
+    }, [bookingMode, selectedUnit, guests.length, numberOfDays])
+
+    // Pricing for dorm mode
+    const dormPricing = useMemo(() => {
+        if (bookingMode !== 'DORM' || selectedDormIds.length === 0) return null
+        const selectedBeds = units.filter((u) => selectedDormIds.includes(u.id))
+        const totalBase = selectedBeds.reduce(
+            (sum, bed) => sum + Number(bed.base_price) * numberOfDays,
+            0
         )
-    }, [selectedUnit, guests.length, numberOfDays])
+        return {
+            baseAmount: totalBase,
+            extraHeads: 0,
+            surcharge: 0,
+            grandTotal: totalBase,
+        }
+    }, [bookingMode, selectedDormIds, units, numberOfDays])
+
+    const pricing = bookingMode === 'DORM' ? dormPricing : roomPricing
 
     const finalTotal = useMemo(() => {
         if (!pricing) return 0
-        if (grandTotalOverride && !isNaN(Number(grandTotalOverride)))
+        if (
+            bookingMode === 'ROOM' &&
+            grandTotalOverride &&
+            !isNaN(Number(grandTotalOverride))
+        )
             return Number(grandTotalOverride)
         return pricing.grandTotal
-    }, [pricing, grandTotalOverride])
+    }, [pricing, grandTotalOverride, bookingMode])
 
     const addGuest = () => setGuests((p) => [...p, emptyGuest()])
     const removeGuest = (i: number) => {
@@ -128,16 +178,28 @@ export function ReservationSheet({
         setGuests((p) => p.map((g, idx) => (idx === i ? { ...g, [f]: v } : g)))
 
     const handleSubmit = async () => {
-        if (!selectedUnitId) {
-            toast.error('Please select a room')
-            return
+        if (bookingMode === 'DORM') {
+            if (selectedDormIds.length !== guests.length) {
+                toast.error(
+                    `Select exactly ${guests.length} dorm beds (${selectedDormIds.length} selected)`
+                )
+                return
+            }
+        } else {
+            if (!selectedUnitId) {
+                toast.error('Please select a room')
+                return
+            }
         }
+
         if (!checkInDate) {
             toast.error('Please select a check-in date')
             return
         }
 
-        const isBypassEnabled = typeof window !== 'undefined' && localStorage.getItem('fajo_bypass_credentials') === 'true'
+        const isBypassEnabled =
+            typeof window !== 'undefined' &&
+            localStorage.getItem('fajo_bypass_credentials') === 'true'
 
         if (!isBypassEnabled) {
             for (let i = 0; i < guests.length; i++) {
@@ -147,7 +209,9 @@ export function ReservationSheet({
                 }
                 const phoneDigits = guests[i].phone.replace(/\D/g, '')
                 if (phoneDigits.length !== 10) {
-                    toast.error(`Guest ${i + 1}: Phone number must be exactly 10 digits`)
+                    toast.error(
+                        `Guest ${i + 1}: Phone number must be exactly 10 digits`
+                    )
                     return
                 }
             }
@@ -157,29 +221,51 @@ export function ReservationSheet({
         setConflictError(null)
 
         try {
-            const checkIn = new Date(`${checkInDate}T${checkInTime}:00`)
+            const checkIn = new Date(`${checkInDate}T${checkInTime}:00+05:30`)
+            const guestPayload = guests.map((g, i) => ({
+                name:
+                    g.name.trim() ||
+                    (isBypassEnabled ? `Dev Guest ${i + 1}` : ''),
+                phone:
+                    g.phone.trim() || (isBypassEnabled ? '0000000000' : ''),
+                aadhar_number: g.aadhar_number.trim() || null,
+                aadhar_url: g.aadhar_url || null,
+            }))
+
+            const payload =
+                bookingMode === 'DORM'
+                    ? {
+                          unitIds: selectedDormIds,
+                          checkIn: checkIn.toISOString(),
+                          guests: guestPayload,
+                          expectedArrival: expectedArrival || null,
+                          advanceAmount: Number(advanceAmount) || 0,
+                          advancePaid:
+                              Number(advanceAmount) > 0 ? advanceType : null,
+                          notes: notes.trim() || null,
+                          numberOfDays,
+                      }
+                    : {
+                          unitId: selectedUnitId,
+                          checkIn: checkIn.toISOString(),
+                          guests: guestPayload,
+                          expectedArrival: expectedArrival || null,
+                          advanceAmount: Number(advanceAmount) || 0,
+                          advancePaid:
+                              Number(advanceAmount) > 0 ? advanceType : null,
+                          grandTotalOverride:
+                              grandTotalOverride &&
+                              !isNaN(Number(grandTotalOverride))
+                                  ? Number(grandTotalOverride)
+                                  : null,
+                          notes: notes.trim() || null,
+                          numberOfDays,
+                      }
+
             const res = await fetch('/api/reservations', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    unitId: selectedUnitId,
-                    checkIn: checkIn.toISOString(),
-                    guests: guests.map((g, i) => ({
-                        name: g.name.trim() || (isBypassEnabled ? `Dev Guest ${i + 1}` : ''),
-                        phone: g.phone.trim() || (isBypassEnabled ? '0000000000' : ''),
-                        aadhar_number: g.aadhar_number.trim() || null,
-                        aadhar_url: g.aadhar_url || null,
-                    })),
-                    expectedArrival: expectedArrival || null,
-                    advanceAmount: Number(advanceAmount) || 0,
-                    advancePaid: Number(advanceAmount) > 0 ? advanceType : null,
-                    grandTotalOverride:
-                        grandTotalOverride && !isNaN(Number(grandTotalOverride))
-                            ? Number(grandTotalOverride)
-                            : null,
-                    notes: notes.trim() || null,
-                    numberOfDays,
-                }),
+                body: JSON.stringify(payload),
             })
 
             const data = await res.json()
@@ -195,12 +281,18 @@ export function ReservationSheet({
                 return
             }
 
-            toast.success(
-                `Reservation confirmed for ${selectedUnit?.unit_number} — ₹${finalTotal.toLocaleString('en-IN')}`
-            )
+            if (bookingMode === 'DORM') {
+                toast.success(
+                    `Dorm reservation confirmed — ${selectedDormIds.length} beds · ₹${finalTotal.toLocaleString('en-IN')}`
+                )
+            } else {
+                toast.success(
+                    `Reservation confirmed for ${selectedUnit?.unit_number} — ₹${finalTotal.toLocaleString('en-IN')}`
+                )
+            }
             resetForm()
             onSuccess()
-        } catch (err) {
+        } catch {
             toast.error('Network error. Please try again.')
         } finally {
             setIsSubmitting(false)
@@ -209,6 +301,8 @@ export function ReservationSheet({
 
     const resetForm = () => {
         setSelectedUnitId('')
+        setBookingMode('ROOM')
+        setSelectedDormIds([])
         setCheckInDate('')
         setCheckInTime('12:00')
         setGuests([emptyGuest()])
@@ -240,7 +334,7 @@ export function ReservationSheet({
                                     New Reservation
                                 </SheetTitle>
                                 <SheetDescription className="text-xs mt-0.5">
-                                    Pre-book a room with advance payment
+                                    Pre-book a room{isDormEligible ? ' or dorm beds' : ''} with advance payment
                                 </SheetDescription>
                             </div>
                         </div>
@@ -248,30 +342,161 @@ export function ReservationSheet({
                 </div>
 
                 <div className="px-6 py-5 space-y-5">
-                    {/* Room Selection */}
-                    <div className="space-y-1.5">
-                        <Label className="text-xs text-slate-600">
-                            Room *
-                        </Label>
-                        <select
-                            value={selectedUnitId}
-                            onChange={(e) => setSelectedUnitId(e.target.value)}
-                            className="w-full h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
-                        >
-                            <option value="">Select a room...</option>
-                            {availableUnits.map((r) => (
-                                <option key={r.id} value={r.id}>
-                                    {r.type === 'DORM' ? `Dorm Bed ${r.unit_number}` : `Room ${r.unit_number}`} — ₹
-                                    {Number(r.base_price).toLocaleString(
-                                        'en-IN'
-                                    )}
-                                </option>
-                            ))}
-                        </select>
-                        {guests.length >= 5 && (
-                            <p className="text-[10px] text-violet-600 font-medium mt-1">
-                                💡 Dorm beds available for bulk booking (5+ guests)
-                            </p>
+                    {/* Unit Selection */}
+                    <div className="space-y-3">
+                        {/* Mode Toggle - visible when 5+ guests */}
+                        {isDormEligible && (
+                            <div className="flex gap-2 p-1 bg-slate-100 rounded-lg">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setBookingMode('ROOM')
+                                        setSelectedDormIds([])
+                                    }}
+                                    className={`flex-1 flex items-center justify-center gap-1.5 h-8 rounded-md text-xs font-semibold transition-all ${
+                                        bookingMode === 'ROOM'
+                                            ? 'bg-white text-slate-800 shadow-sm'
+                                            : 'text-slate-500 hover:text-slate-700'
+                                    }`}
+                                >
+                                    Room
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setBookingMode('DORM')
+                                        setSelectedUnitId('')
+                                    }}
+                                    className={`flex-1 flex items-center justify-center gap-1.5 h-8 rounded-md text-xs font-semibold transition-all ${
+                                        bookingMode === 'DORM'
+                                            ? 'bg-violet-600 text-white shadow-sm'
+                                            : 'text-slate-500 hover:text-slate-700'
+                                    }`}
+                                >
+                                    Dorm Beds ({guests.length})
+                                </button>
+                            </div>
+                        )}
+
+                        {bookingMode === 'ROOM' ? (
+                            <div className="space-y-1.5">
+                                <Label className="text-xs text-slate-600">
+                                    Room *
+                                </Label>
+                                <select
+                                    value={selectedUnitId}
+                                    onChange={(e) => setSelectedUnitId(e.target.value)}
+                                    className="w-full h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400"
+                                >
+                                    <option value="">Select a room...</option>
+                                    {roomUnits.map((r) => (
+                                        <option key={r.id} value={r.id}>
+                                            Room {r.unit_number} — ₹
+                                            {Number(r.base_price).toLocaleString('en-IN')}
+                                        </option>
+                                    ))}
+                                </select>
+                                {isDormEligible && (
+                                    <p className="text-[10px] text-violet-600 font-medium mt-1">
+                                        Dorm beds available for bulk booking (5+ guests)
+                                    </p>
+                                )}
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                    <Label className="text-xs text-slate-600">
+                                        Select {guests.length} Dorm Beds *
+                                    </Label>
+                                    <span
+                                        className={`text-xs font-bold px-2 py-0.5 rounded-full ${
+                                            selectedDormIds.length === guests.length
+                                                ? 'bg-emerald-100 text-emerald-700'
+                                                : 'bg-amber-100 text-amber-700'
+                                        }`}
+                                    >
+                                        {selectedDormIds.length}/{guests.length}
+                                    </span>
+                                </div>
+                                {/* Lower Beds */}
+                                <div className="space-y-1.5">
+                                    {(() => {
+                                        const lowerBeds = dormBeds.filter((b) => parseInt(b.unit_number.replace(/\D/g, '')) <= 13)
+                                        const lowerPrice = lowerBeds.length > 0 ? Number(lowerBeds[0].base_price) : 0
+                                        return (
+                                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                                                Lower Beds{lowerPrice > 0 ? ` — ₹${lowerPrice.toLocaleString('en-IN')}/night` : ''}
+                                            </p>
+                                        )
+                                    })()}
+                                    <div className="grid grid-cols-5 gap-1.5">
+                                        {dormBeds
+                                            .filter((b) => {
+                                                const num = parseInt(b.unit_number.replace(/\D/g, ''))
+                                                return num <= 13
+                                            })
+                                            .map((bed) => {
+                                                const isSelected = selectedDormIds.includes(bed.id)
+                                                return (
+                                                    <button
+                                                        key={bed.id}
+                                                        type="button"
+                                                        onClick={() => toggleDormBed(bed.id)}
+                                                        className={`relative h-10 rounded-lg text-xs font-semibold border transition-all ${
+                                                            isSelected
+                                                                ? 'bg-violet-600 text-white border-violet-600 shadow-md shadow-violet-600/20'
+                                                                : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300 hover:bg-violet-50'
+                                                        }`}
+                                                    >
+                                                        {bed.unit_number}
+                                                        {isSelected && (
+                                                            <Check className="absolute top-0.5 right-0.5 h-3 w-3" />
+                                                        )}
+                                                    </button>
+                                                )
+                                            })}
+                                    </div>
+                                </div>
+                                {/* Upper Beds */}
+                                <div className="space-y-1.5">
+                                    {(() => {
+                                        const upperBeds = dormBeds.filter((b) => parseInt(b.unit_number.replace(/\D/g, '')) >= 14)
+                                        const upperPrice = upperBeds.length > 0 ? Number(upperBeds[0].base_price) : 0
+                                        return (
+                                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                                                Upper Beds{upperPrice > 0 ? ` — ₹${upperPrice.toLocaleString('en-IN')}/night` : ''}
+                                            </p>
+                                        )
+                                    })()}
+                                    <div className="grid grid-cols-5 gap-1.5">
+                                        {dormBeds
+                                            .filter((b) => {
+                                                const num = parseInt(b.unit_number.replace(/\D/g, ''))
+                                                return num >= 14
+                                            })
+                                            .map((bed) => {
+                                                const isSelected = selectedDormIds.includes(bed.id)
+                                                return (
+                                                    <button
+                                                        key={bed.id}
+                                                        type="button"
+                                                        onClick={() => toggleDormBed(bed.id)}
+                                                        className={`relative h-10 rounded-lg text-xs font-semibold border transition-all ${
+                                                            isSelected
+                                                                ? 'bg-violet-600 text-white border-violet-600 shadow-md shadow-violet-600/20'
+                                                                : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300 hover:bg-violet-50'
+                                                        }`}
+                                                    >
+                                                        {bed.unit_number}
+                                                        {isSelected && (
+                                                            <Check className="absolute top-0.5 right-0.5 h-3 w-3" />
+                                                        )}
+                                                    </button>
+                                                )
+                                            })}
+                                    </div>
+                                </div>
+                            </div>
                         )}
                     </div>
 
@@ -469,22 +694,35 @@ export function ReservationSheet({
                             <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                                 Pricing
                             </p>
-                            <div className="flex justify-between text-slate-600">
-                                <span>Base Rate</span>
-                                <span>
-                                    ₹{pricing.baseAmount.toLocaleString('en-IN')}
-                                </span>
-                            </div>
-                            {pricing.extraHeads > 0 && (
-                                <div className="flex justify-between text-amber-600 font-medium">
+                            {bookingMode === 'DORM' ? (
+                                <div className="flex justify-between text-slate-600">
                                     <span>
-                                        Extra Surcharge (×{pricing.extraHeads})
+                                        {selectedDormIds.length} bed{selectedDormIds.length !== 1 ? 's' : ''} &times; {numberOfDays} night{numberOfDays > 1 ? 's' : ''}
                                     </span>
                                     <span>
-                                        +₹
-                                        {pricing.surcharge.toLocaleString('en-IN')}
+                                        ₹{pricing.baseAmount.toLocaleString('en-IN')}
                                     </span>
                                 </div>
+                            ) : (
+                                <>
+                                    <div className="flex justify-between text-slate-600">
+                                        <span>Base Rate</span>
+                                        <span>
+                                            ₹{pricing.baseAmount.toLocaleString('en-IN')}
+                                        </span>
+                                    </div>
+                                    {pricing.extraHeads > 0 && (
+                                        <div className="flex justify-between text-amber-600 font-medium">
+                                            <span>
+                                                Extra Surcharge (×{pricing.extraHeads})
+                                            </span>
+                                            <span>
+                                                +₹
+                                                {pricing.surcharge.toLocaleString('en-IN')}
+                                            </span>
+                                        </div>
+                                    )}
+                                </>
                             )}
                             {Number(advanceAmount) > 0 && (
                                 <div className="flex justify-between text-blue-600 font-medium">
@@ -508,21 +746,23 @@ export function ReservationSheet({
                                     ).toLocaleString('en-IN')}
                                 </span>
                             </div>
-                            <div className="pt-2 border-t border-dashed border-slate-200 space-y-1.5">
-                                <Label className="text-xs text-slate-500 flex items-center gap-1.5">
-                                    <IndianRupee className="h-3 w-3" />
-                                    Override Grand Total
-                                </Label>
-                                <Input
-                                    type="number"
-                                    placeholder={String(pricing.grandTotal)}
-                                    value={grandTotalOverride}
-                                    onChange={(e) =>
-                                        setGrandTotalOverride(e.target.value)
-                                    }
-                                    className="h-8 text-xs bg-white"
-                                />
-                            </div>
+                            {bookingMode === 'ROOM' && (
+                                <div className="pt-2 border-t border-dashed border-slate-200 space-y-1.5">
+                                    <Label className="text-xs text-slate-500 flex items-center gap-1.5">
+                                        <IndianRupee className="h-3 w-3" />
+                                        Override Grand Total
+                                    </Label>
+                                    <Input
+                                        type="number"
+                                        placeholder={String(pricing.grandTotal)}
+                                        value={grandTotalOverride}
+                                        onChange={(e) =>
+                                            setGrandTotalOverride(e.target.value)
+                                        }
+                                        className="h-8 text-xs bg-white"
+                                    />
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -553,7 +793,9 @@ export function ReservationSheet({
                         ) : (
                             <span className="flex items-center gap-2">
                                 <CalendarPlus className="h-4 w-4" />
-                                Confirm Reservation
+                                {bookingMode === 'DORM'
+                                    ? `Reserve ${selectedDormIds.length} Dorm Beds`
+                                    : 'Confirm Reservation'}
                                 {finalTotal > 0 &&
                                     ` · ₹${finalTotal.toLocaleString('en-IN')}`}
                             </span>

@@ -17,8 +17,14 @@ export default function Home() {
         router.push('/login')
       } else if (profile) {
         if (profile.role === 'Admin') router.push('/admin')
+        else if (profile.role === 'HR') router.push('/hr')
+        else if (profile.role === 'ZonalManager') router.push('/zonal')
+        else if (profile.role === 'OpsManager') router.push('/ops')
         else if (profile.role === 'Housekeeping') router.push('/housekeeping')
         else router.push('/front-desk')
+      } else {
+        // User exists but no staff profile — redirect to login
+        router.push('/login')
       }
     }
   }, [user, profile, isLoading, router])

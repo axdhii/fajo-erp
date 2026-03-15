@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import type { UnitWithBooking } from '@/lib/store/unit-store'
-import { Booking, Unit, Guest, Payment } from '@/lib/types'
+import { Booking, Guest, Payment } from '@/lib/types'
 import {
     Sheet,
     SheetContent,
@@ -14,18 +14,18 @@ import { Button } from '@/components/ui/button'
 import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase/client'
 import {
-    X,
     LogOut,
     Users,
     Clock,
-    User,
     AlertCircle,
     Banknote,
     Smartphone,
     IndianRupee,
     Printer,
-    CheckCircle2
+    CheckCircle2,
+    ArrowRight,
 } from 'lucide-react'
+import { useCurrentTime } from '@/lib/hooks/use-current-time'
 
 interface CheckoutSheetProps {
     unit: UnitWithBooking | null
@@ -45,10 +45,9 @@ export function CheckoutSheet({
     const [amountCash, setAmountCash] = useState('')
     const [amountDigital, setAmountDigital] = useState('')
     const [successBookingId, setSuccessBookingId] = useState<string | null>(null)
-    const [isBypass, setIsBypass] = useState(false)
-    const [bypassTimer, setBypassTimer] = useState(0)
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [isLoadingBooking, setIsLoadingBooking] = useState(false)
+    const now = useCurrentTime(60000)
 
     // Fetch the active booking with guests and payment when sheet opens
     useEffect(() => {
@@ -96,13 +95,14 @@ export function CheckoutSheet({
             return
         }
 
+        if (!isPaymentValid) {
+            toast.error(`Please collect exactly ₹${balanceDue} before checking out.`)
+            return
+        }
+
         setIsSubmitting(true)
 
         try {
-            if (!isPaymentValid) {
-                toast.error(`Please collect exactly ₹${balanceDue} before checking out.`)
-                return
-            }
 
             const res = await fetch('/api/bookings/checkout', {
                 method: 'POST',
@@ -126,7 +126,7 @@ export function CheckoutSheet({
             )
 
             setSuccessBookingId(booking.id)
-        } catch (err) {
+        } catch {
             toast.error('Network error. Please try again.')
         } finally {
             setIsSubmitting(false)
@@ -188,7 +188,7 @@ export function CheckoutSheet({
         })
         : ''
 
-    const checkOutTime = booking?.check_out
+    const expectedCheckout = booking?.check_out
         ? new Date(booking.check_out).toLocaleString('en-IN', {
             day: 'numeric',
             month: 'short',
@@ -196,6 +196,13 @@ export function CheckoutSheet({
             minute: '2-digit',
         })
         : '—'
+
+    const actualCheckoutTime = now.toLocaleString('en-IN', {
+        day: 'numeric',
+        month: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+    })
 
     const grandTotal = booking ? Number(booking.grand_total) : 0
     const totalPaid = payment ? Number(payment.total_paid) : 0
@@ -281,20 +288,29 @@ export function CheckoutSheet({
                         </div>
 
                         {/* Stay Details */}
-                        <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-2">
-                            <div className="flex items-center gap-2 mb-2">
+                        <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-3">
+                            <div className="flex items-center gap-2 mb-1">
                                 <Clock className="h-4 w-4 text-slate-400" />
                                 <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                                     Stay Details
                                 </p>
                             </div>
-                            <div className="flex justify-between text-sm text-slate-600">
-                                <span>Check-in</span>
-                                <span className="font-medium">{checkInTime}</span>
+                            <div className="flex items-center gap-3 text-sm">
+                                <div className="flex-1">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Check-in</p>
+                                    <p className="font-semibold text-slate-800">{checkInTime}</p>
+                                </div>
+                                <ArrowRight className="h-4 w-4 text-slate-300 shrink-0" />
+                                <div className="flex-1 text-right">
+                                    <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Expected</p>
+                                    <p className="font-semibold text-slate-800">{expectedCheckout}</p>
+                                </div>
                             </div>
-                            <div className="flex justify-between text-sm text-slate-600">
-                                <span>Expected Check-out</span>
-                                <span className="font-medium">{checkOutTime}</span>
+                            <div className="border-t border-slate-200 pt-3">
+                                <div className="flex justify-between items-center">
+                                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600">Checkout Time</span>
+                                    <span className="text-sm font-bold text-emerald-700">{actualCheckoutTime}</span>
+                                </div>
                             </div>
                         </div>
 

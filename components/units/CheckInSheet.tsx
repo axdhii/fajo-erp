@@ -16,7 +16,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { supabase } from '@/lib/supabase/client'
 import {
     Plus,
     Minus,
@@ -37,7 +36,6 @@ import {
     CalendarClock,
     Sun,
     Moon,
-    Wrench,
     Printer,
 } from 'lucide-react'
 
@@ -117,7 +115,7 @@ export function CheckInSheet({
     const now = useCurrentTime()
 
     // Calculate check-in/check-out dates
-    const checkInDate = useMemo(() => now, [now, open]) // Uses dev time in dev mode
+    const checkInDate = useMemo(() => now, [now]) // Uses dev time in dev mode
     const checkOutDate = useMemo(() => {
         if (manualCheckout) {
             const d = new Date(manualCheckout)
@@ -208,7 +206,7 @@ export function CheckInSheet({
             const fileName = `Aadhar_Unit${unit.unit_number}_${guestName}_${dateStr}.${fileExt}`
 
             const objectUrl = URL.createObjectURL(file)
-            
+
             const link = document.createElement('a')
             link.href = objectUrl
             link.download = fileName
@@ -216,7 +214,8 @@ export function CheckInSheet({
             link.click()
             document.body.removeChild(link)
 
-            updateGuest(index, 'aadhar_url', `${objectUrl}#${fileName}`)
+            URL.revokeObjectURL(objectUrl)
+            updateGuest(index, 'aadhar_url', `saved#${fileName}`)
             toast.success(`Aadhar saved locally as ${fileName}`)
         } catch (err) {
             console.error('Download error:', err)
@@ -280,10 +279,11 @@ export function CheckInSheet({
                     })),
                     numberOfDays,
                     checkOutOverride: manualCheckout || null,
-                    grandTotalOverride:
-                        grandTotalOverride && !isNaN(Number(grandTotalOverride))
+                    grandTotalOverride: isBypass
+                        ? 0
+                        : (grandTotalOverride && !isNaN(Number(grandTotalOverride))
                             ? Number(grandTotalOverride)
-                            : null,
+                            : null),
                     amountCash: (payLater || isBypass) ? 0 : cashNum,
                     amountDigital: (payLater || isBypass) ? 0 : digitalNum,
                     payLater: (payLater || isBypass) ? true : undefined,
@@ -313,7 +313,7 @@ export function CheckInSheet({
                 resetForm()
                 onSuccess()
             }
-        } catch (err) {
+        } catch {
             toast.error('Network error. Please try again.')
         } finally {
             setIsSubmitting(false)
@@ -337,7 +337,6 @@ export function CheckInSheet({
     const resetAndClose = (openState: boolean) => {
         if (!openState) {
             resetForm()
-            onSuccess()
         }
         onOpenChange(openState)
     }

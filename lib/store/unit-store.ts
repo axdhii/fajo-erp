@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase/client'
-import type { Unit, UnitStatus, UnitType, Booking } from '@/lib/types'
+import type { Unit, UnitStatus, Booking } from '@/lib/types'
 
 // Natural sort: 101 < 108 < A1 < A2 < A10 < A13 < A14 < A36
 function naturalSort(a: string, b: string): number {
@@ -26,7 +26,6 @@ interface UnitState {
     fetchUnitsWithBookings: (hotelId: string) => Promise<void>
     updateUnitStatus: (unitId: string, status: UnitStatus) => Promise<void>
     subscribeToUnits: (hotelId: string, withBookings?: boolean) => () => void
-    startPolling: (hotelId: string, withBookings?: boolean, intervalMs?: number) => () => void
 }
 
 export const useUnitStore = create<UnitState>((set, get) => ({
@@ -73,16 +72,21 @@ export const useUnitStore = create<UnitState>((set, get) => ({
             return
         }
 
-        // Fetch active bookings with guests
-        const { data: bookingsData } = await supabase
-            .from('bookings')
-            .select('*, guests(*)')
-            .eq('status', 'CHECKED_IN')
-
+        // Fetch active bookings with guests (filtered to this hotel's units)
+        const unitIds = (unitsData || []).map((u: { id: string }) => u.id)
         const bookingsByUnit: Record<string, Booking> = {}
-        if (bookingsData) {
-            for (const b of bookingsData) {
-                bookingsByUnit[b.unit_id] = b as Booking
+
+        if (unitIds.length > 0) {
+            const { data: bookingsData } = await supabase
+                .from('bookings')
+                .select('*, guests(*)')
+                .eq('status', 'CHECKED_IN')
+                .in('unit_id', unitIds)
+
+            if (bookingsData) {
+                for (const b of bookingsData) {
+                    bookingsByUnit[b.unit_id] = b as Booking
+                }
             }
         }
 
@@ -170,16 +174,4 @@ export const useUnitStore = create<UnitState>((set, get) => ({
         }
     },
 
-    // Guaranteed polling fallback — re-fetches data every N ms
-    startPolling: (hotelId, withBookings = false, intervalMs = 10000) => {
-        const fetchFn = withBookings
-            ? () => get().fetchUnitsWithBookings(hotelId)
-            : () => get().fetchUnits(hotelId)
-
-        const interval = setInterval(fetchFn, intervalMs)
-
-        return () => {
-            clearInterval(interval)
-        }
-    },
 }))

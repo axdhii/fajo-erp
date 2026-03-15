@@ -1,6 +1,6 @@
 'use client'
 
-import type { UnitStatus, UnitType } from '@/lib/types'
+import type { UnitStatus } from '@/lib/types'
 import type { UnitWithBooking } from '@/lib/store/unit-store'
 import { getCheckoutAlert, type CheckoutAlert } from '@/lib/hooks/use-current-time'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
