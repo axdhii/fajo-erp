@@ -143,6 +143,24 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'Failed to update maintenance ticket' }, { status: 500 })
         }
 
+        // When a ticket is resolved and has a unit, auto-set unit to AVAILABLE
+        // if no other open tickets remain for that unit
+        if (status === 'RESOLVED' && data.unit_id) {
+            const { count } = await supabase
+                .from('maintenance_tickets')
+                .select('id', { count: 'exact', head: true })
+                .eq('unit_id', data.unit_id)
+                .in('status', ['OPEN', 'IN_PROGRESS'])
+
+            if (count === 0) {
+                await supabase
+                    .from('units')
+                    .update({ status: 'AVAILABLE', maintenance_reason: null })
+                    .eq('id', data.unit_id)
+                    .eq('status', 'MAINTENANCE')
+            }
+        }
+
         return NextResponse.json({ data })
     } catch (err) {
         console.error('Maintenance PATCH error:', err)

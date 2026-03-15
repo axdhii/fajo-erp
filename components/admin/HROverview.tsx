@@ -15,7 +15,10 @@ import {
     AlertCircle,
     ChevronLeft,
     ChevronRight,
+    ChevronDown,
     FileText,
+    History,
+    RefreshCw,
 } from 'lucide-react'
 import type {
     Attendance,
@@ -60,6 +63,19 @@ export function HROverview({ hotelId, hotels, staffId }: AdminTabProps) {
         return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
     })
     const [loading, setLoading] = useState(false)
+
+    // --- Payroll History state ---
+    interface PayrollHistoryMonth {
+        month: string
+        label: string
+        staffCount: number
+        totalNet: number
+        draftCount: number
+        finalizedCount: number
+        paidCount: number
+    }
+    const [payrollHistory, setPayrollHistory] = useState<PayrollHistoryMonth[]>([])
+    const [historyOpen, setHistoryOpen] = useState(false)
 
     // ======================== DATA FETCHING ========================
 
@@ -117,12 +133,65 @@ export function HROverview({ hotelId, hotels, staffId }: AdminTabProps) {
         if (data) setPayrolls(data as PayrollWithHotel[])
     }, [hotelId, payrollMonth])
 
+    // Fetch payroll history (last 6 months)
+    const fetchPayrollHistory = useCallback(async () => {
+        let query = supabase
+            .from('payroll')
+            .select('month, status, net_salary, staff_id')
+            .order('month', { ascending: false })
+
+        if (hotelId) {
+            query = query.eq('hotel_id', hotelId)
+        }
+
+        const { data } = await query
+        if (!data) return
+
+        // Group by month in JS
+        const grouped = new Map<string, { staffIds: Set<string>; totalNet: number; draft: number; finalized: number; paid: number }>()
+        for (const row of data) {
+            const m = typeof row.month === 'string' ? row.month.slice(0, 7) : String(row.month)
+            if (!grouped.has(m)) {
+                grouped.set(m, { staffIds: new Set(), totalNet: 0, draft: 0, finalized: 0, paid: 0 })
+            }
+            const g = grouped.get(m)!
+            g.staffIds.add(row.staff_id)
+            g.totalNet += Number(row.net_salary)
+            if (row.status === 'DRAFT') g.draft++
+            else if (row.status === 'FINALIZED') g.finalized++
+            else if (row.status === 'PAID') g.paid++
+        }
+
+        // Convert to array, sort descending, take last 6
+        const months = Array.from(grouped.entries())
+            .sort((a, b) => b[0].localeCompare(a[0]))
+            .slice(0, 6)
+            .map(([m, g]) => {
+                const [y, mo] = m.split('-')
+                const label = new Date(Number(y), Number(mo) - 1).toLocaleString('en-IN', { month: 'long', year: 'numeric' })
+                return {
+                    month: m,
+                    label,
+                    staffCount: g.staffIds.size,
+                    totalNet: g.totalNet,
+                    draftCount: g.draft,
+                    finalizedCount: g.finalized,
+                    paidCount: g.paid,
+                }
+            })
+
+        setPayrollHistory(months)
+    }, [hotelId])
+
     // Fetch data when tab changes
     useEffect(() => {
         if (tab === 'attendance') fetchAttendance()
         if (tab === 'incidents') fetchIncidents()
-        if (tab === 'payroll') fetchPayroll()
-    }, [tab, fetchAttendance, fetchIncidents, fetchPayroll])
+        if (tab === 'payroll') {
+            fetchPayroll()
+            fetchPayrollHistory()
+        }
+    }, [tab, fetchAttendance, fetchIncidents, fetchPayroll, fetchPayrollHistory])
 
     // Realtime: attendance
     useEffect(() => {
@@ -230,6 +299,49 @@ export function HROverview({ hotelId, hotels, staffId }: AdminTabProps) {
             toast.success(action === 'finalize' ? 'Payroll finalized' : 'Marked as paid')
         } catch (err: unknown) {
             toast.error(err instanceof Error ? err.message : 'Payroll update failed')
+        } finally {
+            setLoading(false)
+        }
+    }
+
+    // Regenerate payroll -- deletes DRAFT and recreates from current data
+    const handleRegeneratePayroll = async () => {
+        const drafts = payrolls.filter(p => p.status === 'DRAFT').length
+        if (drafts === 0) {
+            toast.error('No DRAFT records to regenerate')
+            return
+        }
+
+        setLoading(true)
+        try {
+            const targetHotels = hotelId ? [hotelId] : hotels.map(h => h.id)
+            let totalGenerated = 0
+
+            for (const hId of targetHotels) {
+                // Delete all DRAFT payroll for this month/hotel
+                const delRes = await fetch('/api/payroll', {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hotel_id: hId, month: payrollMonth }),
+                })
+                const delJson = await delRes.json()
+                if (!delRes.ok) throw new Error(delJson.error)
+
+                // Re-generate
+                const genRes = await fetch('/api/payroll', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hotel_id: hId, month: payrollMonth }),
+                })
+                const genJson = await genRes.json()
+                if (!genRes.ok) throw new Error(genJson.error)
+                totalGenerated += genJson.generated ?? 0
+            }
+
+            toast.success(`Regenerated payroll for ${totalGenerated} staff`)
+            fetchPayroll()
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to regenerate payroll')
         } finally {
             setLoading(false)
         }
@@ -529,6 +641,16 @@ export function HROverview({ hotelId, hotels, staffId }: AdminTabProps) {
                                 >
                                     <DollarSign className="h-4 w-4 mr-1" /> Generate Payroll
                                 </Button>
+                                {payrolls.some(p => p.status === 'DRAFT') && (
+                                    <Button
+                                        variant="outline"
+                                        onClick={handleRegeneratePayroll}
+                                        disabled={loading}
+                                        className="text-amber-700 border-amber-300 hover:bg-amber-50"
+                                    >
+                                        <RefreshCw className="h-4 w-4 mr-1" /> Regenerate Drafts
+                                    </Button>
+                                )}
                             </div>
 
                             {payrolls.length === 0 ? (
@@ -627,6 +749,57 @@ export function HROverview({ hotelId, hotels, staffId }: AdminTabProps) {
                                 </div>
                             )}
                         </CardContent>
+                    </Card>
+
+                    {/* Payroll History (last 6 months) */}
+                    <Card>
+                        <CardHeader className="pb-0 cursor-pointer" onClick={() => setHistoryOpen(v => !v)}>
+                            <CardTitle className="flex items-center justify-between text-base">
+                                <div className="flex items-center gap-2">
+                                    <History className="h-5 w-5 text-slate-500" />
+                                    Payroll History
+                                </div>
+                                <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${historyOpen ? 'rotate-180' : ''}`} />
+                            </CardTitle>
+                        </CardHeader>
+                        {historyOpen && (
+                            <CardContent className="pt-4">
+                                {payrollHistory.length === 0 ? (
+                                    <p className="text-sm text-slate-400 text-center py-4">No payroll history found.</p>
+                                ) : (
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                                        {payrollHistory.map(h => (
+                                            <div key={h.month} className="bg-slate-50 rounded-xl border border-slate-200 px-4 py-3 space-y-2">
+                                                <div className="flex items-center justify-between">
+                                                    <span className="font-bold text-slate-800 text-sm">{h.label}</span>
+                                                    <span className="text-xs text-slate-400">{h.staffCount} staff</span>
+                                                </div>
+                                                <p className="text-lg font-bold text-slate-900">
+                                                    ₹{h.totalNet.toLocaleString('en-IN')}
+                                                </p>
+                                                <div className="flex items-center gap-2 flex-wrap">
+                                                    {h.draftCount > 0 && (
+                                                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">
+                                                            {h.draftCount} Draft
+                                                        </span>
+                                                    )}
+                                                    {h.finalizedCount > 0 && (
+                                                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                                                            {h.finalizedCount} Finalized
+                                                        </span>
+                                                    )}
+                                                    {h.paidCount > 0 && (
+                                                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">
+                                                            {h.paidCount} Paid
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </CardContent>
+                        )}
                     </Card>
                 </div>
             )}

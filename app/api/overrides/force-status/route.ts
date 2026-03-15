@@ -89,6 +89,14 @@ export async function POST(request: NextRequest) {
             )
         }
 
+        // Auto-resolve all open tickets when a unit is cleared from MAINTENANCE
+        if (previousStatus === 'MAINTENANCE' && newStatus !== 'MAINTENANCE') {
+            await supabase.from('maintenance_tickets')
+                .update({ status: 'RESOLVED', resolved_at: new Date().toISOString(), resolution_notes: 'Auto-resolved: unit cleared from maintenance' })
+                .eq('unit_id', unitId)
+                .in('status', ['OPEN', 'IN_PROGRESS'])
+        }
+
         // Auto-create a maintenance ticket when unit is set to MAINTENANCE
         if (newStatus === 'MAINTENANCE') {
             const { data: callerStaff } = await supabase

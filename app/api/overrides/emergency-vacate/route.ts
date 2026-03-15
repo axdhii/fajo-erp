@@ -81,6 +81,19 @@ export async function POST(request: NextRequest) {
             )
         }
 
+        // Create a maintenance ticket for the emergency vacate
+        const { data: callerStaff } = await supabase
+            .from('staff').select('id').eq('user_id', auth.userId).single()
+
+        await supabase.from('maintenance_tickets').insert({
+            unit_id: unitId,
+            hotel_id: unit.hotel_id,
+            description: `Emergency vacate: ${vacateReason}`,
+            priority: 'HIGH',
+            reported_by: callerStaff?.id || null,
+            status: 'OPEN',
+        })
+
         return NextResponse.json({
             success: true,
             message: `${unit.unit_number} emergency vacated — now under MAINTENANCE`,

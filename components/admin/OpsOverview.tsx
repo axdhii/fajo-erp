@@ -50,7 +50,8 @@ function timeAgo(dateStr: string): string {
 export function OpsOverview({ hotelId, hotels, staffId }: AdminTabProps) {
     const [tickets, setTickets] = useState<TicketWithHotel[]>([])
     const [restocks, setRestocks] = useState<RestockWithHotel[]>([])
-    const [loading, setLoading] = useState(false)
+    const [updatingTicket, setUpdatingTicket] = useState<string | null>(null)
+    const [completingRestock, setCompletingRestock] = useState<string | null>(null)
     const [resolvingId, setResolvingId] = useState<string | null>(null)
     const [resolveNotes, setResolveNotes] = useState('')
     const [maintenanceUnits, setMaintenanceUnits] = useState(0)
@@ -160,7 +161,7 @@ export function OpsOverview({ hotelId, hotels, staffId }: AdminTabProps) {
 
     // Start ticket (OPEN -> IN_PROGRESS)
     const handleStart = async (ticketId: string) => {
-        setLoading(true)
+        setUpdatingTicket(ticketId)
         try {
             const res = await fetch('/api/maintenance', {
                 method: 'PATCH',
@@ -173,13 +174,13 @@ export function OpsOverview({ hotelId, hotels, staffId }: AdminTabProps) {
         } catch (err: unknown) {
             toast.error(err instanceof Error ? err.message : 'Failed to start ticket')
         } finally {
-            setLoading(false)
+            setUpdatingTicket(null)
         }
     }
 
     // Resolve ticket
     const handleResolve = async (ticketId: string) => {
-        setLoading(true)
+        setUpdatingTicket(ticketId)
         try {
             const res = await fetch('/api/maintenance', {
                 method: 'PATCH',
@@ -198,13 +199,13 @@ export function OpsOverview({ hotelId, hotels, staffId }: AdminTabProps) {
         } catch (err: unknown) {
             toast.error(err instanceof Error ? err.message : 'Failed to resolve ticket')
         } finally {
-            setLoading(false)
+            setUpdatingTicket(null)
         }
     }
 
     // Mark restock done
     const handleRestockDone = async (requestId: string) => {
-        setLoading(true)
+        setCompletingRestock(requestId)
         try {
             const res = await fetch('/api/restock', {
                 method: 'PATCH',
@@ -217,7 +218,7 @@ export function OpsOverview({ hotelId, hotels, staffId }: AdminTabProps) {
         } catch (err: unknown) {
             toast.error(err instanceof Error ? err.message : 'Failed to update restock')
         } finally {
-            setLoading(false)
+            setCompletingRestock(null)
         }
     }
 
@@ -335,7 +336,7 @@ export function OpsOverview({ hotelId, hotels, staffId }: AdminTabProps) {
                                                 <Button
                                                     size="sm"
                                                     onClick={() => handleStart(t.id)}
-                                                    disabled={loading}
+                                                    disabled={updatingTicket === t.id}
                                                     className="h-7 text-xs bg-cyan-600 hover:bg-cyan-700"
                                                 >
                                                     <Play className="h-3 w-3 mr-1" /> Start
@@ -353,7 +354,7 @@ export function OpsOverview({ hotelId, hotels, staffId }: AdminTabProps) {
                                                         <Button
                                                             size="sm"
                                                             onClick={() => handleResolve(t.id)}
-                                                            disabled={loading}
+                                                            disabled={updatingTicket === t.id}
                                                             className="h-7 text-xs bg-emerald-600 hover:bg-emerald-700 flex-1"
                                                         >
                                                             <CheckCircle2 className="h-3 w-3 mr-1" /> Resolve
@@ -432,7 +433,7 @@ export function OpsOverview({ hotelId, hotels, staffId }: AdminTabProps) {
                                     <Button
                                         size="sm"
                                         onClick={() => handleRestockDone(r.id)}
-                                        disabled={loading}
+                                        disabled={completingRestock === r.id}
                                         className="h-8 text-xs bg-emerald-600 hover:bg-emerald-700 flex-shrink-0"
                                     >
                                         <CheckCircle2 className="h-3 w-3 mr-1" /> Done

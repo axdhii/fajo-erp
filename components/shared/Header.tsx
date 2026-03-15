@@ -1,5 +1,6 @@
 "use client"
-import { BookOpen, Calendar, ClipboardList, Globe, LayoutDashboard, LogOut, Sparkles, Users } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { BookOpen, Calendar, Clock, ClipboardList, Globe, LayoutDashboard, LogOut, Sparkles, Users } from 'lucide-react'
 import Link from 'next/link'
 import { useAuthStore } from '@/lib/store/auth-store'
 import { usePathname } from 'next/navigation'
@@ -7,6 +8,28 @@ import { usePathname } from 'next/navigation'
 export function Header() {
     const { profile, signOut } = useAuthStore()
     const pathname = usePathname()
+
+    // Live IST clock
+    const [currentTime, setCurrentTime] = useState<Date | null>(null)
+
+    useEffect(() => {
+        setCurrentTime(new Date())
+        const timer = setInterval(() => setCurrentTime(new Date()), 1000)
+        return () => clearInterval(timer)
+    }, [])
+
+    const timeStr = currentTime
+        ? currentTime.toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata',
+            weekday: 'short',
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric',
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+        })
+        : ''
 
     if (!profile) return null
 
@@ -77,6 +100,12 @@ export function Header() {
                 </div>
 
                 <div className="flex items-center gap-4">
+                    {timeStr && (
+                        <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-500 select-none">
+                            <Clock className="h-3.5 w-3.5" />
+                            <span>{timeStr}</span>
+                        </div>
+                    )}
                     <div className="flex flex-col items-end mr-2 hidden sm:flex">
                         <span className="text-sm font-semibold text-slate-700 leading-none">{profile.name || profile.role}</span>
                         <span className="text-xs text-slate-500 mt-1">{profile.name ? profile.role : 'Logged In'}</span>

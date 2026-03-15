@@ -14,7 +14,6 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
-import { supabase } from '@/lib/supabase/client'
 import {
     Wrench,
     CheckCircle2,
@@ -50,16 +49,13 @@ export function MaintenanceSheet({
 
         setIsProcessing(true)
         try {
-            // Update unit status + maintenance_reason
-            const { error } = await supabase
-                .from('units')
-                .update({
-                    status: 'MAINTENANCE',
-                    maintenance_reason: reason.trim(),
-                })
-                .eq('id', unit.id)
-
-            if (error) throw error
+            const res = await fetch('/api/overrides/force-status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ unitId: unit.id, newStatus: 'MAINTENANCE', reason: reason.trim() }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error)
 
             await updateUnitStatus(unit.id, 'MAINTENANCE')
             toast.success(`${unit.unit_number} is now under maintenance`)
@@ -75,15 +71,13 @@ export function MaintenanceSheet({
     const handleClearMaintenance = async () => {
         setIsProcessing(true)
         try {
-            const { error } = await supabase
-                .from('units')
-                .update({
-                    status: 'AVAILABLE',
-                    maintenance_reason: null,
-                })
-                .eq('id', unit.id)
-
-            if (error) throw error
+            const res = await fetch('/api/overrides/force-status', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ unitId: unit.id, newStatus: 'AVAILABLE' }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error)
 
             await updateUnitStatus(unit.id, 'AVAILABLE')
             toast.success(`${unit.unit_number} is back to Available`)
