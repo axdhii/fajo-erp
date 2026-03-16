@@ -12,7 +12,7 @@ export async function POST(request: NextRequest) {
         const supabase = await createClient()
         const body = await request.json()
 
-        const { bookingId, amountCash = 0, amountDigital = 0 } = body
+        const { bookingId, amountCash = 0, amountDigital = 0, force = false } = body
 
         if (!bookingId) {
             return NextResponse.json(
@@ -45,15 +45,16 @@ export async function POST(request: NextRequest) {
         // Handle both Array and Object returns from Supabase
         const paymentRecord = Array.isArray(booking.payments) ? booking.payments[0] : booking.payments
         const grandTotal = Number(booking.grand_total)
+        const advanceAmount = Number(booking.advance_amount) || 0
         const totalPaid = paymentRecord ? Number(paymentRecord.total_paid) : 0
-        const balanceDue = Math.max(0, grandTotal - totalPaid)
+        const balanceDue = Math.max(0, grandTotal - advanceAmount - totalPaid)
 
         const incomingCash = Number(amountCash)
         const incomingDigital = Number(amountDigital)
         const incomingTotal = incomingCash + incomingDigital
 
-        // Validate payment if balance is due
-        if (balanceDue > 0) {
+        // Validate payment if balance is due (skip when admin force-checkout)
+        if (!force && balanceDue > 0) {
             if (Math.abs(incomingTotal - balanceDue) > 0.01) {
                 return NextResponse.json(
                     { error: `Payment of ₹${incomingTotal} does not match balance of ₹${balanceDue}` },
@@ -72,6 +73,16 @@ export async function POST(request: NextRequest) {
                     total_paid: Number(paymentRecord.total_paid) + incomingTotal
                 })
                 .eq('id', paymentRecord.id)
+        } else if (incomingTotal > 0 && !paymentRecord) {
+            // No existing payment record — insert a new one so money is not lost
+            await supabase
+                .from('payments')
+                .insert({
+                    booking_id: bookingId,
+                    amount_cash: incomingCash,
+                    amount_digital: incomingDigital,
+                    total_paid: incomingTotal,
+                })
         }
 
         // Update booking to CHECKED_OUT

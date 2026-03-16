@@ -143,7 +143,7 @@ export function HRClient({ hotelId, staffId }: HRClientProps) {
             .from('payroll')
             .select('*, staff:staff_id(name, role, base_salary)')
             .eq('hotel_id', hotelId)
-            .eq('month', payrollMonth)
+            .eq('month', payrollMonth + '-01')
             .order('created_at', { ascending: false })
         if (data) setPayrolls(data)
     }, [hotelId, payrollMonth])

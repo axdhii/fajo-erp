@@ -205,8 +205,9 @@ export function CheckoutSheet({
     })
 
     const grandTotal = booking ? Number(booking.grand_total) : 0
+    const advanceAmount = booking ? (Number(booking.advance_amount) || 0) : 0
     const totalPaid = payment ? Number(payment.total_paid) : 0
-    const balanceDue = Math.max(0, grandTotal - totalPaid)
+    const balanceDue = Math.max(0, grandTotal - advanceAmount - totalPaid)
 
     const cashInput = Number(amountCash) || 0
     const digitalInput = Number(amountDigital) || 0

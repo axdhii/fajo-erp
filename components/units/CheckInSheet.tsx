@@ -4,7 +4,6 @@ import { useState, useMemo, useEffect } from 'react'
 import type { UnitWithBooking } from '@/lib/store/unit-store'
 import type { GuestInput } from '@/lib/types'
 import { calculateBookingPrice } from '@/lib/pricing'
-import { useCurrentTime } from '@/lib/hooks/use-current-time'
 import {
     Sheet,
     SheetContent,
@@ -112,10 +111,14 @@ export function CheckInSheet({
         }
     }
 
-    const now = useCurrentTime()
+    // Capture check-in time once when sheet opens (not continuously)
+    const [checkInDate, setCheckInDate] = useState<Date>(new Date())
 
-    // Calculate check-in/check-out dates
-    const checkInDate = useMemo(() => now, [now]) // Uses dev time in dev mode
+    useEffect(() => {
+        if (open) {
+            setCheckInDate(new Date())
+        }
+    }, [open])
     const checkOutDate = useMemo(() => {
         if (manualCheckout) {
             const d = new Date(manualCheckout)
@@ -214,8 +217,7 @@ export function CheckInSheet({
             link.click()
             document.body.removeChild(link)
 
-            URL.revokeObjectURL(objectUrl)
-            updateGuest(index, 'aadhar_url', `saved#${fileName}`)
+            updateGuest(index, 'aadhar_url', `${objectUrl}#${fileName}`)
             toast.success(`Aadhar saved locally as ${fileName}`)
         } catch (err) {
             console.error('Download error:', err)
@@ -321,6 +323,11 @@ export function CheckInSheet({
     }
 
     const resetForm = () => {
+        guests.forEach(g => {
+            if (g.aadhar_url?.startsWith('blob:')) {
+                URL.revokeObjectURL(g.aadhar_url.split('#')[0])
+            }
+        })
         setGuests([emptyGuest()])
         setNumberOfDays(1)
         setManualCheckout('')

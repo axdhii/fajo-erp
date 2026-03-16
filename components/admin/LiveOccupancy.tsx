@@ -307,7 +307,7 @@ export function LiveOccupancy({ hotelId, hotels }: AdminTabProps) {
             const res = await fetch('/api/bookings/checkout', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ bookingId: unit.active_booking.id }),
+                body: JSON.stringify({ bookingId: unit.active_booking.id, force: true }),
             })
             const json = await res.json()
             if (!res.ok) throw new Error(json.error)
@@ -439,7 +439,8 @@ export function LiveOccupancy({ hotelId, hotels }: AdminTabProps) {
             : null
         const totalPaid = paymentRecord ? Number(paymentRecord.total_paid) : 0
         const grandTotal = booking ? Number(booking.grand_total) : 0
-        const balance = grandTotal - totalPaid
+        const advanceAmount = booking ? (Number(booking.advance_amount) || 0) : 0
+        const balance = grandTotal - advanceAmount - totalPaid
 
         return (
             <div key={unit.id} className="flex flex-col">
