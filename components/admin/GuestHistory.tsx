@@ -141,7 +141,6 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
             }
 
             const rows = (data || []) as unknown as GuestRow[]
-            setTotalCount(count || 0)
 
             // Filter by hotel if needed
             let filtered = rows
@@ -152,6 +151,9 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
                     return unit?.hotel_id === hotelId
                 })
             }
+
+            // Use filtered count when hotel filter is active, raw DB count otherwise
+            setTotalCount(hotelId ? filtered.length : (count || 0))
 
             // Aggregate by phone number
             const phoneMap = new Map<string, AggregatedGuest>()

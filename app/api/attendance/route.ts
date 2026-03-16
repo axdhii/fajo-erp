@@ -68,6 +68,19 @@ export async function POST(request: NextRequest) {
         const now = new Date()
         const shift = determineShift(now)
 
+        // Check if staff already has an active (not clocked out) attendance record
+        // This handles the midnight edge case because it checks status, not date boundaries
+        const { data: activeRecord } = await supabase
+            .from('attendance')
+            .select('id')
+            .eq('staff_id', staff_id)
+            .eq('status', 'CLOCKED_IN')
+            .maybeSingle()
+
+        if (activeRecord) {
+            return NextResponse.json({ error: 'Staff is already clocked in. Clock out first.' }, { status: 409 })
+        }
+
         // Check if already clocked in today for this shift
         const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) // YYYY-MM-DD
         const { data: existing } = await supabase

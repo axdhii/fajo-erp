@@ -122,13 +122,23 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        const now = getDevNow().toISOString()
+        const now = getDevNow()
+        const nowIso = now.toISOString()
 
         // Update all bookings: CONFIRMED → CHECKED_IN
+        const convertedBookingIds: string[] = []
+
         for (const b of allBookings) {
+            // Calculate original stay duration and recalculate checkout for late arrivals
+            const originalDuration = new Date(b.check_out).getTime() - new Date(b.check_in).getTime()
+            const newCheckOut = new Date(now.getTime() + originalDuration)
+            // Only extend if guest arrived late (new checkout is later than original)
+            const finalCheckOut = newCheckOut > new Date(b.check_out) ? newCheckOut.toISOString() : b.check_out
+
             const updateData: Record<string, string | number> = {
                 status: 'CHECKED_IN',
-                check_in: now,
+                check_in: nowIso,
+                check_out: finalCheckOut,
             }
 
             // Only apply grand total override for single (non-group) bookings
@@ -143,11 +153,22 @@ export async function POST(request: NextRequest) {
 
             if (updateError) {
                 console.error('Convert booking error:', updateError)
+
+                // Rollback already-converted bookings to prevent ghost check-ins
+                if (convertedBookingIds.length > 0) {
+                    await supabase
+                        .from('bookings')
+                        .update({ status: 'CONFIRMED' })
+                        .in('id', convertedBookingIds)
+                }
+
                 return NextResponse.json(
                     { error: 'Failed to convert reservation' },
                     { status: 500 }
                 )
             }
+
+            convertedBookingIds.push(b.id)
         }
 
         // Insert payment records — distribute across all bookings proportionally

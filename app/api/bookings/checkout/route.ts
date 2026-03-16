@@ -53,13 +53,27 @@ export async function POST(request: NextRequest) {
 
             if (groupBookings && groupBookings.length > 0) {
                 // Update all sibling bookings to CHECKED_OUT
+                // Keep original check_out (the paid-for checkout time)
+                // Append actual departure time to notes
                 const siblingIds = groupBookings.map(b => b.id)
                 const siblingUnitIds = groupBookings.map(b => b.unit_id)
+                const actualDeparture = getDevNow().toISOString()
 
-                await supabase
+                // Fetch sibling notes so we can append departure time
+                const { data: siblingDetails } = await supabase
                     .from('bookings')
-                    .update({ status: 'CHECKED_OUT', check_out: getDevNow().toISOString() })
+                    .select('id, notes')
                     .in('id', siblingIds)
+
+                for (const sib of (siblingDetails || [])) {
+                    await supabase
+                        .from('bookings')
+                        .update({
+                            status: 'CHECKED_OUT',
+                            notes: (sib.notes ? sib.notes + ' | ' : '') + `[Checked out: ${actualDeparture}]`,
+                        })
+                        .eq('id', sib.id)
+                }
 
                 // Set all sibling units to DIRTY
                 await supabase
@@ -113,11 +127,13 @@ export async function POST(request: NextRequest) {
         }
 
         // Update booking to CHECKED_OUT
+        // Keep original check_out (the paid-for checkout time)
+        // Append actual departure time to notes
         const { error: bookingUpdateError } = await supabase
             .from('bookings')
             .update({
                 status: 'CHECKED_OUT',
-                check_out: getDevNow().toISOString(),
+                notes: (booking.notes ? booking.notes + ' | ' : '') + `[Checked out: ${getDevNow().toISOString()}]`,
             })
             .eq('id', bookingId)
 

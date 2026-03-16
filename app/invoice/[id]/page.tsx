@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 import PrintTrigger from './PrintTrigger'
 import { Building2, Phone, MapPin } from 'lucide-react'
 
@@ -23,6 +23,11 @@ export default async function InvoicePage(props: InvoicePageProps) {
     const bookingId = params.id
 
     const supabase = await createClient()
+
+    const { data: { user } } = await supabase.auth.getUser()
+    if (!user) {
+        redirect('/login')
+    }
 
     const { data: booking, error } = await supabase
         .from('bookings')

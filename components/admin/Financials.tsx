@@ -232,7 +232,8 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
         }
 
         setPayments(rows)
-        setHasMore((data || []).length === PAGE_SIZE)
+        // Use filtered count for hasMore when hotel filter is active
+        setHasMore(hotelId ? rows.length > 0 && (data || []).length === PAGE_SIZE : (data || []).length === PAGE_SIZE)
     }, [hotelId, dateFrom, dateTo, page])
 
     // ── Effects ──

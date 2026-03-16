@@ -58,11 +58,7 @@ export async function PATCH(request: Request) {
             pseudoIst.setUTCHours(pseudoIst.getUTCHours() + amount)
         } else if (extendType === 'DAYS') {
             pseudoIst.setUTCDate(pseudoIst.getUTCDate() + amount)
-            if (booking.unit.type === 'DORM') {
-                pseudoIst.setUTCHours(10, 0, 0, 0)
-            } else {
-                pseudoIst.setUTCHours(11, 0, 0, 0)
-            }
+            // Don't reset time — preserve any previous hourly extensions
         } else {
             return NextResponse.json({ error: 'Invalid extend type' }, { status: 400 })
         }
