@@ -198,8 +198,9 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
 
         // Filter client-side: where total_paid < grand_total, and by hotel
         const rows = (data || []).filter(b => {
-            const paid = (b.payments as { total_paid: number }[])?.[0]?.total_paid || 0
-            return paid < Number(b.grand_total)
+            const paymentsArr = Array.isArray(b.payments) ? b.payments : b.payments ? [b.payments] : []
+            const paid = paymentsArr.reduce((sum: number, p: { total_paid: number }) => sum + Number(p.total_paid || 0), 0)
+            return paid < Number(b.grand_total) && Number(b.grand_total) > 0
         }).filter(b => {
             if (!hotelId) return true
             const unit = b.unit as unknown as { hotel_id: string }
@@ -451,7 +452,8 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                                 </thead>
                                 <tbody>
                                     {outstanding.map(b => {
-                                        const paid = b.payments?.[0]?.total_paid || 0
+                                        const paymentsArr = Array.isArray(b.payments) ? b.payments : b.payments ? [b.payments] : []
+                                        const paid = paymentsArr.reduce((sum: number, p: { total_paid: number }) => sum + Number(p.total_paid || 0), 0)
                                         const due = Number(b.grand_total) - paid
                                         const unit = b.unit as unknown as { unit_number: string; hotel_id: string }
                                         return (
