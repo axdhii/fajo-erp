@@ -42,6 +42,33 @@ export async function POST(request: NextRequest) {
             )
         }
 
+        // Handle group dorm checkout — process all beds in the group
+        if (booking.group_id) {
+            const { data: groupBookings } = await supabase
+                .from('bookings')
+                .select('id, unit_id')
+                .eq('group_id', booking.group_id)
+                .eq('status', 'CHECKED_IN')
+                .neq('id', bookingId)  // exclude the primary booking (handled below)
+
+            if (groupBookings && groupBookings.length > 0) {
+                // Update all sibling bookings to CHECKED_OUT
+                const siblingIds = groupBookings.map(b => b.id)
+                const siblingUnitIds = groupBookings.map(b => b.unit_id)
+
+                await supabase
+                    .from('bookings')
+                    .update({ status: 'CHECKED_OUT', check_out: getDevNow().toISOString() })
+                    .in('id', siblingIds)
+
+                // Set all sibling units to DIRTY
+                await supabase
+                    .from('units')
+                    .update({ status: 'DIRTY' })
+                    .in('id', siblingUnitIds)
+            }
+        }
+
         // Handle both Array and Object returns from Supabase
         const paymentRecord = Array.isArray(booking.payments) ? booking.payments[0] : booking.payments
         const grandTotal = Number(booking.grand_total)

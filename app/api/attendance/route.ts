@@ -126,6 +126,16 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'validation_status must be APPROVED or LATE' }, { status: 400 })
         }
 
+        // Guard: reject if already validated (not PENDING_REVIEW)
+        const { data: existing } = await supabase
+            .from('attendance').select('validation_status').eq('id', attendance_id).single()
+        if (!existing) {
+            return NextResponse.json({ error: 'Record not found' }, { status: 404 })
+        }
+        if (existing.validation_status !== 'PENDING_REVIEW') {
+            return NextResponse.json({ error: 'Already validated' }, { status: 409 })
+        }
+
         const { data, error } = await supabase
             .from('attendance')
             .update({

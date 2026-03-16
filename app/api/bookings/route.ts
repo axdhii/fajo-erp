@@ -165,6 +165,12 @@ export async function POST(request: NextRequest) {
 
         if (bookingError) {
             console.error('Booking insert error:', bookingError)
+            if (bookingError.code === '23505') {
+                return NextResponse.json(
+                    { error: 'This unit is already checked in. Please refresh.' },
+                    { status: 409 }
+                )
+            }
             return NextResponse.json(
                 { error: 'Failed to create booking' },
                 { status: 500 }
@@ -207,7 +213,10 @@ export async function POST(request: NextRequest) {
 
         if (paymentError) {
             console.error('Payment insert error:', paymentError)
-            // Non-fatal — booking still succeeds
+            // Rollback: delete guests and booking
+            await supabase.from('guests').delete().eq('booking_id', booking.id)
+            await supabase.from('bookings').delete().eq('id', booking.id)
+            return NextResponse.json({ error: 'Failed to record payment. Check-in rolled back.' }, { status: 500 })
         }
 
         // Update unit status to OCCUPIED

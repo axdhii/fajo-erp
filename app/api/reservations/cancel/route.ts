@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { checkConflict } from '@/lib/conflict'
 
 // PATCH /api/reservations — Cancel or update a reservation
 // Supports group bookings: if the booking has a group_id, all bookings in the group are affected
@@ -123,6 +124,22 @@ export async function PATCH(request: NextRequest) {
                     { error: 'No valid fields to update' },
                     { status: 400 }
                 )
+            }
+
+            // Conflict check when dates are being changed
+            if (sanitizedUpdates.check_in || sanitizedUpdates.check_out) {
+                const conflict = await checkConflict({
+                    unitId: booking.unit_id,
+                    checkIn: new Date((sanitizedUpdates.check_in as string) || booking.check_in),
+                    checkOut: new Date((sanitizedUpdates.check_out as string) || booking.check_out),
+                    excludeBookingId: bookingId,
+                })
+                if (conflict.hasConflict) {
+                    return NextResponse.json(
+                        { error: 'Date change conflicts with another booking' },
+                        { status: 409 }
+                    )
+                }
             }
 
             const { error: updateError } = await supabase

@@ -113,9 +113,27 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'ticket_id is required' }, { status: 400 })
         }
 
+        // Fetch current ticket to guard against invalid transitions
+        const { data: currentTicket, error: ticketFetchError } = await supabase
+            .from('maintenance_tickets')
+            .select('id, status')
+            .eq('id', ticket_id)
+            .single()
+
+        if (ticketFetchError || !currentTicket) {
+            return NextResponse.json({ error: 'Maintenance ticket not found' }, { status: 404 })
+        }
+
         const updates: Record<string, unknown> = {}
 
         if (status) {
+            const validStatuses = ['OPEN', 'IN_PROGRESS', 'RESOLVED']
+            if (!validStatuses.includes(status)) {
+                return NextResponse.json({ error: `Invalid status. Allowed: ${validStatuses.join(', ')}` }, { status: 400 })
+            }
+            if (status === 'RESOLVED' && currentTicket.status === 'RESOLVED') {
+                return NextResponse.json({ error: 'Ticket is already resolved' }, { status: 409 })
+            }
             updates.status = status
             if (status === 'RESOLVED') {
                 updates.resolved_at = new Date().toISOString()

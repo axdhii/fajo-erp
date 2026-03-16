@@ -99,6 +99,21 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'request_id is required' }, { status: 400 })
         }
 
+        // Fetch current request to guard against re-completion
+        const { data: currentRequest, error: requestFetchError } = await supabase
+            .from('restock_requests')
+            .select('id, status')
+            .eq('id', request_id)
+            .single()
+
+        if (requestFetchError || !currentRequest) {
+            return NextResponse.json({ error: 'Restock request not found' }, { status: 404 })
+        }
+
+        if (currentRequest.status === 'DONE') {
+            return NextResponse.json({ error: 'Restock request is already completed' }, { status: 409 })
+        }
+
         const { data, error } = await supabase
             .from('restock_requests')
             .update({
