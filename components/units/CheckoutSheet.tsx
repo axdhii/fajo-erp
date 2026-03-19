@@ -334,7 +334,7 @@ export function CheckoutSheet({
 
                                 {Number(booking.surcharge) > 0 && (
                                     <div className="flex justify-between text-amber-600 font-medium">
-                                        <span>Extra Head Surcharge</span>
+                                        <span>Additional Charges</span>
                                         <span>
                                             +₹{Number(booking.surcharge).toLocaleString('en-IN')}
                                         </span>

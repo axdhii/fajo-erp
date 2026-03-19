@@ -88,6 +88,7 @@ export function CheckInSheet({
     const [conflictError, setConflictError] = useState<string | null>(null)
     const [successBookingId, setSuccessBookingId] = useState<string | null>(null)
     const [isBypass, setIsBypass] = useState(false)
+    const [aadharBypass, setAadharBypass] = useState(false)
 
     // Countdown timer for emergency bypass
     useEffect(() => {
@@ -131,11 +132,7 @@ export function CheckInSheet({
             d.setDate(d.getDate() + numberOfDays)
             d.setHours(10, 0, 0, 0)
         } else {
-            if (checkInDate.getHours() < 12) {
-                d.setDate(d.getDate() + (numberOfDays - 1))
-            } else {
-                d.setDate(d.getDate() + numberOfDays)
-            }
+            d.setDate(d.getDate() + numberOfDays)
             d.setHours(11, 0, 0, 0)
         }
         return d
@@ -240,7 +237,7 @@ export function CheckInSheet({
                 toast.error(`Guest ${i + 1}: Phone number must be exactly 10 digits`)
                 return false
             }
-            if (!guests[i].aadhar_url) {
+            if (!aadharBypass && !guests[i].aadhar_url) {
                 toast.error(`Guest ${i + 1}: Aadhar photo is mandatory`)
                 return false
             }
@@ -336,6 +333,7 @@ export function CheckInSheet({
         setAmountDigital('')
         setPayLater(false)
         setIsBypass(false)
+        setAadharBypass(false)
         setBypassTimer(0)
         setConflictError(null)
         setSuccessBookingId(null)
@@ -491,6 +489,19 @@ export function CheckInSheet({
                                 className="h-9 text-sm bg-white"
                             />
                         </div>
+                    </div>
+
+                    {/* Aadhar Bypass Toggle */}
+                    <div className="flex items-center gap-3 px-1 py-2">
+                        <label className="flex items-center gap-2 cursor-pointer text-sm">
+                            <input
+                                type="checkbox"
+                                checked={aadharBypass}
+                                onChange={(e) => setAadharBypass(e.target.checked)}
+                                className="rounded border-slate-300"
+                            />
+                            <span className="text-slate-600">Skip Aadhar Upload</span>
+                        </label>
                     </div>
 
                     {/* Guest List */}

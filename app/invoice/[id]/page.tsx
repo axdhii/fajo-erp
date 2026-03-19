@@ -10,11 +10,13 @@ interface InvoicePageProps {
 function formatDate(dateString: string | null) {
     if (!dateString) return '—'
     return new Date(dateString).toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
         day: '2-digit',
         month: 'short',
         year: 'numeric',
         hour: '2-digit',
         minute: '2-digit',
+        hour12: true,
     })
 }
 
@@ -192,8 +194,8 @@ export default async function InvoicePage(props: InvoicePageProps) {
                         {Number(booking.surcharge) > 0 && (
                             <tr>
                                 <td className="py-4 font-medium text-slate-900">
-                                    Extra Guest Surcharge
-                                    <span className="block text-xs text-slate-500 font-normal mt-0.5">Surcharge for group sizes exceeding standard occupancy</span>
+                                    Additional Charges
+                                    <span className="block text-xs text-slate-500 font-normal mt-0.5">Extra guest surcharges, extension fees, and other charges</span>
                                 </td>
                                 <td className="py-4 font-semibold text-slate-900 text-right">
                                     {Number(booking.surcharge).toLocaleString('en-IN')}
@@ -226,13 +228,26 @@ export default async function InvoicePage(props: InvoicePageProps) {
                     )}
                     
                     <div className="mt-4 border-t-2 border-slate-900 pt-4 flex justify-between items-center">
-                        <span className="text-lg font-black tracking-tight text-slate-900">
-                            {balanceDue > 0 ? 'Balance Due' : 'Paid in Full'}
-                        </span>
-                        <span className={`text-2xl font-black ${balanceDue > 0 ? 'text-slate-900' : 'text-emerald-600'}`}>
-                            ₹{balanceDue.toLocaleString('en-IN')}
+                        <span className="text-lg font-bold text-slate-800">Grand Total</span>
+                        <span className="text-2xl font-black text-slate-900">
+                            ₹{Number(booking.grand_total).toLocaleString('en-IN')}
                         </span>
                     </div>
+
+                    {balanceDue > 0 ? (
+                        <div className="flex justify-between items-center mt-2 pt-2 border-t border-red-200">
+                            <span className="text-sm font-bold text-red-700">Balance Due</span>
+                            <span className="text-xl font-black text-red-600">
+                                ₹{balanceDue.toLocaleString('en-IN')}
+                            </span>
+                        </div>
+                    ) : (
+                        <div className="flex justify-center mt-2 pt-2 border-t border-emerald-200">
+                            <span className="text-sm font-bold text-emerald-600 flex items-center gap-1">
+                                ✓ Paid in Full
+                            </span>
+                        </div>
+                    )}
                 </div>
             </div>
 

@@ -58,6 +58,7 @@ export function ReservationDetail({
     const [uploadingIndex, setUploadingIndex] = useState<number | null>(null)
     const [guestData, setGuestData] = useState<GuestDataItem[]>([])
     const [groupBookings, setGroupBookings] = useState<Booking[]>([])
+    const [aadharBypass, setAadharBypass] = useState(false)
 
     // Fetch group siblings when booking has group_id
     useEffect(() => {
@@ -164,7 +165,7 @@ export function ReservationDetail({
         }
 
         const isBypassEnabled = typeof window !== 'undefined' && localStorage.getItem('fajo_bypass_credentials') === 'true'
-        if (!isBypassEnabled) {
+        if (!isBypassEnabled && !aadharBypass) {
             const missingAadhar = guestData.find((g) => !g.aadhar_url)
             if (missingAadhar) {
                 toast.error(`Aadhar photo is required for ${missingAadhar.name || 'all guests'}`)
@@ -281,6 +282,7 @@ export function ReservationDetail({
         setAmountCash('')
         setAmountDigital('')
         setShowPayment(false)
+        setAadharBypass(false)
     }
 
     const handleOpenChange = (openState: boolean) => {
@@ -528,6 +530,19 @@ export function ReservationDetail({
                                 </>
                             ) : (
                                 <>
+                                    {/* Aadhar Bypass Toggle */}
+                                    <div className="flex items-center gap-3 px-1 py-2">
+                                        <label className="flex items-center gap-2 cursor-pointer text-sm">
+                                            <input
+                                                type="checkbox"
+                                                checked={aadharBypass}
+                                                onChange={(e) => setAadharBypass(e.target.checked)}
+                                                className="rounded border-slate-300"
+                                            />
+                                            <span className="text-slate-600">Skip Aadhar Upload</span>
+                                        </label>
+                                    </div>
+
                                     {/* Payment Collection */}
                                     <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 space-y-3">
                                         <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-600">
