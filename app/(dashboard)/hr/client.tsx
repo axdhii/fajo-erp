@@ -453,6 +453,7 @@ export function HRClient({ hotelId, staffId }: HRClientProps) {
             </div>
 
             {/* Tabs */}
+            <div className="overflow-x-auto scrollbar-hide">
             <div className="flex bg-white rounded-xl p-1 border border-slate-200 shadow-sm w-fit">
                 {tabs.map(t => (
                     <button
@@ -475,6 +476,7 @@ export function HRClient({ hotelId, staffId }: HRClientProps) {
                         )}
                     </button>
                 ))}
+            </div>
             </div>
 
             {/* ======================== ATTENDANCE TAB ======================== */}

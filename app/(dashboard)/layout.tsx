@@ -37,7 +37,7 @@ export default function DashboardLayout({
             <main className="container mx-auto px-4 py-8">
                 {children}
             </main>
-            <Toaster position="top-right" richColors />
+            <Toaster position="bottom-center" richColors />
         </div>
     )
 }

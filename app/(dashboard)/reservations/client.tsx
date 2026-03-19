@@ -338,7 +338,7 @@ export function ReservationsClient({ hotelId }: ReservationsClientProps) {
             </div>
 
             {/* Date Navigator */}
-            <div className="flex items-center gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
+            <div className="flex flex-wrap items-center gap-2 sm:gap-3 bg-white border border-slate-200 rounded-2xl px-4 py-3 shadow-sm">
                 <button
                     onClick={() => navigateDay(-1)}
                     className="flex h-9 w-9 items-center justify-center rounded-xl border border-slate-200 hover:bg-slate-50 transition-colors"
@@ -361,9 +361,12 @@ export function ReservationsClient({ hotelId }: ReservationsClientProps) {
                 >
                     <ChevronRight className="h-4 w-4 text-slate-600" />
                 </button>
-                <div className="ml-2">
-                    <p className="text-sm font-bold text-slate-800">
+                <div className="ml-2 min-w-0">
+                    <p className="text-sm font-bold text-slate-800 hidden sm:block">
                         {formatDate(selectedDate)}
+                    </p>
+                    <p className="text-sm font-bold text-slate-800 sm:hidden">
+                        {selectedDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
                     </p>
                     <p className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold mt-0.5">
                         {todayView ? "Today's Status + Bookings" : 'Bookings for this date'}

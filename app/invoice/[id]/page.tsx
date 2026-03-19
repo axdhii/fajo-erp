@@ -67,7 +67,7 @@ export default async function InvoicePage(props: InvoicePageProps) {
     const balanceDue = Math.max(0, Number(booking.grand_total) - totalPaid)
 
     return (
-        <div className="mx-auto max-w-4xl p-8 sm:p-12">
+        <div className="mx-auto max-w-4xl p-4 sm:p-8 md:p-12">
             <PrintTrigger />
             
             {/* Header */}
@@ -100,7 +100,7 @@ export default async function InvoicePage(props: InvoicePageProps) {
             </header>
 
             {/* Meta Info */}
-            <div className="grid grid-cols-2 gap-8 py-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-8 py-8">
                 <div>
                     <h2 className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">
                         Billed To

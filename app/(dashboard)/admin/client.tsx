@@ -154,23 +154,27 @@ export function AdminClient({ hotelId, staffId }: AdminClientProps) {
             </div>
 
             {/* ==================== Tab Bar ==================== */}
-            <div className="overflow-x-auto -mx-2 px-2 pb-1">
-                <div className="flex bg-white rounded-xl p-1 border border-slate-200 shadow-sm w-fit min-w-fit">
-                    {TABS.map(t => (
-                        <button
-                            key={t.key}
-                            onClick={() => setTab(t.key)}
-                            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg cursor-pointer transition-all whitespace-nowrap ${
-                                tab === t.key
-                                    ? 'bg-slate-900 text-white shadow-sm'
-                                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-                            }`}
-                        >
-                            {t.icon}
-                            {t.label}
-                        </button>
-                    ))}
+            <div className="relative">
+                <div className="overflow-x-auto -mx-2 px-2 pb-1 scrollbar-hide">
+                    <div className="flex bg-white rounded-xl p-1 border border-slate-200 shadow-sm w-fit min-w-fit">
+                        {TABS.map(t => (
+                            <button
+                                key={t.key}
+                                onClick={() => setTab(t.key)}
+                                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg cursor-pointer transition-all whitespace-nowrap ${
+                                    tab === t.key
+                                        ? 'bg-slate-900 text-white shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                                }`}
+                            >
+                                {t.icon}
+                                {t.label}
+                            </button>
+                        ))}
+                    </div>
                 </div>
+                {/* Right fade indicator for mobile scroll hint */}
+                <div className="absolute right-0 top-0 bottom-1 w-8 bg-gradient-to-l from-slate-50 to-transparent pointer-events-none md:hidden" />
             </div>
 
             {/* ==================== Active Tab Content ==================== */}

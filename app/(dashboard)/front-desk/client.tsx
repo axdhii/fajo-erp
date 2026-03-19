@@ -295,7 +295,7 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
                                         </span>
                                     )}
                                     <span className="font-bold">{item.unit.unit_number}</span>
-                                    <span className="text-[10px] opacity-70">
+                                    <span className="text-[10px] opacity-70 truncate max-w-[120px]">
                                         {item.guestName}
                                     </span>
                                 </div>
@@ -391,14 +391,14 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
                             <div className="space-y-2">
                                 <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider">Currently Clocked In</h3>
                                 {clockedIn.map(a => (
-                                    <div key={a.id} className="flex items-center justify-between bg-white rounded-xl px-4 py-2.5 border border-violet-100">
-                                        <div className="flex items-center gap-2">
-                                            <span className="font-semibold text-sm text-slate-800">{a.staff?.name || 'Unknown'}</span>
-                                            <span className="text-[10px] text-slate-400">{a.staff?.role}</span>
-                                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${a.shift === 'DAY' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'}`}>
+                                    <div key={a.id} className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white rounded-xl px-4 py-2.5 border border-violet-100">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <span className="font-semibold text-sm text-slate-800 truncate">{a.staff?.name || 'Unknown'}</span>
+                                            <span className="text-[10px] text-slate-400 shrink-0">{a.staff?.role}</span>
+                                            <span className={`shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full ${a.shift === 'DAY' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'}`}>
                                                 {a.shift}
                                             </span>
-                                            <span className="text-[10px] text-slate-400">
+                                            <span className="text-[10px] text-slate-400 shrink-0">
                                                 {new Date(a.clock_in).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })}
                                             </span>
                                         </div>
