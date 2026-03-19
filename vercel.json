@@ -1,0 +1,16 @@
+{
+    "crons": [
+        {
+            "path": "/api/cron/attendance-safety",
+            "schedule": "45 1 * * *"
+        },
+        {
+            "path": "/api/cron/attendance-safety",
+            "schedule": "45 13 * * *"
+        },
+        {
+            "path": "/api/cron/dorm-checkout",
+            "schedule": "0 5 * * *"
+        }
+    ]
+}

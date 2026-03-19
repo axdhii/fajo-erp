@@ -17,7 +17,7 @@ interface AuthState {
     signOut: () => Promise<void>
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
     user: null,
     profile: null,
     isLoading: true,
@@ -47,6 +47,22 @@ export const useAuthStore = create<AuthState>((set) => ({
     },
 
     signOut: async () => {
+        const state = get()
+        const profile = state.profile
+
+        // Auto clock-out for property-level roles
+        if (profile && ['FrontDesk', 'Housekeeping', 'HR'].includes(profile.role)) {
+            try {
+                await fetch('/api/attendance/clock-out', {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ staff_id: profile.id }),
+                })
+            } catch {
+                // Silently ignore clock-out errors — don't block sign-out
+            }
+        }
+
         await supabase.auth.signOut()
         set({ user: null, profile: null })
     }

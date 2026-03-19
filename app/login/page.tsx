@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -23,6 +23,8 @@ import {
     AlertTriangle,
     MapPin,
     RefreshCw,
+    Camera,
+    CheckCircle2,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -95,12 +97,18 @@ const ROLE_META: Record<RoleKey, RoleInfo> = {
 }
 
 /* ------------------------------------------------------------------ */
+/*  Roles that require photo clock-in after login                      */
+/* ------------------------------------------------------------------ */
+
+const AUTO_CLOCK_ROLES: RoleKey[] = ['FrontDesk', 'Housekeeping', 'HR']
+
+/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
 export default function LoginPage() {
     // Wizard state
-    const [step, setStep] = useState<1 | 2 | 3>(1)
+    const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
 
     // Data
     const [hotels, setHotels] = useState<Hotel[]>([])
@@ -120,6 +128,12 @@ export default function LoginPage() {
     const [hotelsError, setHotelsError] = useState<string | null>(null)
     const [rolesLoading, setRolesLoading] = useState(false)
     const [signingIn, setSigningIn] = useState(false)
+
+    // Step 4: Photo clock-in state
+    const [clockInPhoto, setClockInPhoto] = useState<string | null>(null)
+    const [cameraActive, setCameraActive] = useState(false)
+    const [clockingIn, setClockingIn] = useState(false)
+    const videoRef = useRef<HTMLVideoElement>(null)
 
     /* -------------------------------------------------------------- */
     /*  Already authenticated? Redirect.                               */
@@ -236,6 +250,10 @@ export default function LoginPage() {
             setSelectedRole(null)
             setPhone('')
             setPassword('')
+        } else if (step === 4) {
+            // Skip clock-in and go to dashboard
+            stopCamera()
+            window.location.href = '/'
         }
     }
 
@@ -262,6 +280,14 @@ export default function LoginPage() {
             }
 
             toast.success('Signed in successfully')
+
+            // Property-level roles get photo clock-in step
+            if (selectedRole && AUTO_CLOCK_ROLES.includes(selectedRole)) {
+                setSigningIn(false)
+                setStep(4)
+                return
+            }
+
             window.location.href = '/'
         } catch {
             toast.error('Invalid phone number or password')
@@ -269,6 +295,126 @@ export default function LoginPage() {
             setSigningIn(false)
         }
     }
+
+    /* -------------------------------------------------------------- */
+    /*  Step 4: Camera & Clock-in functions                            */
+    /* -------------------------------------------------------------- */
+
+    const startCamera = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: { facingMode: 'user', width: 320, height: 240 },
+            })
+            if (videoRef.current) {
+                videoRef.current.srcObject = stream
+                videoRef.current.play()
+            }
+            setCameraActive(true)
+        } catch {
+            toast.error('Camera access denied')
+        }
+    }
+
+    const capturePhoto = () => {
+        if (!videoRef.current) return
+        const canvas = document.createElement('canvas')
+        canvas.width = 320
+        canvas.height = 240
+        const ctx = canvas.getContext('2d')
+        if (ctx) {
+            ctx.drawImage(videoRef.current, 0, 0, 320, 240)
+            setClockInPhoto(canvas.toDataURL('image/jpeg', 0.6))
+        }
+        stopCamera()
+    }
+
+    const stopCamera = () => {
+        if (videoRef.current?.srcObject) {
+            const stream = videoRef.current.srcObject as MediaStream
+            stream.getTracks().forEach((t) => t.stop())
+            videoRef.current.srcObject = null
+        }
+        setCameraActive(false)
+    }
+
+    const handleClockIn = async () => {
+        setClockingIn(true)
+        try {
+            const {
+                data: { user },
+            } = await supabase.auth.getUser()
+            if (!user) {
+                window.location.href = '/'
+                return
+            }
+
+            const { data: profile } = await supabase
+                .from('staff')
+                .select('id, hotel_id')
+                .eq('user_id', user.id)
+                .single()
+            if (!profile) {
+                window.location.href = '/'
+                return
+            }
+
+            const res = await fetch('/api/attendance', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    staff_id: profile.id,
+                    hotel_id: profile.hotel_id,
+                    photo: clockInPhoto,
+                    clock_in_method: 'AUTO_LOGIN',
+                }),
+            })
+
+            if (res.status === 409) {
+                // Already clocked in (e.g. browser crash re-login) — skip silently
+                toast.info('Already clocked in — resuming session')
+            } else if (!res.ok) {
+                const json = await res.json()
+                toast.error(json.error || 'Clock-in failed')
+            } else {
+                const json = await res.json()
+                toast.success(`Clocked in — ${json.shift} shift`)
+            }
+        } catch {
+            toast.error('Clock-in failed')
+        } finally {
+            setClockingIn(false)
+            window.location.href = '/'
+        }
+    }
+
+    const handleSkipClockIn = () => {
+        stopCamera()
+        window.location.href = '/'
+    }
+
+    // Auto-start camera when entering step 4
+    useEffect(() => {
+        if (step === 4) {
+            startCamera()
+        }
+        return () => {
+            if (step === 4) stopCamera()
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [step])
+
+    // Cleanup camera on unmount
+    useEffect(() => {
+        return () => stopCamera()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [])
+
+    /* -------------------------------------------------------------- */
+    /*  Derived state                                                  */
+    /* -------------------------------------------------------------- */
+
+    const needsClockIn = selectedRole ? AUTO_CLOCK_ROLES.includes(selectedRole) : false
+    const totalSteps = needsClockIn ? 4 : 3
 
     /* -------------------------------------------------------------- */
     /*  Initial loading state                                          */
@@ -306,7 +452,7 @@ export default function LoginPage() {
             {/* Step indicator */}
             <div className="flex justify-center px-4 pb-6 sm:pb-8">
                 <div className="flex items-center gap-2">
-                    {[1, 2, 3].map((s) => (
+                    {Array.from({ length: totalSteps }, (_, i) => i + 1).map((s) => (
                         <div key={s} className="flex items-center gap-2">
                             <div
                                 className={`
@@ -314,7 +460,7 @@ export default function LoginPage() {
                                     ${s === step ? 'w-8 bg-emerald-500' : s < step ? 'w-2 bg-emerald-400' : 'w-2 bg-slate-200'}
                                 `}
                             />
-                            {s < 3 && (
+                            {s < totalSteps && (
                                 <div className={`w-4 h-px ${s < step ? 'bg-emerald-300' : 'bg-slate-200'}`} />
                             )}
                         </div>
@@ -582,6 +728,121 @@ export default function LoginPage() {
                                         )}
                                     </Button>
                                 </form>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* ============================================ */}
+                    {/*  STEP 4: Photo Capture + Clock-In             */}
+                    {/* ============================================ */}
+                    {step === 4 && (
+                        <div className="animate-in fade-in duration-300">
+                            {/* Header */}
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="h-10 w-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                                    <Camera className="h-5 w-5" />
+                                </div>
+                                <div className="flex-1">
+                                    <h2 className="text-lg font-semibold text-slate-900">
+                                        Clock In — Photo Verification
+                                    </h2>
+                                    <p className="text-sm text-slate-500">
+                                        {selectedHotel?.name} &middot; {selectedRole && ROLE_META[selectedRole]?.label}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-sm">
+                                <div className="flex flex-col items-center gap-5">
+                                    {/* Camera preview */}
+                                    {cameraActive && !clockInPhoto && (
+                                        <>
+                                            <div className="rounded-2xl border-2 border-slate-200 overflow-hidden bg-black">
+                                                <video
+                                                    ref={videoRef}
+                                                    autoPlay
+                                                    playsInline
+                                                    muted
+                                                    width={320}
+                                                    height={240}
+                                                    className="block"
+                                                />
+                                            </div>
+                                            <Button
+                                                type="button"
+                                                onClick={capturePhoto}
+                                                className="h-12 px-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-base shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98] gap-2"
+                                            >
+                                                <Camera className="h-5 w-5" />
+                                                Capture Photo
+                                            </Button>
+                                        </>
+                                    )}
+
+                                    {/* Waiting for camera */}
+                                    {!cameraActive && !clockInPhoto && (
+                                        <div className="flex flex-col items-center gap-3 py-8">
+                                            <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
+                                            <p className="text-sm text-slate-500">Starting camera...</p>
+                                        </div>
+                                    )}
+
+                                    {/* Photo preview after capture */}
+                                    {clockInPhoto && (
+                                        <>
+                                            <div className="rounded-2xl border-2 border-emerald-200 overflow-hidden">
+                                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                                <img
+                                                    src={clockInPhoto}
+                                                    alt="Clock-in photo"
+                                                    width={320}
+                                                    height={240}
+                                                    className="block"
+                                                />
+                                            </div>
+                                            <div className="flex gap-3 w-full">
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={() => {
+                                                        setClockInPhoto(null)
+                                                        startCamera()
+                                                    }}
+                                                    className="flex-1 h-12 rounded-xl font-semibold text-base"
+                                                >
+                                                    Retake
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    onClick={handleClockIn}
+                                                    disabled={clockingIn}
+                                                    className="flex-1 h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-base shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98] gap-2"
+                                                >
+                                                    {clockingIn ? (
+                                                        <>
+                                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                                            Clocking in...
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <CheckCircle2 className="h-5 w-5" />
+                                                            Clock In &amp; Continue
+                                                        </>
+                                                    )}
+                                                </Button>
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {/* Skip link */}
+                                    <button
+                                        type="button"
+                                        onClick={handleSkipClockIn}
+                                        className="text-sm text-slate-400 underline underline-offset-2 hover:text-slate-600 transition-colors mt-1"
+                                    >
+                                        Skip
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     )}

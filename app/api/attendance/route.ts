@@ -55,13 +55,13 @@ export async function POST(request: NextRequest) {
 
         const supabase = await createClient()
         const body = await request.json()
-        const { staff_id, hotel_id, photo } = body
+        const { staff_id, hotel_id, photo, clock_in_method } = body
 
         if (!staff_id || !hotel_id) {
             return NextResponse.json({ error: 'staff_id and hotel_id are required' }, { status: 400 })
         }
 
-        if (!photo) {
+        if (clock_in_method !== 'AUTO_LOGIN' && !photo) {
             return NextResponse.json({ error: 'Photo is required for clock-in' }, { status: 400 })
         }
 
@@ -105,6 +105,7 @@ export async function POST(request: NextRequest) {
                 clock_in: now.toISOString(),
                 clock_in_photo: photo || null,
                 status: 'CLOCKED_IN',
+                clock_in_method: clock_in_method || 'MANUAL',
             })
             .select('*, staff!attendance_staff_id_fkey(id, name, role)')
             .single()

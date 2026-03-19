@@ -10,22 +10,33 @@ export async function PATCH(request: NextRequest) {
 
         const supabase = await createClient()
         const body = await request.json()
-        const { attendance_id } = body
+        const { attendance_id, staff_id } = body
 
-        if (!attendance_id) {
-            return NextResponse.json({ error: 'attendance_id is required' }, { status: 400 })
+        let existing;
+
+        if (attendance_id) {
+            // Find by attendance_id (existing behavior)
+            const { data } = await supabase
+                .from('attendance')
+                .select('*')
+                .eq('id', attendance_id)
+                .eq('status', 'CLOCKED_IN')
+                .single()
+            existing = data
+        } else if (staff_id) {
+            // Find active CLOCKED_IN record by staff_id
+            const { data } = await supabase
+                .from('attendance')
+                .select('*')
+                .eq('staff_id', staff_id)
+                .eq('status', 'CLOCKED_IN')
+                .maybeSingle()
+            existing = data
         }
 
-        // Verify the record exists and is clocked in
-        const { data: existing, error: fetchErr } = await supabase
-            .from('attendance')
-            .select('*')
-            .eq('id', attendance_id)
-            .eq('status', 'CLOCKED_IN')
-            .single()
-
-        if (fetchErr || !existing) {
-            return NextResponse.json({ error: 'Attendance record not found or already clocked out' }, { status: 404 })
+        if (!existing) {
+            // No active clock-in found — return 200 with message instead of 404
+            return NextResponse.json({ message: 'No active clock-in found', skipped: true })
         }
 
         const { data, error } = await supabase
@@ -34,7 +45,7 @@ export async function PATCH(request: NextRequest) {
                 clock_out: new Date().toISOString(),
                 status: 'CLOCKED_OUT',
             })
-            .eq('id', attendance_id)
+            .eq('id', existing.id)
             .select('*, staff!attendance_staff_id_fkey(id, name, role)')
             .single()
 
