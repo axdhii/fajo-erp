@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
+import { supabase } from '@/lib/supabase/client'
 import {
     CalendarCheck,
     UserCheck,
@@ -59,6 +60,7 @@ export function ReservationDetail({
     const [guestData, setGuestData] = useState<GuestDataItem[]>([])
     const [groupBookings, setGroupBookings] = useState<Booking[]>([])
     const [aadharBypass, setAadharBypass] = useState(false)
+    const [aadharPreviews, setAadharPreviews] = useState<Record<number, string>>({})
 
     // Fetch group siblings when booking has group_id
     useEffect(() => {
@@ -177,9 +179,7 @@ export function ReservationDetail({
         try {
             const formattedGuests = guestData.map((g) => ({
                 ...g,
-                aadhar_url: g.aadhar_url?.startsWith('blob:')
-                    ? `LOCAL: ${g.aadhar_url.split('#')[1] || 'Saved_Locally'}`
-                    : (g.aadhar_url || null)
+                aadhar_url: g.aadhar_url || null,
             }))
 
             const res = await fetch('/api/reservations/convert', {
@@ -218,28 +218,41 @@ export function ReservationDetail({
         const file = e.target.files?.[0]
         if (!file) return
 
+        setUploadingIndex(index)
         try {
-            setUploadingIndex(index)
-            const fileExt = file.name.split('.').pop() || 'jpg'
-            const guestName = guestData[index]?.name?.trim()?.replace(/\s+/g, '_') || `Guest${index + 1}`
-            const dateStr = new Date().toLocaleDateString('en-GB').replace(/\//g, '-')
-            const aadharUnitNumber = guestData[index]?.unit_number || booking.unit?.unit_number || 'UNKNOWN'
-            const fileName = `Aadhar_Unit${aadharUnitNumber}_${guestName}_${dateStr}.${fileExt}`
+            // Compress the image before uploading
+            const { compressImage } = await import('@/lib/utils/compress-image')
+            const compressed = await compressImage(file)
 
-            const objectUrl = URL.createObjectURL(file)
+            // Generate storage path: YYYY-MM/GuestName_Phone_Date_timestamp.jpg
+            const guestName = (guestData[index]?.name || 'Guest').replace(/[^a-zA-Z0-9]/g, '_')
+            const phone = guestData[index]?.phone || '0000000000'
+            const dateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+            const monthStr = dateStr.slice(0, 7) // YYYY-MM
+            const fileName = `${monthStr}/${guestName}_${phone}_${dateStr}_${Date.now()}.jpg`
 
-            const link = document.createElement('a')
-            link.href = objectUrl
-            link.download = fileName
-            document.body.appendChild(link)
-            link.click()
-            document.body.removeChild(link)
+            // Upload to Supabase Storage
+            const { error: uploadErr } = await supabase.storage
+                .from('aadhar-photos')
+                .upload(fileName, compressed, { contentType: 'image/jpeg', upsert: true })
 
-            handleGuestChange(guestData[index].id, 'aadhar_url', `${objectUrl}#${fileName}`)
-            toast.success(`Aadhar saved locally as ${fileName}`)
+            if (uploadErr) {
+                toast.error('Failed to upload Aadhar photo')
+                console.error('Upload error:', uploadErr)
+                return
+            }
+
+            // Store storage path in guest data (sent to API/DB)
+            handleGuestChange(guestData[index].id, 'aadhar_url', fileName)
+
+            // Keep a local blob preview for the UI
+            const previewUrl = URL.createObjectURL(compressed)
+            setAadharPreviews(prev => ({ ...prev, [index]: previewUrl }))
+
+            toast.success('Aadhar photo uploaded')
         } catch (err) {
-            console.error('Download error:', err)
-            toast.error('Failed to save Aadhar photo locally')
+            console.error('Aadhar upload error:', err)
+            toast.error('Failed to process Aadhar photo')
         } finally {
             setUploadingIndex(null)
         }
@@ -279,6 +292,9 @@ export function ReservationDetail({
     }
 
     const resetPayment = () => {
+        // Clean up blob preview URLs to prevent memory leaks
+        Object.values(aadharPreviews).forEach(url => URL.revokeObjectURL(url))
+        setAadharPreviews({})
         setAmountCash('')
         setAmountDigital('')
         setShowPayment(false)
@@ -407,13 +423,19 @@ export function ReservationDetail({
                                         <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                                             Aadhar Photo *
                                         </Label>
-                                        {g.aadhar_url ? (
+                                        {(aadharPreviews[i] || g.aadhar_url) ? (
                                             <div className="relative rounded-lg border border-emerald-200 bg-emerald-50/50 overflow-hidden">
-                                                <img
-                                                    src={g.aadhar_url}
-                                                    alt={`Aadhar - Guest ${i + 1}`}
-                                                    className="w-full h-28 object-cover"
-                                                />
+                                                {aadharPreviews[i] ? (
+                                                    <img
+                                                        src={aadharPreviews[i]}
+                                                        alt={`Aadhar - Guest ${i + 1}`}
+                                                        className="w-full h-28 object-cover"
+                                                    />
+                                                ) : (
+                                                    <div className="w-full h-28 flex items-center justify-center bg-emerald-50 text-emerald-600 text-xs font-medium">
+                                                        Aadhar photo on file
+                                                    </div>
+                                                )}
                                                 <div className="absolute top-2 right-2 flex items-center gap-1 bg-emerald-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
                                                     <CheckCircle2 className="h-3 w-3" />
                                                     Uploaded

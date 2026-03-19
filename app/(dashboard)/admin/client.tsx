@@ -9,6 +9,7 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
+import { Button } from '@/components/ui/button'
 import {
     Shield,
     LayoutDashboard,
@@ -21,6 +22,7 @@ import {
     Calendar,
     MapPin,
     Loader2,
+    Archive,
 } from 'lucide-react'
 import { CommandCenter } from '@/components/admin/CommandCenter'
 import { GuestHistory } from '@/components/admin/GuestHistory'
@@ -30,6 +32,7 @@ import { Financials } from '@/components/admin/Financials'
 import { OpsOverview } from '@/components/admin/OpsOverview'
 import { HROverview } from '@/components/admin/HROverview'
 import { ReservationsOverview } from '@/components/admin/ReservationsOverview'
+import { AadharArchive } from '@/components/admin/AadharArchive'
 
 // ============================================================
 // Shared props interface for all admin tab components
@@ -69,6 +72,7 @@ export function AdminClient({ hotelId, staffId }: AdminClientProps) {
     const [hotels, setHotels] = useState<{ id: string; name: string; city: string; status: string }[]>([])
     const [selectedHotelId, setSelectedHotelId] = useState<string | null>(null) // null = all hotels
     const [loadingHotels, setLoadingHotels] = useState(true)
+    const [archiveOpen, setArchiveOpen] = useState(false)
 
     // Fetch all hotels on mount
     useEffect(() => {
@@ -124,22 +128,28 @@ export function AdminClient({ hotelId, staffId }: AdminClientProps) {
                     </div>
                 </div>
 
-                {/* Hotel Selector */}
-                <div className="w-full sm:w-72">
-                    <Select value={selectorValue} onValueChange={handleHotelChange}>
-                        <SelectTrigger className="w-full bg-white border-slate-200">
-                            <MapPin className="h-4 w-4 mr-2 text-slate-500" />
-                            <SelectValue placeholder="Select scope" />
-                        </SelectTrigger>
-                        <SelectContent>
-                            <SelectItem value="all">All Hotels</SelectItem>
-                            {hotels.map(h => (
-                                <SelectItem key={h.id} value={h.id}>
-                                    {h.name} &mdash; {h.city}
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
+                {/* Hotel Selector + Archive */}
+                <div className="flex items-center gap-2 w-full sm:w-auto">
+                    <div className="flex-1 sm:w-72">
+                        <Select value={selectorValue} onValueChange={handleHotelChange}>
+                            <SelectTrigger className="w-full bg-white border-slate-200">
+                                <MapPin className="h-4 w-4 mr-2 text-slate-500" />
+                                <SelectValue placeholder="Select scope" />
+                            </SelectTrigger>
+                            <SelectContent>
+                                <SelectItem value="all">All Hotels</SelectItem>
+                                {hotels.map(h => (
+                                    <SelectItem key={h.id} value={h.id}>
+                                        {h.name} &mdash; {h.city}
+                                    </SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => setArchiveOpen(true)} className="shrink-0">
+                        <Archive className="h-4 w-4 mr-1" />
+                        Aadhar Archive
+                    </Button>
                 </div>
             </div>
 
@@ -174,6 +184,9 @@ export function AdminClient({ hotelId, staffId }: AdminClientProps) {
                 {tab === 'hr'           && <HROverview {...tabProps} />}
                 {tab === 'reservations' && <ReservationsOverview {...tabProps} />}
             </div>
+
+            {/* Aadhar Archive Modal */}
+            <AadharArchive open={archiveOpen} onClose={() => setArchiveOpen(false)} />
         </div>
     )
 }

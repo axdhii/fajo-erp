@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { toast } from 'sonner'
+import { supabase } from '@/lib/supabase/client'
 import {
     Plus,
     Minus,
@@ -89,6 +90,7 @@ export function CheckInSheet({
     const [successBookingId, setSuccessBookingId] = useState<string | null>(null)
     const [isBypass, setIsBypass] = useState(false)
     const [aadharBypass, setAadharBypass] = useState(false)
+    const [aadharPreviews, setAadharPreviews] = useState<Record<number, string>>({})
 
     // Countdown timer for emergency bypass
     useEffect(() => {
@@ -200,25 +202,39 @@ export function CheckInSheet({
 
         setUploadingIndex(index)
         try {
-            const fileExt = file.name.split('.').pop() || 'jpg'
-            const guestName = guests[index]?.name?.trim()?.replace(/\s+/g, '_') || `Guest${index + 1}`
-            const dateStr = new Date().toLocaleDateString('en-GB').replace(/\//g, '-')
-            const fileName = `Aadhar_Unit${unit.unit_number}_${guestName}_${dateStr}.${fileExt}`
+            // Compress the image before uploading
+            const { compressImage } = await import('@/lib/utils/compress-image')
+            const compressed = await compressImage(file)
 
-            const objectUrl = URL.createObjectURL(file)
+            // Generate storage path: YYYY-MM/GuestName_Phone_Date_timestamp.jpg
+            const guestName = (guests[index].name || 'Guest').replace(/[^a-zA-Z0-9]/g, '_')
+            const phone = guests[index].phone || '0000000000'
+            const dateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+            const monthStr = dateStr.slice(0, 7) // YYYY-MM
+            const fileName = `${monthStr}/${guestName}_${phone}_${dateStr}_${Date.now()}.jpg`
 
-            const link = document.createElement('a')
-            link.href = objectUrl
-            link.download = fileName
-            document.body.appendChild(link)
-            link.click()
-            document.body.removeChild(link)
+            // Upload to Supabase Storage
+            const { error: uploadErr } = await supabase.storage
+                .from('aadhar-photos')
+                .upload(fileName, compressed, { contentType: 'image/jpeg', upsert: true })
 
-            updateGuest(index, 'aadhar_url', `${objectUrl}#${fileName}`)
-            toast.success(`Aadhar saved locally as ${fileName}`)
+            if (uploadErr) {
+                toast.error('Failed to upload Aadhar photo')
+                console.error('Upload error:', uploadErr)
+                return
+            }
+
+            // Store storage path in guest state (sent to API/DB)
+            updateGuest(index, 'aadhar_url', fileName)
+
+            // Keep a local blob preview for the UI
+            const previewUrl = URL.createObjectURL(compressed)
+            setAadharPreviews(prev => ({ ...prev, [index]: previewUrl }))
+
+            toast.success('Aadhar photo uploaded')
         } catch (err) {
-            console.error('Download error:', err)
-            toast.error('Failed to save Aadhar photo locally')
+            console.error('Aadhar upload error:', err)
+            toast.error('Failed to process Aadhar photo')
         } finally {
             setUploadingIndex(null)
         }
@@ -270,11 +286,9 @@ export function CheckInSheet({
                         name: g.name.trim() || (isBypassEnabled ? `Dev Guest ${i + 1}` : ''),
                         phone: g.phone.trim() || (isBypassEnabled ? '0000000000' : ''),
                         aadhar_number: g.aadhar_number.trim() || null,
-                        aadhar_url: isBypassEnabled 
-                            ? 'https://ui-avatars.com/api/?name=Dev+Guest' 
-                            : (g.aadhar_url?.startsWith('blob:') 
-                                ? `LOCAL: ${g.aadhar_url.split('#')[1] || 'Saved_Locally'}` 
-                                : (g.aadhar_url || null)),
+                        aadhar_url: isBypassEnabled
+                            ? 'https://ui-avatars.com/api/?name=Dev+Guest'
+                            : (g.aadhar_url || null),
                     })),
                     numberOfDays,
                     checkOutOverride: manualCheckout || null,
@@ -320,11 +334,9 @@ export function CheckInSheet({
     }
 
     const resetForm = () => {
-        guests.forEach(g => {
-            if (g.aadhar_url?.startsWith('blob:')) {
-                URL.revokeObjectURL(g.aadhar_url.split('#')[0])
-            }
-        })
+        // Clean up blob preview URLs to prevent memory leaks
+        Object.values(aadharPreviews).forEach(url => URL.revokeObjectURL(url))
+        setAadharPreviews({})
         setGuests([emptyGuest()])
         setNumberOfDays(1)
         setManualCheckout('')
@@ -568,10 +580,10 @@ export function CheckInSheet({
                                 {/* Aadhar Photo Upload */}
                                 <div className="space-y-1.5">
                                     <Label className="text-xs text-slate-600">Aadhar Photo *</Label>
-                                    {guest.aadhar_url ? (
+                                    {aadharPreviews[index] ? (
                                         <div className="relative rounded-lg border border-emerald-200 bg-emerald-50/50 overflow-hidden">
                                             <img
-                                                src={guest.aadhar_url}
+                                                src={aadharPreviews[index]}
                                                 alt={`Aadhar - Guest ${index + 1}`}
                                                 className="w-full h-28 object-cover"
                                             />

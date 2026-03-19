@@ -20,6 +20,7 @@ import {
     BedSingle,
     Hash,
     FileText,
+    ImageIcon,
 } from 'lucide-react'
 
 import type { AdminTabProps } from '@/app/(dashboard)/admin/client'
@@ -44,6 +45,7 @@ interface GuestRow {
     name: string
     phone: string
     aadhar_number: string | null
+    aadhar_url: string | null
     created_at: string
     booking: GuestBooking | null
 }
@@ -53,6 +55,7 @@ interface AggregatedGuest {
     name: string
     phone: string
     aadhar_number: string | null
+    aadhar_url: string | null
     totalStays: number
     totalRevenue: number
     lastStayDate: string | null
@@ -84,10 +87,28 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
     const [page, setPage] = useState(0)
     const [loading, setLoading] = useState(false)
     const [expandedGuest, setExpandedGuest] = useState<string | null>(null) // phone as key
+    const [signedUrls, setSignedUrls] = useState<Record<string, string>>({})
+    const [enlargedPhoto, setEnlargedPhoto] = useState<string | null>(null)
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
     // Hotel lookup for display
     const hotelMap = new Map(hotels.map(h => [h.id, h.name]))
+
+    // Get a signed URL for an Aadhar photo path
+    const getSignedUrl = useCallback(async (path: string) => {
+        if (signedUrls[path]) return signedUrls[path]
+        if (!path || path.startsWith('LOCAL:') || path.startsWith('ARCHIVED:')) return null
+
+        const { data } = await supabase.storage
+            .from('aadhar-photos')
+            .createSignedUrl(path, 3600) // 1 hour expiry
+
+        if (data?.signedUrl) {
+            setSignedUrls(prev => ({ ...prev, [path]: data.signedUrl }))
+            return data.signedUrl
+        }
+        return null
+    }, [signedUrls])
 
     // Debounce search input
     useEffect(() => {
@@ -169,6 +190,7 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
                         name: row.name,
                         phone: row.phone,
                         aadhar_number: row.aadhar_number,
+                        aadhar_url: row.aadhar_url,
                         totalStays: 0,
                         totalRevenue: 0,
                         lastStayDate: null,
@@ -199,9 +221,10 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
                     })
                 }
 
-                // Use most recent name/aadhar
+                // Use most recent name/aadhar/url
                 if (row.name) agg.name = row.name
                 if (row.aadhar_number) agg.aadhar_number = row.aadhar_number
+                if (row.aadhar_url) agg.aadhar_url = row.aadhar_url
             }
 
             // Sort stays within each guest by check_in descending
@@ -318,7 +341,14 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
                             >
                                 {/* Guest Summary Row */}
                                 <button
-                                    onClick={() => setExpandedGuest(isExpanded ? null : guest.phone)}
+                                    onClick={() => {
+                                        const nextExpanded = isExpanded ? null : guest.phone
+                                        setExpandedGuest(nextExpanded)
+                                        // Pre-load signed URL when expanding
+                                        if (nextExpanded && guest.aadhar_url && !guest.aadhar_url.startsWith('LOCAL:') && !guest.aadhar_url.startsWith('ARCHIVED:')) {
+                                            getSignedUrl(guest.aadhar_url)
+                                        }
+                                    }}
                                     className="w-full flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-slate-50/80 transition-colors text-left"
                                 >
                                     <div className="flex items-center gap-4 min-w-0 flex-1">
@@ -363,9 +393,41 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
                                 {/* Expanded Stay History */}
                                 {isExpanded && (
                                     <div className="border-t border-slate-100 bg-slate-50/50 px-4 py-3">
-                                        <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2">
-                                            Stay History
-                                        </h4>
+                                        <div className="flex items-center justify-between mb-2">
+                                            <h4 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                                                Stay History
+                                            </h4>
+                                            {/* Aadhar Photo Thumbnail */}
+                                            <div className="flex items-center gap-2">
+                                                {guest.aadhar_url && !guest.aadhar_url.startsWith('LOCAL:') && !guest.aadhar_url.startsWith('ARCHIVED:') ? (
+                                                    <button
+                                                        onClick={async (e) => {
+                                                            e.stopPropagation()
+                                                            const url = await getSignedUrl(guest.aadhar_url!)
+                                                            if (url) setEnlargedPhoto(url)
+                                                        }}
+                                                        className="flex items-center gap-1.5 text-[11px] text-violet-600 hover:text-violet-800 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded-lg transition-colors cursor-pointer"
+                                                        title="View Aadhar photo"
+                                                    >
+                                                        {signedUrls[guest.aadhar_url] ? (
+                                                            <img
+                                                                src={signedUrls[guest.aadhar_url]}
+                                                                alt="Aadhar"
+                                                                className="w-5 h-4 object-cover rounded"
+                                                                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                                                            />
+                                                        ) : (
+                                                            <ImageIcon className="h-3.5 w-3.5" />
+                                                        )}
+                                                        Aadhar Photo
+                                                    </button>
+                                                ) : guest.aadhar_url?.startsWith('ARCHIVED:') ? (
+                                                    <span className="text-[11px] text-amber-600 bg-amber-50 px-2 py-0.5 rounded">Archived</span>
+                                                ) : guest.aadhar_url?.startsWith('LOCAL:') ? (
+                                                    <span className="text-[11px] text-slate-400 bg-slate-50 px-2 py-0.5 rounded">Saved Locally</span>
+                                                ) : null}
+                                            </div>
+                                        </div>
                                         {guest.stays.length === 0 ? (
                                             <p className="text-xs text-slate-400 py-2">No booking records.</p>
                                         ) : (
@@ -452,6 +514,29 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
                             Next
                             <ChevronRight className="h-3.5 w-3.5 ml-1" />
                         </Button>
+                    </div>
+                </div>
+            )}
+
+            {/* Enlarged Aadhar Photo Modal */}
+            {enlargedPhoto && (
+                <div
+                    className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4"
+                    onClick={() => setEnlargedPhoto(null)}
+                >
+                    <div
+                        className="bg-white rounded-2xl p-2 shadow-2xl max-w-lg"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <img src={enlargedPhoto} alt="Aadhar" className="rounded-xl w-full" />
+                        <div className="flex justify-center mt-2 pb-1">
+                            <button
+                                onClick={() => setEnlargedPhoto(null)}
+                                className="text-xs text-slate-500 hover:text-slate-700 cursor-pointer"
+                            >
+                                Close
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}
