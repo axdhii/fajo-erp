@@ -22,6 +22,7 @@ import {
     Loader2,
     AlertTriangle,
     MapPin,
+    RefreshCw,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -113,8 +114,10 @@ export default function LoginPage() {
     const [phone, setPhone] = useState('')
     const [password, setPassword] = useState('')
 
-    // Loading states
+    // Loading / error states
     const [initialLoading, setInitialLoading] = useState(true)
+    const [hotelsLoading, setHotelsLoading] = useState(true)
+    const [hotelsError, setHotelsError] = useState<string | null>(null)
     const [rolesLoading, setRolesLoading] = useState(false)
     const [signingIn, setSigningIn] = useState(false)
 
@@ -143,21 +146,30 @@ export default function LoginPage() {
     /*  Step 1: Fetch hotels                                           */
     /* -------------------------------------------------------------- */
 
-    useEffect(() => {
-        const fetchHotels = async () => {
+    const fetchHotels = useCallback(async () => {
+        setHotelsLoading(true)
+        setHotelsError(null)
+        try {
             const { data, error } = await supabase
                 .from('hotels')
                 .select('id, name, city, status')
                 .order('name')
 
             if (error) {
-                toast.error('Failed to load properties')
+                setHotelsError('Failed to load properties. Please try again.')
                 return
             }
             setHotels(data || [])
+        } catch {
+            setHotelsError('Network error. Please check your connection.')
+        } finally {
+            setHotelsLoading(false)
         }
-        fetchHotels()
     }, [])
+
+    useEffect(() => {
+        fetchHotels()
+    }, [fetchHotels])
 
     /* -------------------------------------------------------------- */
     /*  Step 2: Fetch roles for selected hotel                         */
@@ -199,7 +211,7 @@ export default function LoginPage() {
     /* -------------------------------------------------------------- */
 
     const handleSelectHotel = (hotel: Hotel) => {
-        if (hotel.status !== 'active') {
+        if (hotel.status.toUpperCase() !== 'ACTIVE') {
             toast.error(`${hotel.name} is currently under maintenance`)
             return
         }
@@ -333,14 +345,34 @@ export default function LoginPage() {
                                 </div>
                             </div>
 
-                            {hotels.length === 0 ? (
+                            {hotelsLoading ? (
                                 <div className="flex justify-center py-12">
                                     <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
+                                </div>
+                            ) : hotelsError ? (
+                                <div className="text-center py-12">
+                                    <AlertTriangle className="h-8 w-8 mx-auto mb-3 text-amber-400" />
+                                    <p className="text-sm text-slate-600 mb-4">{hotelsError}</p>
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={fetchHotels}
+                                        className="gap-2"
+                                    >
+                                        <RefreshCw className="h-4 w-4" />
+                                        Retry
+                                    </Button>
+                                </div>
+                            ) : hotels.length === 0 ? (
+                                <div className="text-center py-12 text-slate-500">
+                                    <Building2 className="h-8 w-8 mx-auto mb-3 text-slate-300" />
+                                    <p className="text-sm">No properties configured yet</p>
+                                    <p className="text-xs text-slate-400 mt-1">Contact your administrator</p>
                                 </div>
                             ) : (
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                     {hotels.map((hotel) => {
-                                        const isActive = hotel.status === 'active'
+                                        const isActive = hotel.status.toUpperCase() === 'ACTIVE'
                                         return (
                                             <button
                                                 key={hotel.id}
