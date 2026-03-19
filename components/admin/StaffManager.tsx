@@ -34,7 +34,6 @@ import {
     Building2,
     Shield,
     UserPlus,
-    KeyRound,
     ChevronUp,
 } from 'lucide-react'
 
@@ -93,9 +92,6 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
     const [addRole, setAddRole] = useState('FrontDesk')
     const [addHotel, setAddHotel] = useState(hotelId || (hotels.length > 0 ? hotels[0].id : ''))
     const [addSalary, setAddSalary] = useState('')
-    const [addCreateLogin, setAddCreateLogin] = useState(false)
-    const [addEmail, setAddEmail] = useState('')
-    const [addPassword, setAddPassword] = useState('')
 
     // Delete confirmation
     const [deleteTarget, setDeleteTarget] = useState<StaffRow | null>(null)
@@ -134,6 +130,11 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
 
     // ── Inline edit: save ──
     const handleSaveEdit = async (sid: string) => {
+        const phoneTrimmed = editPhone.trim()
+        if (phoneTrimmed && !/^\d{10}$/.test(phoneTrimmed)) {
+            toast.error('Phone must be exactly 10 digits')
+            return
+        }
         setLoading(true)
         try {
             const res = await fetch('/api/admin/staff', {
@@ -142,7 +143,7 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
                 body: JSON.stringify({
                     staff_id: sid,
                     name: editName,
-                    phone: editPhone,
+                    phone: phoneTrimmed || null,
                     base_salary: editSalary,
                     role: editRole,
                     hotel_id: editHotel,
@@ -166,6 +167,11 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
             toast.error('Name is required')
             return
         }
+        const phoneTrimmed = addPhone.trim()
+        if (!phoneTrimmed || !/^\d{10}$/.test(phoneTrimmed)) {
+            toast.error('Phone must be exactly 10 digits')
+            return
+        }
         if (!addHotel) {
             toast.error('Select a hotel')
             return
@@ -173,23 +179,16 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
 
         setLoading(true)
         try {
-            const payload: Record<string, unknown> = {
-                name: addName.trim(),
-                phone: addPhone.trim() || null,
-                role: addRole,
-                hotel_id: addHotel,
-                base_salary: addSalary ? Number(addSalary) : 0,
-                create_login: addCreateLogin,
-            }
-            if (addCreateLogin) {
-                payload.email = addEmail.trim()
-                payload.password = addPassword
-            }
-
             const res = await fetch('/api/admin/staff', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload),
+                body: JSON.stringify({
+                    name: addName.trim(),
+                    phone: phoneTrimmed,
+                    role: addRole,
+                    hotel_id: addHotel,
+                    base_salary: addSalary ? Number(addSalary) : 0,
+                }),
             })
             const json = await res.json()
             if (!res.ok) throw new Error(json.error)
@@ -201,9 +200,6 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
             setAddRole('FrontDesk')
             setAddHotel(hotelId || (hotels.length > 0 ? hotels[0].id : ''))
             setAddSalary('')
-            setAddCreateLogin(false)
-            setAddEmail('')
-            setAddPassword('')
             setShowAddForm(false)
             fetchStaff()
         } catch (err: unknown) {
@@ -226,7 +222,7 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
             const json = await res.json()
             if (!res.ok) throw new Error(json.error)
 
-            toast.success(`Removed "${deleteTarget.name || 'staff member'}"`)
+            toast.success(`Removed "${deleteTarget.name || deleteTarget.phone || 'staff member'}"`)
             setDeleteTarget(null)
             fetchStaff()
         } catch (err: unknown) {
@@ -289,11 +285,12 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
                                 />
                             </div>
                             <div>
-                                <Label className="text-sm font-medium text-slate-700">Phone</Label>
+                                <Label className="text-sm font-medium text-slate-700">Phone * (Login ID)</Label>
                                 <Input
                                     value={addPhone}
                                     onChange={e => setAddPhone(e.target.value)}
-                                    placeholder="Phone number"
+                                    placeholder="10-digit phone number"
+                                    maxLength={10}
                                     className="mt-1"
                                 />
                             </div>
@@ -335,55 +332,15 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
                             </div>
                         </div>
 
-                        {/* Login account toggle */}
-                        <div className="border-t border-violet-200 pt-4 mt-4">
-                            <label className="flex items-center gap-3 cursor-pointer">
-                                <input
-                                    type="checkbox"
-                                    checked={addCreateLogin}
-                                    onChange={e => setAddCreateLogin(e.target.checked)}
-                                    className="h-4 w-4 rounded border-slate-300 text-violet-600 focus:ring-violet-500"
-                                />
-                                <div className="flex items-center gap-2">
-                                    <KeyRound className="h-4 w-4 text-violet-600" />
-                                    <span className="text-sm font-medium text-slate-700">Create login account</span>
-                                </div>
-                            </label>
-                            <p className="text-xs text-slate-500 ml-7 mt-1">
-                                Enable if this staff member needs to log in to the system. Leave unchecked for trackable-only staff (attendance/payroll only).
-                            </p>
-                        </div>
-
-                        {addCreateLogin && (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pl-7">
-                                <div>
-                                    <Label className="text-sm font-medium text-slate-700">Email *</Label>
-                                    <Input
-                                        type="email"
-                                        value={addEmail}
-                                        onChange={e => setAddEmail(e.target.value)}
-                                        placeholder="e.g. staff@fajo"
-                                        className="mt-1"
-                                    />
-                                </div>
-                                <div>
-                                    <Label className="text-sm font-medium text-slate-700">Password *</Label>
-                                    <Input
-                                        type="password"
-                                        value={addPassword}
-                                        onChange={e => setAddPassword(e.target.value)}
-                                        placeholder="Min 6 characters"
-                                        className="mt-1"
-                                    />
-                                </div>
-                            </div>
-                        )}
+                        <p className="text-xs text-slate-500 mt-1">
+                            A login account will be created automatically using the phone number. Password is set based on role (Admin: password123, Others: fajo123).
+                        </p>
 
                         <div className="flex justify-end gap-2 pt-2">
                             <Button variant="outline" onClick={() => setShowAddForm(false)}>Cancel</Button>
                             <Button
                                 onClick={handleAddStaff}
-                                disabled={loading || !addName.trim()}
+                                disabled={loading || !addName.trim() || !/^\d{10}$/.test(addPhone.trim())}
                                 className="bg-violet-600 hover:bg-violet-700"
                             >
                                 <Plus className="h-4 w-4 mr-1" />
@@ -525,7 +482,7 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
                                                 <div className="min-w-0">
                                                     <div className="flex items-center gap-2 flex-wrap">
                                                         <span className="font-semibold text-slate-800 truncate">
-                                                            {s.name || '(Operator Account)'}
+                                                            {s.name || s.phone || '(Staff)'}
                                                         </span>
                                                         <Badge
                                                             variant="outline"
@@ -533,13 +490,9 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
                                                         >
                                                             {ALL_ROLES.find(r => r.value === s.role)?.label || s.role}
                                                         </Badge>
-                                                        {s.user_id ? (
+                                                        {s.phone && (
                                                             <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-emerald-50 text-emerald-700 border-emerald-200">
-                                                                Has Login
-                                                            </Badge>
-                                                        ) : (
-                                                            <Badge variant="outline" className="text-[10px] px-1.5 py-0 bg-slate-50 text-slate-500 border-slate-200">
-                                                                Trackable Only
+                                                                Login: {s.phone}
                                                             </Badge>
                                                         )}
                                                     </div>
@@ -595,7 +548,7 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
                     <DialogHeader>
                         <DialogTitle>Delete Staff Member</DialogTitle>
                         <DialogDescription>
-                            Are you sure you want to delete <strong>{deleteTarget?.name || '(Operator Account)'}</strong>?
+                            Are you sure you want to delete <strong>{deleteTarget?.name || deleteTarget?.phone || '(Staff Member)'}</strong>?
                             {deleteTarget?.user_id && ' Their login account will also be removed.'}
                             {' '}This action cannot be undone.
                         </DialogDescription>

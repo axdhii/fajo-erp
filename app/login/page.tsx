@@ -1,119 +1,566 @@
 "use client"
-import { useState } from 'react'
+
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
-import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Button } from '@/components/ui/button'
+import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
-import { KeyRound, Mail } from 'lucide-react'
+import {
+    Building2,
+    BedDouble,
+    Sparkles,
+    Users,
+    Shield,
+    Globe,
+    ClipboardList,
+    Wrench,
+    Phone,
+    KeyRound,
+    ArrowLeft,
+    Loader2,
+    AlertTriangle,
+    MapPin,
+} from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
+
+/* ------------------------------------------------------------------ */
+/*  Types                                                              */
+/* ------------------------------------------------------------------ */
+
+interface Hotel {
+    id: string
+    name: string
+    city: string
+    status: string
+}
+
+type RoleKey =
+    | 'FrontDesk'
+    | 'Housekeeping'
+    | 'HR'
+    | 'Admin'
+    | 'ZonalManager'
+    | 'ZonalOps'
+    | 'ZonalHK'
+
+interface RoleInfo {
+    label: string
+    description: string
+    icon: LucideIcon
+}
+
+/* ------------------------------------------------------------------ */
+/*  Role metadata                                                      */
+/* ------------------------------------------------------------------ */
+
+const ROLE_META: Record<RoleKey, RoleInfo> = {
+    FrontDesk: {
+        label: 'Front Desk',
+        description: 'Reception & Check-ins',
+        icon: BedDouble,
+    },
+    Housekeeping: {
+        label: 'Housekeeping',
+        description: 'Room Cleaning',
+        icon: Sparkles,
+    },
+    HR: {
+        label: 'HR',
+        description: 'Staff & Payroll',
+        icon: Users,
+    },
+    Admin: {
+        label: 'Admin',
+        description: 'System Management',
+        icon: Shield,
+    },
+    ZonalManager: {
+        label: 'Zonal Manager',
+        description: 'Multi-Property Overview',
+        icon: Globe,
+    },
+    ZonalOps: {
+        label: 'Zonal Ops',
+        description: 'Operations Management',
+        icon: ClipboardList,
+    },
+    ZonalHK: {
+        label: 'Zonal HK',
+        description: 'Housekeeping Management',
+        icon: Wrench,
+    },
+}
+
+/* ------------------------------------------------------------------ */
+/*  Component                                                          */
+/* ------------------------------------------------------------------ */
 
 export default function LoginPage() {
-    const [email, setEmail] = useState('')
+    // Wizard state
+    const [step, setStep] = useState<1 | 2 | 3>(1)
+
+    // Data
+    const [hotels, setHotels] = useState<Hotel[]>([])
+    const [availableRoles, setAvailableRoles] = useState<RoleKey[]>([])
+
+    // Selections
+    const [selectedHotel, setSelectedHotel] = useState<Hotel | null>(null)
+    const [selectedRole, setSelectedRole] = useState<RoleKey | null>(null)
+
+    // Form
+    const [phone, setPhone] = useState('')
     const [password, setPassword] = useState('')
-    const [loading, setLoading] = useState(false)
 
-    const handleLogin = async (e: React.FormEvent) => {
-        e.preventDefault()
-        setLoading(true)
+    // Loading states
+    const [initialLoading, setInitialLoading] = useState(true)
+    const [rolesLoading, setRolesLoading] = useState(false)
+    const [signingIn, setSigningIn] = useState(false)
 
+    /* -------------------------------------------------------------- */
+    /*  Already authenticated? Redirect.                               */
+    /* -------------------------------------------------------------- */
+
+    useEffect(() => {
+        const checkSession = async () => {
+            try {
+                const { data: { session } } = await supabase.auth.getSession()
+                if (session?.user) {
+                    window.location.href = '/'
+                    return
+                }
+            } catch {
+                // no session, continue to login
+            } finally {
+                setInitialLoading(false)
+            }
+        }
+        checkSession()
+    }, [])
+
+    /* -------------------------------------------------------------- */
+    /*  Step 1: Fetch hotels                                           */
+    /* -------------------------------------------------------------- */
+
+    useEffect(() => {
+        const fetchHotels = async () => {
+            const { data, error } = await supabase
+                .from('hotels')
+                .select('id, name, city, status')
+                .order('name')
+
+            if (error) {
+                toast.error('Failed to load properties')
+                return
+            }
+            setHotels(data || [])
+        }
+        fetchHotels()
+    }, [])
+
+    /* -------------------------------------------------------------- */
+    /*  Step 2: Fetch roles for selected hotel                         */
+    /* -------------------------------------------------------------- */
+
+    const fetchRoles = useCallback(async (hotelId: string) => {
+        setRolesLoading(true)
         try {
-            const { data, error } = await supabase.auth.signInWithPassword({
+            const { data, error } = await supabase
+                .from('staff')
+                .select('role')
+                .eq('hotel_id', hotelId)
+
+            if (error) {
+                toast.error('Failed to load roles')
+                return
+            }
+
+            const uniqueRoles = [...new Set((data || []).map((s) => s.role))] as RoleKey[]
+            // Sort roles in display order
+            const order: RoleKey[] = [
+                'FrontDesk',
+                'Housekeeping',
+                'HR',
+                'Admin',
+                'ZonalManager',
+                'ZonalOps',
+                'ZonalHK',
+            ]
+            const sorted = order.filter((r) => uniqueRoles.includes(r))
+            setAvailableRoles(sorted)
+        } finally {
+            setRolesLoading(false)
+        }
+    }, [])
+
+    /* -------------------------------------------------------------- */
+    /*  Handlers                                                       */
+    /* -------------------------------------------------------------- */
+
+    const handleSelectHotel = (hotel: Hotel) => {
+        if (hotel.status !== 'active') {
+            toast.error(`${hotel.name} is currently under maintenance`)
+            return
+        }
+        setSelectedHotel(hotel)
+        fetchRoles(hotel.id)
+        setStep(2)
+    }
+
+    const handleSelectRole = (role: RoleKey) => {
+        setSelectedRole(role)
+        setStep(3)
+    }
+
+    const handleBack = () => {
+        if (step === 2) {
+            setStep(1)
+            setSelectedHotel(null)
+            setSelectedRole(null)
+            setAvailableRoles([])
+        } else if (step === 3) {
+            setStep(2)
+            setSelectedRole(null)
+            setPhone('')
+            setPassword('')
+        }
+    }
+
+    const handleSignIn = async (e: React.FormEvent) => {
+        e.preventDefault()
+
+        const digits = phone.replace(/\D/g, '')
+        if (digits.length !== 10) {
+            toast.error('Please enter a valid 10-digit phone number')
+            return
+        }
+
+        setSigningIn(true)
+        try {
+            const email = `${digits}@fajo.local`
+            const { error } = await supabase.auth.signInWithPassword({
                 email,
                 password,
             })
 
-            if (error) throw error
-
-            // Get role from the staff table
-            const { data: staffData } = await supabase
-                .from('staff')
-                .select('role')
-                .eq('user_id', data.user.id)
-                .single()
-
-            toast.success('Login successful')
-
-            // Use hard navigation so the proxy/RSC picks up the fresh session cookies
-            const role = staffData?.role
-            if (role === 'Admin') {
-                window.location.href = '/admin'
-            } else if (role === 'HR') {
-                window.location.href = '/hr'
-            } else if (role === 'ZonalManager') {
-                window.location.href = '/zonal'
-            } else if (role === 'ZonalOps') {
-                window.location.href = '/zonal-ops'
-            } else if (role === 'ZonalHK') {
-                window.location.href = '/zonal-hk'
-            } else if (role === 'Housekeeping') {
-                window.location.href = '/housekeeping'
-            } else {
-                window.location.href = '/front-desk'
+            if (error) {
+                toast.error('Invalid phone number or password')
+                return
             }
 
-        } catch (error: unknown) {
-            const message = error instanceof Error ? error.message : 'Failed to login'
-            toast.error(message)
-            setLoading(false)
+            toast.success('Signed in successfully')
+            window.location.href = '/'
+        } catch {
+            toast.error('Invalid phone number or password')
+        } finally {
+            setSigningIn(false)
         }
     }
 
+    /* -------------------------------------------------------------- */
+    /*  Initial loading state                                          */
+    /* -------------------------------------------------------------- */
+
+    if (initialLoading) {
+        return (
+            <div className="min-h-screen flex items-center justify-center bg-slate-50">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent" />
+            </div>
+        )
+    }
+
+    /* -------------------------------------------------------------- */
+    /*  Render                                                         */
+    /* -------------------------------------------------------------- */
+
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col justify-center py-12 px-4 sm:px-6 lg:px-8">
-            <div className="sm:mx-auto sm:w-full sm:max-w-md">
-                <div className="flex justify-center h-12 w-12 mx-auto rounded-xl bg-emerald-600 text-white shadow-xl items-center">
-                    <span className="font-bold text-2xl leading-none">F</span>
+        <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-emerald-50/30 flex flex-col">
+            {/* Header */}
+            <div className="pt-8 sm:pt-12 pb-4 px-4 text-center">
+                <div className="flex justify-center mb-4">
+                    <div className="h-14 w-14 rounded-2xl bg-emerald-600 text-white shadow-lg shadow-emerald-600/30 flex items-center justify-center">
+                        <span className="font-bold text-3xl leading-none">F</span>
+                    </div>
                 </div>
-                <h2 className="mt-6 text-center text-3xl font-bold tracking-tight text-slate-900">
-                    Sign in to FAJO ERP
-                </h2>
-                <p className="mt-2 text-center text-sm text-slate-600">
-                    Hotel management system
+                <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+                    FAJO ERP
+                </h1>
+                <p className="mt-1 text-sm text-slate-500">
+                    Hotel Management System
                 </p>
             </div>
 
-            <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-[400px]">
-                <Card className="border-slate-200/60 shadow-xl shadow-slate-200/50">
-                    <form onSubmit={handleLogin}>
-                        <CardContent className="pt-6 space-y-5">
-                            <div className="space-y-2 relative">
-                                <Label htmlFor="email">Email address</Label>
-                                <div className="relative">
-                                    <Mail className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                                    <Input
-                                        id="email"
-                                        type="email"
-                                        required
-                                        className="pl-9"
-                                        value={email}
-                                        onChange={(e) => setEmail(e.target.value)}
-                                    />
+            {/* Step indicator */}
+            <div className="flex justify-center px-4 pb-6 sm:pb-8">
+                <div className="flex items-center gap-2">
+                    {[1, 2, 3].map((s) => (
+                        <div key={s} className="flex items-center gap-2">
+                            <div
+                                className={`
+                                    h-2 rounded-full transition-all duration-300
+                                    ${s === step ? 'w-8 bg-emerald-500' : s < step ? 'w-2 bg-emerald-400' : 'w-2 bg-slate-200'}
+                                `}
+                            />
+                            {s < 3 && (
+                                <div className={`w-4 h-px ${s < step ? 'bg-emerald-300' : 'bg-slate-200'}`} />
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* Content area */}
+            <div className="flex-1 flex flex-col items-center px-4 pb-8">
+                <div className="w-full max-w-lg">
+
+                    {/* ============================================ */}
+                    {/*  STEP 1: Property Selection                   */}
+                    {/* ============================================ */}
+                    {step === 1 && (
+                        <div className="animate-in fade-in duration-300">
+                            <div className="flex items-center gap-3 mb-6">
+                                <div className="h-10 w-10 rounded-xl bg-emerald-100 text-emerald-600 flex items-center justify-center">
+                                    <Building2 className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <h2 className="text-lg font-semibold text-slate-900">
+                                        Select Property
+                                    </h2>
+                                    <p className="text-sm text-slate-500">
+                                        Choose your work location
+                                    </p>
                                 </div>
                             </div>
 
-                            <div className="space-y-2 relative">
-                                <Label htmlFor="password">Password</Label>
-                                <div className="relative">
-                                    <KeyRound className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
-                                    <Input
-                                        id="password"
-                                        type="password"
-                                        required
-                                        className="pl-9"
-                                        value={password}
-                                        onChange={(e) => setPassword(e.target.value)}
-                                    />
+                            {hotels.length === 0 ? (
+                                <div className="flex justify-center py-12">
+                                    <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                    {hotels.map((hotel) => {
+                                        const isActive = hotel.status === 'active'
+                                        return (
+                                            <button
+                                                key={hotel.id}
+                                                type="button"
+                                                onClick={() => handleSelectHotel(hotel)}
+                                                className={`
+                                                    group relative text-left w-full rounded-2xl border-2 p-6 transition-all duration-200
+                                                    min-h-[140px] flex flex-col justify-between
+                                                    ${isActive
+                                                        ? 'border-emerald-200 bg-white hover:border-emerald-400 hover:shadow-lg hover:shadow-emerald-100 cursor-pointer active:scale-[0.98]'
+                                                        : 'border-slate-200 bg-slate-50 cursor-pointer opacity-70'
+                                                    }
+                                                `}
+                                            >
+                                                {/* Top section */}
+                                                <div>
+                                                    <div className="flex items-start justify-between mb-3">
+                                                        <div className={`
+                                                            h-11 w-11 rounded-xl flex items-center justify-center
+                                                            ${isActive
+                                                                ? 'bg-emerald-100 text-emerald-600 group-hover:bg-emerald-200'
+                                                                : 'bg-slate-200 text-slate-400'
+                                                            }
+                                                        `}>
+                                                            <Building2 className="h-5 w-5" />
+                                                        </div>
+                                                        {!isActive && (
+                                                            <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">
+                                                                <AlertTriangle className="h-3 w-3" />
+                                                                Under Maintenance
+                                                            </Badge>
+                                                        )}
+                                                        {isActive && (
+                                                            <div className="h-2.5 w-2.5 rounded-full bg-emerald-400 ring-4 ring-emerald-100" />
+                                                        )}
+                                                    </div>
+                                                    <h3 className={`
+                                                        font-semibold text-base
+                                                        ${isActive ? 'text-slate-900' : 'text-slate-500'}
+                                                    `}>
+                                                        {hotel.name}
+                                                    </h3>
+                                                </div>
+
+                                                {/* Bottom section */}
+                                                <div className="flex items-center gap-1.5 mt-2">
+                                                    <MapPin className={`h-3.5 w-3.5 ${isActive ? 'text-slate-400' : 'text-slate-300'}`} />
+                                                    <span className={`text-sm ${isActive ? 'text-slate-500' : 'text-slate-400'}`}>
+                                                        {hotel.city}
+                                                    </span>
+                                                </div>
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ============================================ */}
+                    {/*  STEP 2: Role Selection                       */}
+                    {/* ============================================ */}
+                    {step === 2 && (
+                        <div className="animate-in fade-in duration-300">
+                            {/* Back + Header */}
+                            <div className="flex items-center gap-3 mb-6">
+                                <button
+                                    type="button"
+                                    onClick={handleBack}
+                                    className="h-10 w-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200 transition-colors active:scale-95"
+                                >
+                                    <ArrowLeft className="h-4 w-4" />
+                                </button>
+                                <div className="flex-1">
+                                    <h2 className="text-lg font-semibold text-slate-900">
+                                        Select Role
+                                    </h2>
+                                    <p className="text-sm text-slate-500">
+                                        {selectedHotel?.name}
+                                    </p>
                                 </div>
                             </div>
-                        </CardContent>
-                        <CardFooter>
-                            <Button type="submit" disabled={loading} className="w-full bg-slate-900 hover:bg-slate-800 text-white">
-                                {loading ? 'Signing in...' : 'Sign in'}
-                            </Button>
-                        </CardFooter>
-                    </form>
-                </Card>
+
+                            {rolesLoading ? (
+                                <div className="flex justify-center py-12">
+                                    <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
+                                </div>
+                            ) : availableRoles.length === 0 ? (
+                                <div className="text-center py-12 text-slate-500">
+                                    <Users className="h-8 w-8 mx-auto mb-3 text-slate-300" />
+                                    <p className="text-sm">No roles available at this property</p>
+                                </div>
+                            ) : (
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                    {availableRoles.map((role) => {
+                                        const meta = ROLE_META[role]
+                                        if (!meta) return null
+                                        const Icon = meta.icon
+                                        return (
+                                            <button
+                                                key={role}
+                                                type="button"
+                                                onClick={() => handleSelectRole(role)}
+                                                className="
+                                                    group relative text-left w-full rounded-2xl border-2 border-slate-200 bg-white p-4
+                                                    hover:border-emerald-400 hover:shadow-lg hover:shadow-emerald-100
+                                                    transition-all duration-200 cursor-pointer active:scale-[0.97]
+                                                    min-h-[120px] flex flex-col
+                                                "
+                                            >
+                                                <div className="h-10 w-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center mb-3 group-hover:bg-emerald-100 group-hover:text-emerald-600 transition-colors">
+                                                    <Icon className="h-5 w-5" />
+                                                </div>
+                                                <h3 className="font-semibold text-sm text-slate-900 mb-0.5">
+                                                    {meta.label}
+                                                </h3>
+                                                <p className="text-xs text-slate-500 leading-snug">
+                                                    {meta.description}
+                                                </p>
+                                            </button>
+                                        )
+                                    })}
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ============================================ */}
+                    {/*  STEP 3: Phone + Password                     */}
+                    {/* ============================================ */}
+                    {step === 3 && (
+                        <div className="animate-in fade-in duration-300">
+                            {/* Back + Header */}
+                            <div className="flex items-center gap-3 mb-6">
+                                <button
+                                    type="button"
+                                    onClick={handleBack}
+                                    className="h-10 w-10 rounded-xl bg-slate-100 text-slate-600 flex items-center justify-center hover:bg-slate-200 transition-colors active:scale-95"
+                                >
+                                    <ArrowLeft className="h-4 w-4" />
+                                </button>
+                                <div className="flex-1">
+                                    <h2 className="text-lg font-semibold text-slate-900">
+                                        Sign In
+                                    </h2>
+                                    <p className="text-sm text-slate-500">
+                                        {selectedHotel?.name} &middot; {selectedRole && ROLE_META[selectedRole]?.label}
+                                    </p>
+                                </div>
+                            </div>
+
+                            <div className="rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-sm">
+                                <form onSubmit={handleSignIn} className="space-y-5">
+                                    {/* Phone */}
+                                    <div className="space-y-2">
+                                        <Label htmlFor="phone" className="text-sm font-medium text-slate-700">
+                                            Phone Number
+                                        </Label>
+                                        <div className="relative">
+                                            <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                            <Input
+                                                id="phone"
+                                                type="tel"
+                                                inputMode="numeric"
+                                                maxLength={10}
+                                                required
+                                                placeholder="Enter your phone number"
+                                                value={phone}
+                                                onChange={(e) => setPhone(e.target.value.replace(/\D/g, ''))}
+                                                className="pl-10 h-12 text-base rounded-xl border-slate-200 focus-visible:border-emerald-400 focus-visible:ring-emerald-100"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Password */}
+                                    <div className="space-y-2">
+                                        <Label htmlFor="password" className="text-sm font-medium text-slate-700">
+                                            Password
+                                        </Label>
+                                        <div className="relative">
+                                            <KeyRound className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                                            <Input
+                                                id="password"
+                                                type="password"
+                                                required
+                                                placeholder="Enter role password"
+                                                value={password}
+                                                onChange={(e) => setPassword(e.target.value)}
+                                                className="pl-10 h-12 text-base rounded-xl border-slate-200 focus-visible:border-emerald-400 focus-visible:ring-emerald-100"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Submit */}
+                                    <Button
+                                        type="submit"
+                                        disabled={signingIn}
+                                        className="w-full h-12 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-base shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98]"
+                                    >
+                                        {signingIn ? (
+                                            <>
+                                                <Loader2 className="h-4 w-4 animate-spin" />
+                                                Signing in...
+                                            </>
+                                        ) : (
+                                            'Sign In'
+                                        )}
+                                    </Button>
+                                </form>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Footer */}
+            <div className="pb-6 text-center">
+                <p className="text-xs text-slate-400">
+                    FAJO Hotels &middot; Management Portal
+                </p>
             </div>
         </div>
     )

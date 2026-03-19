@@ -40,11 +40,19 @@ export async function POST(request: NextRequest) {
         if ('error' in adminCheck) return adminCheck.error
 
         const body = await request.json()
-        const { name, phone, role, hotel_id, base_salary, create_login, email, password } = body
+        const { name, phone, role, hotel_id, base_salary } = body
 
         if (!name || !role || !hotel_id) {
             return NextResponse.json(
                 { error: 'name, role, and hotel_id are required' },
+                { status: 400 }
+            )
+        }
+
+        // Phone is required and must be 10 digits
+        if (!phone || !/^\d{10}$/.test(phone)) {
+            return NextResponse.json(
+                { error: 'Phone must be exactly 10 digits' },
                 { status: 400 }
             )
         }
@@ -57,40 +65,41 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        let userId: string | null = null
+        // Check phone uniqueness at this hotel
+        const { data: existingStaff } = await supabase
+            .from('staff')
+            .select('id')
+            .eq('hotel_id', hotel_id)
+            .eq('phone', phone)
+            .maybeSingle()
 
-        // If creating a login account, use the admin client to create an auth user
-        if (create_login) {
-            if (!email || !password) {
-                return NextResponse.json(
-                    { error: 'email and password are required when creating a login account' },
-                    { status: 400 }
-                )
-            }
-            if (password.length < 6) {
-                return NextResponse.json(
-                    { error: 'Password must be at least 6 characters' },
-                    { status: 400 }
-                )
-            }
-
-            const adminClient = getAdminClient()
-            const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
-                email,
-                password,
-                email_confirm: true,
-            })
-
-            if (authError) {
-                console.error('Auth user creation error:', authError)
-                return NextResponse.json(
-                    { error: `Failed to create login: ${authError.message}` },
-                    { status: 500 }
-                )
-            }
-
-            userId = authUser.user.id
+        if (existingStaff) {
+            return NextResponse.json(
+                { error: 'A staff member with this phone number already exists at this hotel' },
+                { status: 409 }
+            )
         }
+
+        // Always create auth user with phone-based email
+        const email = `${phone}@fajo.local`
+        const password = role === 'Admin' ? 'password123' : 'fajo123'
+
+        const adminClient = getAdminClient()
+        const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
+            email,
+            password,
+            email_confirm: true,
+        })
+
+        if (authError) {
+            console.error('Auth user creation error:', authError)
+            return NextResponse.json(
+                { error: `Failed to create login: ${authError.message}` },
+                { status: 500 }
+            )
+        }
+
+        const userId = authUser.user.id
 
         // Insert the staff record
         const { data, error } = await supabase
@@ -100,7 +109,7 @@ export async function POST(request: NextRequest) {
                 hotel_id,
                 role,
                 name,
-                phone: phone || null,
+                phone,
                 base_salary: base_salary ? Number(base_salary) : 0,
                 is_idle: true,
             })
@@ -109,14 +118,11 @@ export async function POST(request: NextRequest) {
 
         if (error) {
             console.error('Staff insert error:', error)
-            // If we created an auth user but staff insert failed, clean up
-            if (userId) {
-                try {
-                    const adminClient = getAdminClient()
-                    await adminClient.auth.admin.deleteUser(userId)
-                } catch (cleanupErr) {
-                    console.error('Failed to clean up auth user after staff insert failure:', cleanupErr)
-                }
+            // Clean up auth user if staff insert failed
+            try {
+                await adminClient.auth.admin.deleteUser(userId)
+            } catch (cleanupErr) {
+                console.error('Failed to clean up auth user after staff insert failure:', cleanupErr)
             }
             return NextResponse.json({ error: 'Failed to create staff record' }, { status: 500 })
         }
@@ -147,25 +153,70 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'staff_id is required' }, { status: 400 })
         }
 
+        // Validate phone if provided
+        if (phone !== undefined && phone !== null && !/^\d{10}$/.test(phone)) {
+            return NextResponse.json({ error: 'Phone must be exactly 10 digits' }, { status: 400 })
+        }
+
         const validRoles = ['Admin', 'FrontDesk', 'Housekeeping', 'HR', 'ZonalManager', 'ZonalOps', 'ZonalHK']
+
+        if (role !== undefined && !validRoles.includes(role)) {
+            return NextResponse.json(
+                { error: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
+                { status: 400 }
+            )
+        }
+
+        // Fetch existing staff record to detect changes
+        const { data: existing } = await supabase
+            .from('staff')
+            .select('id, user_id, hotel_id, role, name, phone, base_salary')
+            .eq('id', staff_id)
+            .single()
+
+        if (!existing) {
+            return NextResponse.json({ error: 'Staff member not found' }, { status: 404 })
+        }
 
         const updates: Record<string, unknown> = {}
         if (name !== undefined) updates.name = name
         if (phone !== undefined) updates.phone = phone
         if (base_salary !== undefined) updates.base_salary = Number(base_salary)
-        if (role !== undefined) {
-            if (!validRoles.includes(role)) {
-                return NextResponse.json(
-                    { error: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
-                    { status: 400 }
-                )
-            }
-            updates.role = role
-        }
+        if (role !== undefined) updates.role = role
         if (hotel_id !== undefined) updates.hotel_id = hotel_id
 
         if (Object.keys(updates).length === 0) {
             return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
+        }
+
+        // If staff has an auth user, update auth credentials when phone or role changes
+        if (existing.user_id) {
+            const adminClient = getAdminClient()
+            const authUpdates: Record<string, unknown> = {}
+
+            // Phone changed -> update auth email
+            if (phone !== undefined && phone !== existing.phone) {
+                authUpdates.email = `${phone}@fajo.local`
+            }
+
+            // Role changed -> update auth password
+            if (role !== undefined && role !== existing.role) {
+                authUpdates.password = role === 'Admin' ? 'password123' : 'fajo123'
+            }
+
+            if (Object.keys(authUpdates).length > 0) {
+                const { error: authUpdateError } = await adminClient.auth.admin.updateUserById(
+                    existing.user_id,
+                    authUpdates
+                )
+                if (authUpdateError) {
+                    console.error('Auth user update error:', authUpdateError)
+                    return NextResponse.json(
+                        { error: `Failed to update login: ${authUpdateError.message}` },
+                        { status: 500 }
+                    )
+                }
+            }
         }
 
         const { data, error } = await supabase
