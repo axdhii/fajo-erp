@@ -4,11 +4,18 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 
 // Admin-only Supabase client for auth operations (create/delete users)
-// IMPORTANT: SUPABASE_SERVICE_ROLE_KEY must be set in .env.local for login account creation/deletion to work
+// IMPORTANT: SUPABASE_SERVICE_ROLE_KEY must be set in .env.local AND in Vercel env vars
 function getAdminClient() {
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!serviceRoleKey) {
+        throw new Error(
+            'SUPABASE_SERVICE_ROLE_KEY is not configured. ' +
+            'Set it in .env.local (local dev) and in Vercel Environment Variables (production).'
+        )
+    }
     return createSupabaseClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
+        serviceRoleKey,
         { auth: { autoRefreshToken: false, persistSession: false } }
     )
 }
@@ -84,7 +91,15 @@ export async function POST(request: NextRequest) {
         const email = `${phone}@fajo.local`
         const password = role === 'Admin' ? 'password123' : 'fajo123'
 
-        const adminClient = getAdminClient()
+        let adminClient
+        try {
+            adminClient = getAdminClient()
+        } catch (configErr) {
+            console.error('Admin client config error:', configErr)
+            const msg = configErr instanceof Error ? configErr.message : 'Service role key not configured'
+            return NextResponse.json({ error: msg }, { status: 500 })
+        }
+
         const { data: authUser, error: authError } = await adminClient.auth.admin.createUser({
             email,
             password,
@@ -130,7 +145,8 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ data })
     } catch (err) {
         console.error('Admin staff POST error:', err)
-        return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+        const message = err instanceof Error ? err.message : 'Unknown error'
+        return NextResponse.json({ error: `Staff creation failed: ${message}` }, { status: 500 })
     }
 }
 
@@ -153,8 +169,8 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'staff_id is required' }, { status: 400 })
         }
 
-        // Validate phone if provided
-        if (phone !== undefined && phone !== null && !/^\d{10}$/.test(phone)) {
+        // Validate phone: must be 10 digits if provided and non-null
+        if (phone !== undefined && phone !== null && phone !== '' && !/^\d{10}$/.test(phone)) {
             return NextResponse.json({ error: 'Phone must be exactly 10 digits' }, { status: 400 })
         }
 
@@ -167,62 +183,75 @@ export async function PATCH(request: NextRequest) {
             )
         }
 
+        // Validate base_salary: must be a valid number if provided
+        if (base_salary !== undefined) {
+            const salaryNum = Number(base_salary)
+            if (isNaN(salaryNum)) {
+                return NextResponse.json({ error: 'Base salary must be a valid number' }, { status: 400 })
+            }
+            if (salaryNum < 0) {
+                return NextResponse.json({ error: 'Base salary cannot be negative' }, { status: 400 })
+            }
+        }
+
         // Fetch existing staff record to detect changes
-        const { data: existing } = await supabase
+        const { data: existing, error: fetchError } = await supabase
             .from('staff')
             .select('id, user_id, hotel_id, role, name, phone, base_salary')
             .eq('id', staff_id)
             .single()
 
-        if (!existing) {
+        if (fetchError || !existing) {
+            console.error('Staff fetch error:', fetchError)
             return NextResponse.json({ error: 'Staff member not found' }, { status: 404 })
         }
 
-        // Validate and apply password change via Supabase Auth (fail fast before staff update)
-        if (password) {
-            if (password.length < 6) {
-                return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 })
-            }
-            if (existing.user_id) {
-                const adminClient = getAdminClient()
-                const { error: pwError } = await adminClient.auth.admin.updateUserById(
-                    existing.user_id,
-                    { password }
-                )
-                if (pwError) {
-                    console.error('Password update error:', pwError)
-                    return NextResponse.json({ error: 'Failed to update password' }, { status: 500 })
-                }
-            }
-        }
-
+        // Build staff table updates
         const updates: Record<string, unknown> = {}
         if (name !== undefined) updates.name = name
-        if (phone !== undefined) updates.phone = phone
+        if (phone !== undefined) updates.phone = phone || null
         if (base_salary !== undefined) updates.base_salary = Number(base_salary)
         if (role !== undefined) updates.role = role
         if (hotel_id !== undefined) updates.hotel_id = hotel_id
 
-        if (Object.keys(updates).length === 0) {
+        if (Object.keys(updates).length === 0 && !password) {
             return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
         }
 
-        // If staff has an auth user, update auth credentials when phone or role changes
+        // ── Auth updates (phone/email, role-default password, explicit password) ──
+        // We combine ALL auth changes into a single updateUserById call to avoid
+        // a role-change default password overwriting an explicit password change.
         if (existing.user_id) {
-            const adminClient = getAdminClient()
             const authUpdates: Record<string, unknown> = {}
 
-            // Phone changed -> update auth email
-            if (phone !== undefined && phone !== existing.phone) {
-                authUpdates.email = `${phone}@fajo.local`
+            // Phone changed -> update auth email (only if new phone is a valid 10-digit number)
+            const newPhone = phone !== undefined ? phone : existing.phone
+            if (newPhone && /^\d{10}$/.test(newPhone) && newPhone !== existing.phone) {
+                authUpdates.email = `${newPhone}@fajo.local`
             }
 
-            // Role changed -> update auth password
-            if (role !== undefined && role !== existing.role) {
+            // Determine the password to set:
+            // 1. If admin explicitly set a password, use that (takes priority)
+            // 2. Else if role changed, set the role-based default password
+            if (password && password.length >= 6) {
+                authUpdates.password = password
+            } else if (password && password.length < 6) {
+                return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 })
+            } else if (role !== undefined && role !== existing.role) {
+                // Only set default password on role change when no explicit password was given
                 authUpdates.password = role === 'Admin' ? 'password123' : 'fajo123'
             }
 
             if (Object.keys(authUpdates).length > 0) {
+                let adminClient
+                try {
+                    adminClient = getAdminClient()
+                } catch (configErr) {
+                    console.error('Admin client config error:', configErr)
+                    const msg = configErr instanceof Error ? configErr.message : 'Service role key not configured'
+                    return NextResponse.json({ error: msg }, { status: 500 })
+                }
+
                 const { error: authUpdateError } = await adminClient.auth.admin.updateUserById(
                     existing.user_id,
                     authUpdates
@@ -230,29 +259,48 @@ export async function PATCH(request: NextRequest) {
                 if (authUpdateError) {
                     console.error('Auth user update error:', authUpdateError)
                     return NextResponse.json(
-                        { error: `Failed to update login: ${authUpdateError.message}` },
+                        { error: `Failed to update login credentials: ${authUpdateError.message}` },
                         { status: 500 }
                     )
                 }
             }
+        } else if (password) {
+            // Staff has no auth user — cannot update password
+            return NextResponse.json(
+                { error: 'This staff member has no login account. Cannot update password.' },
+                { status: 400 }
+            )
         }
 
-        const { data, error } = await supabase
-            .from('staff')
-            .update(updates)
-            .eq('id', staff_id)
-            .select('id, user_id, hotel_id, role, name, phone, base_salary')
-            .single()
+        // ── Update staff table ──
+        if (Object.keys(updates).length > 0) {
+            const { data, error } = await supabase
+                .from('staff')
+                .update(updates)
+                .eq('id', staff_id)
+                .select('id, user_id, hotel_id, role, name, phone, base_salary')
+                .single()
 
-        if (error) {
-            console.error('Admin staff update error:', error)
-            return NextResponse.json({ error: 'Failed to update staff' }, { status: 500 })
+            if (error) {
+                console.error('Admin staff update error:', error)
+                return NextResponse.json(
+                    { error: `Failed to update staff record: ${error.message}` },
+                    { status: 500 }
+                )
+            }
+
+            return NextResponse.json({ data })
         }
 
-        return NextResponse.json({ data })
+        // If only password was changed (no staff table fields), return the existing record
+        return NextResponse.json({ data: existing })
     } catch (err) {
         console.error('Admin staff PATCH error:', err)
-        return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+        const message = err instanceof Error ? err.message : 'Unknown error'
+        return NextResponse.json(
+            { error: `Staff update failed: ${message}` },
+            { status: 500 }
+        )
     }
 }
 
@@ -328,6 +376,7 @@ export async function DELETE(request: NextRequest) {
                 }
             } catch (authErr) {
                 console.error('Auth user deletion exception:', authErr)
+                // If service role key is missing, warn but still allow staff record deletion
             }
         }
 
@@ -345,6 +394,7 @@ export async function DELETE(request: NextRequest) {
         return NextResponse.json({ success: true })
     } catch (err) {
         console.error('Admin staff DELETE error:', err)
-        return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+        const message = err instanceof Error ? err.message : 'Unknown error'
+        return NextResponse.json({ error: `Staff deletion failed: ${message}` }, { status: 500 })
     }
 }

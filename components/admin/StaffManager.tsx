@@ -146,7 +146,7 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
                 staff_id: sid,
                 name: editName,
                 phone: phoneTrimmed || null,
-                base_salary: editSalary,
+                base_salary: editSalary ? Number(editSalary) : 0,
                 role: editRole,
                 hotel_id: editHotel,
             }

@@ -65,10 +65,20 @@ export function ReservationDetail({
     // Fetch group siblings when booking has group_id
     useEffect(() => {
         if (open && booking?.group_id) {
-            fetch(`/api/reservations/group?groupId=${booking.group_id}`)
-                .then((r) => r.json())
-                .then((data) => setGroupBookings(data.bookings || []))
-                .catch(() => setGroupBookings([]))
+            const fetchGroup = async () => {
+                try {
+                    const { data } = await supabase
+                        .from('bookings')
+                        .select('*, guests(id, name, phone, aadhar_number, aadhar_url), unit:units(unit_number)')
+                        .eq('group_id', booking.group_id)
+                        .in('status', ['PENDING', 'CONFIRMED', 'CHECKED_IN'])
+                        .order('created_at')
+                    setGroupBookings(data || [])
+                } catch {
+                    setGroupBookings([])
+                }
+            }
+            fetchGroup()
         } else {
             setGroupBookings([])
         }

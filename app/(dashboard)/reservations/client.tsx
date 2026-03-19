@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
+import { supabase } from '@/lib/supabase/client'
 import type { Booking, Unit } from '@/lib/types'
 import { useCurrentTime } from '@/lib/hooks/use-current-time'
 import { useUnitStore, type UnitWithBooking } from '@/lib/store/unit-store'
@@ -168,12 +169,18 @@ export function ReservationsClient({ hotelId }: ReservationsClientProps) {
             const from = new Date(dateStr + 'T00:00:00+05:30')
             const to = new Date(dateStr + 'T23:59:59.999+05:30')
 
-            const res = await fetch(
-                `/api/reservations?hotelId=${hotelId}&from=${from.toISOString()}&to=${to.toISOString()}`,
-                { signal }
-            )
-            const data = await res.json()
-            if (data.bookings) setBookings(data.bookings)
+            const { data: allBookings } = await supabase
+                .from('bookings')
+                .select('*, guests(name, phone, aadhar_url), unit:units(unit_number, type, hotel_id, base_price)')
+                .in('status', ['PENDING', 'CONFIRMED', 'CHECKED_IN'])
+                .lt('check_in', to.toISOString())
+                .gt('check_out', from.toISOString())
+
+            // Check if this request was aborted while the query ran
+            if (signal.aborted) return
+
+            const filtered = (allBookings || []).filter(b => b.unit?.hotel_id === hotelId)
+            setBookings(filtered as Booking[])
         } catch (err: unknown) {
             if (err instanceof Error && err.name === 'AbortError') return
             console.error('Failed to fetch bookings:', err)

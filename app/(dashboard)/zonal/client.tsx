@@ -59,20 +59,96 @@ export function ZonalClient({ staffId }: ZonalClientProps) {
     const fetchData = useCallback(async () => {
         setLoading(true)
         try {
-            const res = await fetch('/api/zonal/overview')
-            const json = await res.json()
-            if (!res.ok) throw new Error(json.error || 'Failed to fetch')
-            const hotelData: HotelOverview[] = json.data || []
-            setHotels(hotelData)
+            // 1. Fetch all hotels
+            const { data: hotelsData } = await supabase
+                .from('hotels').select('id, name, city, status').order('name')
+            if (!hotelsData) { setLoading(false); return }
 
-            // Auto-select first active hotel if none selected
+            // 2. Fetch all units
+            const { data: allUnits } = await supabase.from('units').select('id, hotel_id, unit_number, type, status')
+
+            // 3. IST date calculations
+            const now = new Date()
+            const todayIST = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+            const todayMidnight = `${todayIST}T00:00:00+05:30`
+            const sevenDaysAgo = new Date(now.getTime() - 7 * 86400000).toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+
+            // 4. Parallel queries for all data
+            const [attendanceRes, staffRes, incidentsRes, bookingsRes, overdueRes] = await Promise.all([
+                supabase.from('attendance').select('id, hotel_id').eq('status', 'CLOCKED_IN').gte('clock_in', todayMidnight),
+                supabase.from('staff').select('id, hotel_id').neq('role', 'Admin'),
+                supabase.from('staff_incidents').select('id, hotel_id').gte('incident_date', sevenDaysAgo),
+                supabase.from('bookings').select('id, unit_id, grand_total, status').in('status', ['CHECKED_IN', 'CHECKED_OUT']).gte('check_in', todayMidnight),
+                supabase.from('bookings').select('id, unit_id, check_out, guests(name)').eq('status', 'CHECKED_IN').not('check_out', 'is', null).lt('check_out', now.toISOString()),
+            ])
+
+            // 5. Get payments for today's bookings
+            const todayBookingIds = (bookingsRes.data || []).map(b => b.id)
+            let paymentsData: { booking_id: string; amount_cash: number; amount_digital: number }[] = []
+            if (todayBookingIds.length > 0) {
+                const { data } = await supabase.from('payments').select('booking_id, amount_cash, amount_digital').in('booking_id', todayBookingIds)
+                paymentsData = data || []
+            }
+
+            // 6. Build unit lookup
+            const unitsByHotel = new Map<string, typeof allUnits>()
+            const unitNumberLookup = new Map<string, string>()
+            for (const u of allUnits || []) {
+                if (!unitsByHotel.has(u.hotel_id)) unitsByHotel.set(u.hotel_id, [])
+                unitsByHotel.get(u.hotel_id)!.push(u)
+                unitNumberLookup.set(u.id, u.unit_number)
+            }
+
+            // 7. Build per-hotel overview
+            const hotelOverviews = hotelsData.map(hotel => {
+                const units = unitsByHotel.get(hotel.id) || []
+                const unitIds = new Set(units.map(u => u.id))
+
+                const totalRooms = units.filter(u => u.type === 'ROOM').length
+                const totalDorms = units.filter(u => u.type === 'DORM').length
+                const occupiedRooms = units.filter(u => u.type === 'ROOM' && u.status === 'OCCUPIED').length
+                const occupiedDorms = units.filter(u => u.type === 'DORM' && u.status === 'OCCUPIED').length
+                const availableRooms = units.filter(u => u.type === 'ROOM' && u.status === 'AVAILABLE').length
+                const availableDorms = units.filter(u => u.type === 'DORM' && u.status === 'AVAILABLE').length
+                const dirtyUnits = units.filter(u => u.status === 'DIRTY' || u.status === 'IN_PROGRESS').length
+                const maintenanceUnits = units.filter(u => u.status === 'MAINTENANCE').length
+
+                // Revenue from payments for this hotel's bookings
+                const hotelBookingIds = (bookingsRes.data || []).filter(b => unitIds.has(b.unit_id)).map(b => b.id)
+                const hotelPayments = paymentsData.filter(p => hotelBookingIds.includes(p.booking_id))
+                const cashRevenue = hotelPayments.reduce((s, p) => s + Number(p.amount_cash || 0), 0)
+                const digitalRevenue = hotelPayments.reduce((s, p) => s + Number(p.amount_digital || 0), 0)
+
+                const staffOnDuty = (attendanceRes.data || []).filter(a => a.hotel_id === hotel.id).length
+                const totalStaff = (staffRes.data || []).filter(s => s.hotel_id === hotel.id).length
+                const recentIncidents = (incidentsRes.data || []).filter(i => i.hotel_id === hotel.id).length
+
+                const overdueCheckouts = (overdueRes.data || [])
+                    .filter(b => unitIds.has(b.unit_id))
+                    .map(b => ({
+                        unitNumber: unitNumberLookup.get(b.unit_id) || 'Unknown',
+                        guestName: (b.guests as { name: string }[])?.[0]?.name || 'Unknown',
+                        minutesOverdue: Math.floor((now.getTime() - new Date(b.check_out!).getTime()) / 60000),
+                    }))
+
+                return {
+                    hotelId: hotel.id, hotelName: hotel.name, city: hotel.city,
+                    status: hotel.status || 'ACTIVE',
+                    totalRooms, totalDorms, occupiedRooms, occupiedDorms,
+                    availableRooms, availableDorms, dirtyUnits, maintenanceUnits,
+                    todayRevenue: cashRevenue + digitalRevenue, cashRevenue, digitalRevenue,
+                    staffOnDuty, totalStaff, recentIncidents, overdueCheckouts,
+                }
+            })
+
+            setHotels(hotelOverviews)
             setSelectedHotelId(prev => {
                 if (prev) return prev
-                const firstActive = hotelData.find(h => h.status !== 'MAINTENANCE')
+                const firstActive = hotelOverviews.find(h => h.status?.toUpperCase() !== 'MAINTENANCE')
                 return firstActive?.hotelId || null
             })
         } catch (err) {
-            console.error(err)
+            console.error('Zonal fetch error:', err)
             toast.error('Failed to load zonal overview')
         } finally {
             setLoading(false)
