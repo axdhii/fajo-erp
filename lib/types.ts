@@ -185,6 +185,42 @@ export interface RestockRequest {
     staff?: { name: string | null }
 }
 
+// Property Expenses
+export interface PropertyExpense {
+    id: string
+    hotel_id: string
+    description: string
+    amount: number
+    category: string | null
+    status: 'PENDING' | 'APPROVED' | 'REJECTED'
+    requested_by: string | null
+    reviewed_by: string | null
+    reviewed_at: string | null
+    rejection_reason: string | null
+    created_at: string
+    requester?: { name: string | null }
+    reviewer?: { name: string | null }
+}
+
+// Customer Issues
+export interface CustomerIssue {
+    id: string
+    hotel_id: string
+    unit_id: string | null
+    description: string
+    guest_name: string | null
+    guest_phone: string | null
+    status: 'OPEN' | 'IN_PROGRESS' | 'RESOLVED'
+    reported_by: string | null
+    resolved_by: string | null
+    resolution_notes: string | null
+    created_at: string
+    resolved_at: string | null
+    unit?: { unit_number: string }
+    reporter?: { name: string | null }
+    resolver?: { name: string | null }
+}
+
 // Maintenance
 export interface MaintenanceTicket {
     id: string
@@ -199,5 +235,26 @@ export interface MaintenanceTicket {
     created_at: string
     resolved_at: string | null
     unit?: { unit_number: string }
+    staff?: { name: string | null }
+}
+
+// ============================================================
+// Laundry Module Types
+// ============================================================
+
+export type LaundryStatus = 'OUT' | 'RETURNED' | 'PAID'
+
+export interface LaundryOrder {
+    id: string
+    hotel_id: string
+    items_description: string
+    item_count: number | null
+    sent_at: string
+    returned_at: string | null
+    amount: number | null
+    status: LaundryStatus
+    notes: string | null
+    created_by: string | null
+    created_at: string
     staff?: { name: string | null }
 }

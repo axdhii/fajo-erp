@@ -1,0 +1,169 @@
+import { createClient } from '@/lib/supabase/server'
+import { NextRequest, NextResponse } from 'next/server'
+import { requireAuth } from '@/lib/auth'
+
+// GET /api/expenses — list property expenses for a hotel
+export async function GET(request: NextRequest) {
+    try {
+        const auth = await requireAuth()
+        if (!auth.authenticated) return auth.response
+
+        const supabase = await createClient()
+        const { searchParams } = new URL(request.url)
+        const hotelId = searchParams.get('hotel_id')
+
+        if (!hotelId) {
+            return NextResponse.json({ error: 'hotel_id is required' }, { status: 400 })
+        }
+
+        let query = supabase
+            .from('property_expenses')
+            .select('*, requester:requested_by(name), reviewer:reviewed_by(name)')
+            .eq('hotel_id', hotelId)
+            .order('created_at', { ascending: false })
+
+        const status = searchParams.get('status')
+        if (status) query = query.eq('status', status)
+
+        const limit = searchParams.get('limit')
+        if (limit) query = query.limit(Number(limit))
+
+        const { data, error } = await query
+
+        if (error) {
+            console.error('Expenses fetch error:', error)
+            return NextResponse.json({ error: 'Failed to fetch expenses' }, { status: 500 })
+        }
+
+        return NextResponse.json({ data })
+    } catch (err) {
+        console.error('Expenses GET error:', err)
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    }
+}
+
+// POST /api/expenses — create a property expense request
+export async function POST(request: NextRequest) {
+    try {
+        const auth = await requireAuth()
+        if (!auth.authenticated) return auth.response
+
+        const supabase = await createClient()
+
+        // Derive requested_by from authenticated user's staff record
+        const { data: callerStaff } = await supabase
+            .from('staff').select('id, hotel_id').eq('user_id', auth.userId).single()
+        if (!callerStaff) {
+            return NextResponse.json({ error: 'Staff record not found' }, { status: 403 })
+        }
+
+        const body = await request.json()
+        const { description, amount, category } = body
+
+        if (!description || !amount) {
+            return NextResponse.json({ error: 'description and amount are required' }, { status: 400 })
+        }
+
+        if (Number(amount) <= 0) {
+            return NextResponse.json({ error: 'amount must be positive' }, { status: 400 })
+        }
+
+        const { data, error } = await supabase
+            .from('property_expenses')
+            .insert({
+                hotel_id: callerStaff.hotel_id,
+                description,
+                amount: Number(amount),
+                category: category || null,
+                requested_by: callerStaff.id,
+                status: 'PENDING',
+            })
+            .select('*, requester:requested_by(name), reviewer:reviewed_by(name)')
+            .single()
+
+        if (error) {
+            console.error('Expense insert error:', error)
+            return NextResponse.json({ error: 'Failed to create expense request' }, { status: 500 })
+        }
+
+        return NextResponse.json({ data })
+    } catch (err) {
+        console.error('Expenses POST error:', err)
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    }
+}
+
+// PATCH /api/expenses — approve or reject an expense
+export async function PATCH(request: NextRequest) {
+    try {
+        const auth = await requireAuth()
+        if (!auth.authenticated) return auth.response
+
+        const supabase = await createClient()
+
+        // Derive reviewed_by from authenticated user's staff record
+        const { data: callerStaff } = await supabase
+            .from('staff').select('id, role').eq('user_id', auth.userId).single()
+        if (!callerStaff) {
+            return NextResponse.json({ error: 'Staff record not found' }, { status: 403 })
+        }
+
+        // Only ZonalOps, ZonalManager, and Admin can approve/reject
+        if (!['Admin', 'ZonalManager', 'ZonalOps'].includes(callerStaff.role)) {
+            return NextResponse.json({ error: 'Forbidden — insufficient role' }, { status: 403 })
+        }
+
+        const body = await request.json()
+        const { expense_id, action, rejection_reason } = body
+
+        if (!expense_id || !action) {
+            return NextResponse.json({ error: 'expense_id and action are required' }, { status: 400 })
+        }
+
+        if (!['APPROVED', 'REJECTED'].includes(action)) {
+            return NextResponse.json({ error: 'action must be APPROVED or REJECTED' }, { status: 400 })
+        }
+
+        // Guard against double-review
+        const { data: current, error: fetchError } = await supabase
+            .from('property_expenses')
+            .select('id, status')
+            .eq('id', expense_id)
+            .single()
+
+        if (fetchError || !current) {
+            return NextResponse.json({ error: 'Expense not found' }, { status: 404 })
+        }
+
+        if (current.status !== 'PENDING') {
+            return NextResponse.json({ error: 'Expense has already been reviewed' }, { status: 409 })
+        }
+
+        const updatePayload: Record<string, unknown> = {
+            status: action,
+            reviewed_by: callerStaff.id,
+            reviewed_at: new Date().toISOString(),
+        }
+
+        if (action === 'REJECTED' && rejection_reason) {
+            updatePayload.rejection_reason = rejection_reason
+        }
+
+        const { data, error } = await supabase
+            .from('property_expenses')
+            .update(updatePayload)
+            .eq('id', expense_id)
+            .select('*, requester:requested_by(name), reviewer:reviewed_by(name)')
+            .single()
+
+        if (error) {
+            console.error('Expense review error:', error)
+            return NextResponse.json({ error: 'Failed to review expense' }, { status: 500 })
+        }
+
+        return NextResponse.json({ data })
+    } catch (err) {
+        console.error('Expenses PATCH error:', err)
+        return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    }
+}

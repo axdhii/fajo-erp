@@ -38,8 +38,9 @@ export function Header() {
     const canSeeHousekeeping = profile.role === 'Admin' || profile.role === 'Housekeeping'
     const canSeeAdmin = profile.role === 'Admin'
     const canSeeHR = profile.role === 'Admin' || profile.role === 'HR'
-    const canSeeOps = profile.role === 'Admin' || profile.role === 'OpsManager'
-    const canSeeZonal = profile.role === 'Admin' || profile.role === 'ZonalManager'
+    const canSeeZonalOps = profile.role === 'Admin' || profile.role === 'ZonalManager' || profile.role === 'ZonalOps'
+    const canSeeZonalHK = profile.role === 'Admin' || profile.role === 'ZonalManager' || profile.role === 'ZonalHK'
+    const canSeeZonal = profile.role === 'Admin' || profile.role === 'ZonalManager' || profile.role === 'ZonalOps' || profile.role === 'ZonalHK'
 
     // Build nav links array to avoid duplication between desktop and mobile
     const navLinks = [
@@ -47,7 +48,8 @@ export function Header() {
         canSeeFrontDesk && { href: '/reservations', label: 'Reservations', icon: <Calendar className="h-4 w-4" />, activeClass: 'bg-blue-50 text-blue-700' },
         canSeeHousekeeping && { href: '/housekeeping', label: 'Housekeeping', icon: <Sparkles className="h-4 w-4" />, activeClass: 'bg-emerald-50 text-emerald-700' },
         canSeeHR && { href: '/hr', label: 'HR', icon: <Users className="h-4 w-4" />, activeClass: 'bg-violet-50 text-violet-700' },
-        canSeeOps && { href: '/ops', label: 'Operations', icon: <ClipboardList className="h-4 w-4" />, activeClass: 'bg-orange-50 text-orange-700' },
+        canSeeZonalOps && { href: '/zonal-ops', label: 'Zonal Ops', icon: <ClipboardList className="h-4 w-4" />, activeClass: 'bg-orange-50 text-orange-700' },
+        canSeeZonalHK && { href: '/zonal-hk', label: 'Zonal HK', icon: <Sparkles className="h-4 w-4" />, activeClass: 'bg-teal-50 text-teal-700' },
         canSeeZonal && { href: '/zonal', label: 'Zonal', icon: <Globe className="h-4 w-4" />, activeClass: 'bg-amber-50 text-amber-700' },
         canSeeAdmin && { href: '/admin', label: 'Admin', icon: <LayoutDashboard className="h-4 w-4" />, activeClass: 'bg-emerald-50 text-emerald-700' },
     ].filter(Boolean) as { href: string; label: string; icon: React.ReactNode; activeClass: string }[]
@@ -56,7 +58,7 @@ export function Header() {
         <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/80 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/80">
             <div className="container mx-auto flex h-16 items-center justify-between px-4">
                 <div className="flex items-center gap-4 md:gap-6">
-                    <Link href={`/${profile.role === 'Admin' ? 'admin' : profile.role === 'OpsManager' ? 'ops' : profile.role === 'ZonalManager' ? 'zonal' : profile.role === 'HR' ? 'hr' : profile.role === 'Housekeeping' ? 'housekeeping' : 'front-desk'}`} className="flex items-center gap-2">
+                    <Link href={`/${profile.role === 'Admin' ? 'admin' : profile.role === 'ZonalManager' ? 'zonal' : profile.role === 'ZonalOps' ? 'zonal-ops' : profile.role === 'ZonalHK' ? 'zonal-hk' : profile.role === 'HR' ? 'hr' : profile.role === 'Housekeeping' ? 'housekeeping' : 'front-desk'}`} className="flex items-center gap-2">
                         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
                             <span className="font-bold text-lg leading-none">F</span>
                         </div>

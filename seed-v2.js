@@ -51,8 +51,10 @@ async function seedV2() {
         ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', 'hr@fajo', crypt('fajo123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
         -- Zonal Manager login
         ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', 'zonal@fajo', crypt('fajo123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
-        -- Operations Manager login
-        ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', 'ops@fajo', crypt('fajo123', gen_salt('bf')), now(), now(), now(), '', '', '', '')
+        -- Zonal Ops login
+        ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', 'zonalops@fajo', crypt('fajo123', gen_salt('bf')), now(), now(), now(), '', '', '', ''),
+        -- Zonal HK login
+        ('00000000-0000-0000-0000-000000000000', gen_random_uuid(), 'authenticated', 'authenticated', 'zonalhk@fajo', crypt('fajo123', gen_salt('bf')), now(), now(), now(), '', '', '', '')
         RETURNING id, email
       )
       -- 5. Create operator staff records (linked to auth users, no name/salary)
@@ -64,14 +66,14 @@ async function seedV2() {
           WHEN nu.email LIKE 'admin%' THEN 'Admin'::staff_role
           WHEN nu.email LIKE 'frontdesk%' THEN 'FrontDesk'::staff_role
           WHEN nu.email LIKE 'hr%' THEN 'HR'::staff_role
+          WHEN nu.email LIKE 'zonalops%' THEN 'ZonalOps'::staff_role
+          WHEN nu.email LIKE 'zonalhk%' THEN 'ZonalHK'::staff_role
           WHEN nu.email LIKE 'zonal%' THEN 'ZonalManager'::staff_role
-          WHEN nu.email LIKE 'ops%' THEN 'OpsManager'::staff_role
           ELSE 'Housekeeping'::staff_role
         END as role,
         true as is_idle,
         CASE
-          WHEN nu.email LIKE 'zonal%' THEN 'Faisal'
-          WHEN nu.email LIKE 'ops%' THEN 'Shahid'
+          WHEN nu.email = 'zonal@fajo' THEN 'Faisal'
           ELSE NULL
         END as name
       FROM new_users nu;
@@ -102,7 +104,7 @@ async function seedV2() {
 
         console.log('Executing V2 Seed Script...');
         await client.query(sql);
-        console.log('V2 Seed Successful! Logins: admin@fajo/password123, frontdesk@fajo/fajo123, hk@fajo/fajo123, hr@fajo/fajo123, zonal@fajo/fajo123, ops@fajo/fajo123');
+        console.log('V2 Seed Successful! Logins: admin@fajo/password123, frontdesk@fajo/fajo123, hk@fajo/fajo123, hr@fajo/fajo123, zonal@fajo/fajo123, zonalops@fajo/fajo123, zonalhk@fajo/fajo123');
 
     } catch (e) {
         console.error('Error seeding v2:', e);

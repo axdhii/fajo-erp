@@ -5,7 +5,7 @@ import { User } from '@supabase/supabase-js'
 interface StaffProfile {
     id: string
     hotel_id: string
-    role: 'Admin' | 'FrontDesk' | 'Housekeeping' | 'HR' | 'ZonalManager' | 'OpsManager'
+    role: 'Admin' | 'FrontDesk' | 'Housekeeping' | 'HR' | 'ZonalManager' | 'ZonalOps' | 'ZonalHK'
     name: string | null
 }
 

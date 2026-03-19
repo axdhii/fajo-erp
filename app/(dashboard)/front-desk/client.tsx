@@ -33,6 +33,8 @@ import {
     LogIn,
     LogOut,
     Package,
+    Receipt,
+    MessageSquareWarning,
 } from 'lucide-react'
 import { RestockSheet as RestockForm } from '@/components/units/RestockSheet'
 
@@ -51,6 +53,20 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
 
     // Restock state
     const [restockOpen, setRestockOpen] = useState(false)
+
+    // Customer issue report state
+    const [issueOpen, setIssueOpen] = useState(false)
+    const [issueDescription, setIssueDescription] = useState('')
+    const [issueGuestName, setIssueGuestName] = useState('')
+    const [issueGuestPhone, setIssueGuestPhone] = useState('')
+    const [issueSubmitting, setIssueSubmitting] = useState(false)
+
+    // Expense request state
+    const [expenseOpen, setExpenseOpen] = useState(false)
+    const [expenseDescription, setExpenseDescription] = useState('')
+    const [expenseAmount, setExpenseAmount] = useState('')
+    const [expenseCategory, setExpenseCategory] = useState('')
+    const [expenseSubmitting, setExpenseSubmitting] = useState(false)
 
     // Attendance state
     const [attendanceOpen, setAttendanceOpen] = useState(false)
@@ -192,6 +208,63 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
             toast.error(err instanceof Error ? err.message : 'Clock out failed')
         } finally {
             setAttendanceLoading(false)
+        }
+    }
+
+    // Submit customer issue
+    const handleSubmitIssue = async () => {
+        if (!issueDescription.trim()) { toast.error('Please describe the issue'); return }
+        setIssueSubmitting(true)
+        try {
+            const res = await fetch('/api/customer-issues', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    description: issueDescription.trim(),
+                    guest_name: issueGuestName.trim() || null,
+                    guest_phone: issueGuestPhone.trim() || null,
+                }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error)
+            toast.success('Customer issue reported to Zonal Ops')
+            setIssueDescription('')
+            setIssueGuestName('')
+            setIssueGuestPhone('')
+            setIssueOpen(false)
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to report issue')
+        } finally {
+            setIssueSubmitting(false)
+        }
+    }
+
+    // Submit expense request
+    const handleSubmitExpense = async () => {
+        if (!expenseDescription.trim()) { toast.error('Please describe the expense'); return }
+        if (!expenseAmount || Number(expenseAmount) <= 0) { toast.error('Please enter a valid amount'); return }
+        setExpenseSubmitting(true)
+        try {
+            const res = await fetch('/api/expenses', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    description: expenseDescription.trim(),
+                    amount: Number(expenseAmount),
+                    category: expenseCategory || null,
+                }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error)
+            toast.success('Expense request sent to Zonal Ops')
+            setExpenseDescription('')
+            setExpenseAmount('')
+            setExpenseCategory('')
+            setExpenseOpen(false)
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to submit expense')
+        } finally {
+            setExpenseSubmitting(false)
         }
     }
 
@@ -447,7 +520,7 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
                         </div>
                         <div className="text-left">
                             <span className="text-sm font-bold text-orange-900">Request Restock</span>
-                            <span className="ml-3 text-xs text-orange-500">Send supply requests to Operations</span>
+                            <span className="ml-3 text-xs text-orange-500">Send supply requests to Zonal Ops</span>
                         </div>
                     </div>
                     {restockOpen ? <ChevronUp className="h-4 w-4 text-orange-400" /> : <ChevronDown className="h-4 w-4 text-orange-400" />}
@@ -456,6 +529,165 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
                 {restockOpen && (
                     <div className="px-5 pb-5 border-t border-orange-200 pt-4">
                         <RestockForm open={restockOpen} onClose={() => setRestockOpen(false)} hotelId={hotelId} staffId={staffId} />
+                    </div>
+                )}
+            </div>
+
+            {/* Report Customer Issue Section */}
+            <div className="rounded-2xl border border-red-200 bg-red-50/50 overflow-hidden">
+                <button
+                    onClick={() => setIssueOpen(!issueOpen)}
+                    className="w-full flex items-center justify-between px-5 py-3.5 cursor-pointer hover:bg-red-50 transition-colors"
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100 text-red-600">
+                            <MessageSquareWarning className="h-4 w-4" />
+                        </div>
+                        <div className="text-left">
+                            <span className="text-sm font-bold text-red-900">Report Customer Issue</span>
+                            <span className="ml-3 text-xs text-red-500">Send to Zonal Ops for resolution</span>
+                        </div>
+                    </div>
+                    {issueOpen ? <ChevronUp className="h-4 w-4 text-red-400" /> : <ChevronDown className="h-4 w-4 text-red-400" />}
+                </button>
+
+                {issueOpen && (
+                    <div className="px-5 pb-5 border-t border-red-200 pt-4">
+                        <div className="bg-white rounded-xl border border-red-100 p-4 space-y-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs text-slate-600">Guest Name</Label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. John Doe"
+                                        value={issueGuestName}
+                                        onChange={(e) => setIssueGuestName(e.target.value)}
+                                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-red-400 focus:ring-2 focus:ring-red-400/20 placeholder:text-slate-400"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs text-slate-600">Guest Phone</Label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. 9876543210"
+                                        value={issueGuestPhone}
+                                        onChange={(e) => setIssueGuestPhone(e.target.value)}
+                                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-red-400 focus:ring-2 focus:ring-red-400/20 placeholder:text-slate-400"
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-1.5">
+                                <Label className="text-xs text-slate-600">Issue Description *</Label>
+                                <textarea
+                                    placeholder="Describe the customer issue in detail..."
+                                    value={issueDescription}
+                                    onChange={(e) => setIssueDescription(e.target.value)}
+                                    rows={3}
+                                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-red-400 focus:ring-2 focus:ring-red-400/20 resize-none placeholder:text-slate-400"
+                                />
+                            </div>
+                            <Button
+                                onClick={handleSubmitIssue}
+                                disabled={issueSubmitting || !issueDescription.trim()}
+                                size="sm"
+                                className="bg-red-600 hover:bg-red-700 h-8 text-xs"
+                            >
+                                {issueSubmitting ? (
+                                    <span className="flex items-center gap-2">
+                                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                        Sending...
+                                    </span>
+                                ) : (
+                                    <span className="flex items-center gap-2">
+                                        <MessageSquareWarning className="h-3.5 w-3.5" />
+                                        Report Issue
+                                    </span>
+                                )}
+                            </Button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Property Expense Request Section */}
+            <div className="rounded-2xl border border-blue-200 bg-blue-50/50 overflow-hidden">
+                <button
+                    onClick={() => setExpenseOpen(!expenseOpen)}
+                    className="w-full flex items-center justify-between px-5 py-3.5 cursor-pointer hover:bg-blue-50 transition-colors"
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                            <Receipt className="h-4 w-4" />
+                        </div>
+                        <div className="text-left">
+                            <span className="text-sm font-bold text-blue-900">Property Expense Request</span>
+                            <span className="ml-3 text-xs text-blue-500">Submit for Zonal Ops approval</span>
+                        </div>
+                    </div>
+                    {expenseOpen ? <ChevronUp className="h-4 w-4 text-blue-400" /> : <ChevronDown className="h-4 w-4 text-blue-400" />}
+                </button>
+
+                {expenseOpen && (
+                    <div className="px-5 pb-5 border-t border-blue-200 pt-4">
+                        <div className="bg-white rounded-xl border border-blue-100 p-4 space-y-3">
+                            <div className="space-y-1.5">
+                                <Label className="text-xs text-slate-600">Description *</Label>
+                                <textarea
+                                    placeholder="e.g. Plumbing repair in bathroom, AC filter replacement..."
+                                    value={expenseDescription}
+                                    onChange={(e) => setExpenseDescription(e.target.value)}
+                                    rows={2}
+                                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 resize-none placeholder:text-slate-400"
+                                />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs text-slate-600">Amount (INR) *</Label>
+                                    <input
+                                        type="number"
+                                        placeholder="e.g. 500"
+                                        value={expenseAmount}
+                                        onChange={(e) => setExpenseAmount(e.target.value)}
+                                        min="1"
+                                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/20 placeholder:text-slate-400"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs text-slate-600">Category</Label>
+                                    <Select value={expenseCategory} onValueChange={setExpenseCategory}>
+                                        <SelectTrigger className="h-9">
+                                            <SelectValue placeholder="Select category..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Plumbing">Plumbing</SelectItem>
+                                            <SelectItem value="Electrical">Electrical</SelectItem>
+                                            <SelectItem value="Supplies">Supplies</SelectItem>
+                                            <SelectItem value="Cleaning">Cleaning</SelectItem>
+                                            <SelectItem value="Furniture">Furniture</SelectItem>
+                                            <SelectItem value="Other">Other</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                            <Button
+                                onClick={handleSubmitExpense}
+                                disabled={expenseSubmitting || !expenseDescription.trim() || !expenseAmount || Number(expenseAmount) <= 0}
+                                size="sm"
+                                className="bg-blue-600 hover:bg-blue-700 h-8 text-xs"
+                            >
+                                {expenseSubmitting ? (
+                                    <span className="flex items-center gap-2">
+                                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                        Sending...
+                                    </span>
+                                ) : (
+                                    <span className="flex items-center gap-2">
+                                        <Receipt className="h-3.5 w-3.5" />
+                                        Submit Expense Request
+                                    </span>
+                                )}
+                            </Button>
+                        </div>
                     </div>
                 )}
             </div>

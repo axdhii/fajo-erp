@@ -42,8 +42,10 @@ export default function LoginPage() {
                 window.location.href = '/hr'
             } else if (role === 'ZonalManager') {
                 window.location.href = '/zonal'
-            } else if (role === 'OpsManager') {
-                window.location.href = '/ops'
+            } else if (role === 'ZonalOps') {
+                window.location.href = '/zonal-ops'
+            } else if (role === 'ZonalHK') {
+                window.location.href = '/zonal-hk'
             } else if (role === 'Housekeeping') {
                 window.location.href = '/housekeeping'
             } else {

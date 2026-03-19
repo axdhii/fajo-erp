@@ -49,7 +49,7 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        const validRoles = ['Admin', 'FrontDesk', 'Housekeeping', 'HR', 'OpsManager', 'ZonalManager']
+        const validRoles = ['Admin', 'FrontDesk', 'Housekeeping', 'HR', 'ZonalManager', 'ZonalOps', 'ZonalHK']
         if (!validRoles.includes(role)) {
             return NextResponse.json(
                 { error: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
@@ -147,7 +147,7 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'staff_id is required' }, { status: 400 })
         }
 
-        const validRoles = ['Admin', 'FrontDesk', 'Housekeeping', 'HR', 'OpsManager', 'ZonalManager']
+        const validRoles = ['Admin', 'FrontDesk', 'Housekeeping', 'HR', 'ZonalManager', 'ZonalOps', 'ZonalHK']
 
         const updates: Record<string, unknown> = {}
         if (name !== undefined) updates.name = name

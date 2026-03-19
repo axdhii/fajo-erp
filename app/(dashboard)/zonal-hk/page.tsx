@@ -1,9 +1,9 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import { AlertCircle } from 'lucide-react'
-import { OpsClient } from './client'
+import { ZonalHKClient } from './client'
 
-export default async function OpsPage() {
+export default async function ZonalHKPage() {
     const supabase = await createClient()
 
     // Server-side auth check
@@ -22,16 +22,16 @@ export default async function OpsPage() {
 
     if (!profile) redirect('/login')
 
-    // Server-side Role Protection
-    if (profile.role !== 'OpsManager' && profile.role !== 'Admin') {
+    // Server-side Role Protection — Admin, ZonalManager, ZonalHK
+    if (!['Admin', 'ZonalManager', 'ZonalHK'].includes(profile.role)) {
         return (
             <div className="flex flex-col items-center justify-center p-20 text-center mt-10">
                 <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
                 <h2 className="text-xl font-bold text-red-600">Unauthorized Area</h2>
-                <p className="text-slate-500 mt-2">Only Operations Managers and Admins can access this dashboard.</p>
+                <p className="text-slate-500 mt-2">Only Zonal HK staff, Zonal Managers, and Admins can access this dashboard.</p>
             </div>
         )
     }
 
-    return <OpsClient hotelId={profile.hotel_id} staffId={profile.id} />
+    return <ZonalHKClient hotelId={profile.hotel_id} staffId={profile.id} />
 }

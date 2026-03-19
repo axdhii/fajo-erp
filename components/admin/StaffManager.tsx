@@ -55,8 +55,9 @@ const ALL_ROLES = [
     { value: 'FrontDesk', label: 'Front Desk' },
     { value: 'Housekeeping', label: 'Housekeeping' },
     { value: 'HR', label: 'HR' },
-    { value: 'OpsManager', label: 'Ops Manager' },
     { value: 'ZonalManager', label: 'Zonal Manager' },
+    { value: 'ZonalOps', label: 'Zonal Ops' },
+    { value: 'ZonalHK', label: 'Zonal HK' },
 ]
 
 const ROLE_COLORS: Record<string, string> = {
@@ -64,8 +65,9 @@ const ROLE_COLORS: Record<string, string> = {
     FrontDesk: 'bg-blue-100 text-blue-700 border-blue-200',
     Housekeeping: 'bg-amber-100 text-amber-700 border-amber-200',
     HR: 'bg-violet-100 text-violet-700 border-violet-200',
-    OpsManager: 'bg-teal-100 text-teal-700 border-teal-200',
     ZonalManager: 'bg-indigo-100 text-indigo-700 border-indigo-200',
+    ZonalOps: 'bg-orange-100 text-orange-700 border-orange-200',
+    ZonalHK: 'bg-teal-100 text-teal-700 border-teal-200',
 }
 
 export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {

@@ -65,7 +65,35 @@ export async function middleware(request: NextRequest) {
         }
     }
 
-    // Role-based route protection for Zonal Manager
+    // Role-based route protection for Zonal Ops
+    if (pathname.startsWith('/zonal-ops')) {
+        const { data: profile } = await supabase
+            .from('staff')
+            .select('role')
+            .eq('user_id', user.id)
+            .single()
+
+        if (!profile || !['Admin', 'ZonalManager', 'ZonalOps'].includes(profile.role)) {
+            const redirectPath = profile?.role === 'HR' ? '/hr' : profile?.role === 'Housekeeping' ? '/housekeeping' : '/front-desk'
+            return NextResponse.redirect(new URL(redirectPath, request.url))
+        }
+    }
+
+    // Role-based route protection for Zonal HK
+    if (pathname.startsWith('/zonal-hk')) {
+        const { data: profile } = await supabase
+            .from('staff')
+            .select('role')
+            .eq('user_id', user.id)
+            .single()
+
+        if (!profile || !['Admin', 'ZonalManager', 'ZonalHK'].includes(profile.role)) {
+            const redirectPath = profile?.role === 'HR' ? '/hr' : profile?.role === 'Housekeeping' ? '/housekeeping' : '/front-desk'
+            return NextResponse.redirect(new URL(redirectPath, request.url))
+        }
+    }
+
+    // Role-based route protection for Zonal Manager overview
     if (pathname.startsWith('/zonal')) {
         const { data: profile } = await supabase
             .from('staff')
@@ -73,22 +101,8 @@ export async function middleware(request: NextRequest) {
             .eq('user_id', user.id)
             .single()
 
-        if (!profile || !['Admin', 'ZonalManager'].includes(profile.role)) {
+        if (!profile || !['Admin', 'ZonalManager', 'ZonalOps', 'ZonalHK'].includes(profile.role)) {
             const redirectPath = profile?.role === 'HR' ? '/hr' : profile?.role === 'Housekeeping' ? '/housekeeping' : '/front-desk'
-            return NextResponse.redirect(new URL(redirectPath, request.url))
-        }
-    }
-
-    // Role-based route protection for Operations Manager
-    if (pathname.startsWith('/ops')) {
-        const { data: profile } = await supabase
-            .from('staff')
-            .select('role')
-            .eq('user_id', user.id)
-            .single()
-
-        if (!profile || !['Admin', 'OpsManager'].includes(profile.role)) {
-            const redirectPath = profile?.role === 'HR' ? '/hr' : profile?.role === 'ZonalManager' ? '/zonal' : profile?.role === 'Housekeeping' ? '/housekeeping' : '/front-desk'
             return NextResponse.redirect(new URL(redirectPath, request.url))
         }
     }
