@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase/client'
 import { User } from '@supabase/supabase-js'
+import type { ShiftReport } from '@/lib/types'
 
 interface StaffProfile {
     id: string
@@ -13,14 +14,18 @@ interface AuthState {
     user: User | null
     profile: StaffProfile | null
     isLoading: boolean
+    shiftReport: ShiftReport | null
     checkAuth: () => Promise<void>
     signOut: () => Promise<void>
+    completeSignOut: () => Promise<void>
+    clearShiftReport: () => void
 }
 
 export const useAuthStore = create<AuthState>((set, get) => ({
     user: null,
     profile: null,
     isLoading: true,
+    shiftReport: null,
 
     checkAuth: async () => {
         try {
@@ -53,17 +58,32 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         // Auto clock-out for property-level roles
         if (profile && ['FrontDesk', 'Housekeeping', 'HR'].includes(profile.role)) {
             try {
-                await fetch('/api/attendance/clock-out', {
+                const res = await fetch('/api/attendance/clock-out', {
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ staff_id: profile.id }),
                 })
+                const json = await res.json()
+                if (json.shiftReport) {
+                    // Store report for the modal to display — don't sign out yet
+                    set({ shiftReport: json.shiftReport })
+                    return
+                }
             } catch {
                 // Silently ignore clock-out errors — don't block sign-out
             }
         }
 
         await supabase.auth.signOut()
-        set({ user: null, profile: null })
-    }
+        set({ user: null, profile: null, shiftReport: null })
+    },
+
+    completeSignOut: async () => {
+        await supabase.auth.signOut()
+        set({ user: null, profile: null, shiftReport: null })
+    },
+
+    clearShiftReport: () => {
+        set({ shiftReport: null })
+    },
 }))

@@ -72,22 +72,45 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Failed to delete files' }, { status: 500 })
         }
 
-        // Update guest records: mark aadhar_url as ARCHIVED
-        // Fetch all guests whose aadhar_url starts with this month prefix
-        const { data: matchingGuests } = await supabase
+        // Update guest records: mark aadhar_url_front and aadhar_url_back as ARCHIVED
+        // Fetch all guests whose aadhar_url_front or aadhar_url_back starts with this month prefix
+        const { data: matchingFront } = await supabase
             .from('guests')
-            .select('id, aadhar_url')
-            .like('aadhar_url', `${month}/%`)
+            .select('id, aadhar_url_front')
+            .like('aadhar_url_front', `${month}/%`)
+
+        const { data: matchingBack } = await supabase
+            .from('guests')
+            .select('id, aadhar_url_back')
+            .like('aadhar_url_back', `${month}/%`)
 
         let guestsUpdated = 0
-        if (matchingGuests && matchingGuests.length > 0) {
-            for (const guest of matchingGuests) {
+        const processedIds = new Set<string>()
+
+        if (matchingFront && matchingFront.length > 0) {
+            for (const guest of matchingFront) {
                 const { error: updateError } = await supabase
                     .from('guests')
-                    .update({ aadhar_url: `ARCHIVED: ${guest.aadhar_url}` })
+                    .update({ aadhar_url_front: `ARCHIVED: ${guest.aadhar_url_front}` })
                     .eq('id', guest.id)
 
-                if (!updateError) guestsUpdated++
+                if (!updateError) {
+                    processedIds.add(guest.id)
+                    guestsUpdated++
+                }
+            }
+        }
+
+        if (matchingBack && matchingBack.length > 0) {
+            for (const guest of matchingBack) {
+                const { error: updateError } = await supabase
+                    .from('guests')
+                    .update({ aadhar_url_back: `ARCHIVED: ${guest.aadhar_url_back}` })
+                    .eq('id', guest.id)
+
+                if (!updateError && !processedIds.has(guest.id)) {
+                    guestsUpdated++
+                }
             }
         }
 

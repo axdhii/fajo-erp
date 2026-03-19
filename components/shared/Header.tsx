@@ -44,7 +44,7 @@ export function Header() {
 
     // Build nav links array to avoid duplication between desktop and mobile
     const navLinks = [
-        canSeeFrontDesk && { href: '/front-desk', label: 'Front Desk', icon: <BookOpen className="h-4 w-4" />, activeClass: 'bg-emerald-50 text-emerald-700' },
+        canSeeFrontDesk && { href: '/front-desk', label: 'CRE', icon: <BookOpen className="h-4 w-4" />, activeClass: 'bg-emerald-50 text-emerald-700' },
         canSeeFrontDesk && { href: '/reservations', label: 'Reservations', icon: <Calendar className="h-4 w-4" />, activeClass: 'bg-blue-50 text-blue-700' },
         canSeeHousekeeping && { href: '/housekeeping', label: 'Housekeeping', icon: <Sparkles className="h-4 w-4" />, activeClass: 'bg-emerald-50 text-emerald-700' },
         canSeeHR && { href: '/hr', label: 'HR', icon: <Users className="h-4 w-4" />, activeClass: 'bg-violet-50 text-violet-700' },

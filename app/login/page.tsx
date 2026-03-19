@@ -60,7 +60,7 @@ interface RoleInfo {
 
 const ROLE_META: Record<RoleKey, RoleInfo> = {
     FrontDesk: {
-        label: 'Front Desk',
+        label: 'CRE',
         description: 'Reception & Check-ins',
         icon: BedDouble,
     },

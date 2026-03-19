@@ -126,6 +126,13 @@ export async function POST(request: NextRequest) {
                 })
         }
 
+        // Look up staff ID for checkout attribution
+        const { data: staffProfile } = await supabase
+            .from('staff')
+            .select('id')
+            .eq('user_id', auth.userId)
+            .single()
+
         // Update booking to CHECKED_OUT
         // Keep original check_out (the paid-for checkout time)
         // Append actual departure time to notes
@@ -134,6 +141,7 @@ export async function POST(request: NextRequest) {
             .update({
                 status: 'CHECKED_OUT',
                 notes: (booking.notes ? booking.notes + ' | ' : '') + `[Checked out: ${getDevNow().toISOString()}]`,
+                checked_out_by: staffProfile?.id || null,
             })
             .eq('id', bookingId)
 

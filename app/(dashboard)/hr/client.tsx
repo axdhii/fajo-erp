@@ -31,6 +31,11 @@ import {
     AlertCircle,
     RefreshCw,
     X,
+    ClipboardList,
+    ChevronDown,
+    ChevronUp,
+    Banknote,
+    Smartphone,
 } from 'lucide-react'
 import type {
     StaffMember,
@@ -38,6 +43,7 @@ import type {
     StaffIncident,
     Payroll,
     IncidentCategory,
+    ShiftReport,
 } from '@/lib/types'
 
 interface HRClientProps {
@@ -45,7 +51,7 @@ interface HRClientProps {
     staffId: string
 }
 
-type Tab = 'attendance' | 'incidents' | 'payroll'
+type Tab = 'attendance' | 'incidents' | 'payroll' | 'shift-reports'
 
 const INCIDENT_CATEGORIES: { value: IncidentCategory; label: string }[] = [
     { value: 'LATE_ARRIVAL', label: 'Late Arrival' },
@@ -103,6 +109,13 @@ export function HRClient({ hotelId, staffId }: HRClientProps) {
     const [editNetSalary, setEditNetSalary] = useState('')
     const [editNotes, setEditNotes] = useState('')
 
+    // Shift reports state
+    const [shiftReports, setShiftReports] = useState<ShiftReport[]>([])
+    const [shiftReportDate, setShiftReportDate] = useState(
+        new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+    )
+    const [expandedReport, setExpandedReport] = useState<string | null>(null)
+
     // Fetch staff list (excluding Admin)
     const fetchStaff = useCallback(async () => {
         const { data } = await supabase
@@ -148,6 +161,19 @@ export function HRClient({ hotelId, staffId }: HRClientProps) {
         if (data) setPayrolls(data)
     }, [hotelId, payrollMonth])
 
+    // Fetch shift reports
+    const fetchShiftReports = useCallback(async () => {
+        const from = `${shiftReportDate}T00:00:00+05:30`
+        const nextDay = new Date(new Date(from).getTime() + 86400000).toISOString()
+        try {
+            const res = await fetch(`/api/shift-reports?hotel_id=${hotelId}&from=${from}&to=${nextDay}`)
+            const json = await res.json()
+            if (json.data) setShiftReports(json.data)
+        } catch {
+            setShiftReports([])
+        }
+    }, [hotelId, shiftReportDate])
+
     useEffect(() => {
         fetchStaff()
     }, [fetchStaff])
@@ -156,7 +182,8 @@ export function HRClient({ hotelId, staffId }: HRClientProps) {
         if (tab === 'attendance') fetchAttendance()
         if (tab === 'incidents') fetchIncidents()
         if (tab === 'payroll') fetchPayroll()
-    }, [tab, fetchAttendance, fetchIncidents, fetchPayroll])
+        if (tab === 'shift-reports') fetchShiftReports()
+    }, [tab, fetchAttendance, fetchIncidents, fetchPayroll, fetchShiftReports])
 
     // Supabase Realtime: instant attendance updates without polling
     useEffect(() => {
@@ -436,6 +463,7 @@ export function HRClient({ hotelId, staffId }: HRClientProps) {
         { key: 'attendance', label: 'Attendance', icon: <Clock className="h-4 w-4" />, badge: pendingCount },
         { key: 'incidents', label: 'Incidents', icon: <AlertTriangle className="h-4 w-4" /> },
         { key: 'payroll', label: 'Payroll', icon: <DollarSign className="h-4 w-4" /> },
+        { key: 'shift-reports', label: 'Shift Reports', icon: <ClipboardList className="h-4 w-4" /> },
     ]
 
     return (
@@ -969,6 +997,222 @@ export function HRClient({ hotelId, staffId }: HRClientProps) {
                             )}
                         </CardContent>
                     </Card>
+                </div>
+            )}
+
+            {/* ======================== SHIFT REPORTS TAB ======================== */}
+            {tab === 'shift-reports' && (
+                <div className="space-y-4">
+                    {/* Date Navigation */}
+                    <Card>
+                        <CardContent className="py-3 px-4">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Button variant="outline" size="sm" onClick={() => {
+                                        const d = new Date(shiftReportDate + 'T00:00:00')
+                                        d.setDate(d.getDate() - 1)
+                                        setShiftReportDate(d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }))
+                                    }} className="h-8 w-8 p-0">
+                                        <ChevronLeft className="h-4 w-4" />
+                                    </Button>
+                                    <Input
+                                        type="date"
+                                        value={shiftReportDate}
+                                        onChange={e => setShiftReportDate(e.target.value)}
+                                        className="w-44 h-8 text-sm"
+                                    />
+                                    <Button variant="outline" size="sm" onClick={() => {
+                                        const d = new Date(shiftReportDate + 'T00:00:00')
+                                        d.setDate(d.getDate() + 1)
+                                        setShiftReportDate(d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }))
+                                    }} className="h-8 w-8 p-0">
+                                        <ChevronRight className="h-4 w-4" />
+                                    </Button>
+                                    {shiftReportDate !== new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) && (
+                                        <Button variant="ghost" size="sm" className="h-8 text-xs" onClick={() => setShiftReportDate(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }))}>
+                                            Today
+                                        </Button>
+                                    )}
+                                </div>
+                                <div className="flex items-center gap-3 text-xs">
+                                    <span className="text-slate-500">{shiftReports.length} reports</span>
+                                    <Button variant="outline" size="sm" onClick={fetchShiftReports} className="h-7 text-xs gap-1">
+                                        <RefreshCw className="h-3 w-3" /> Refresh
+                                    </Button>
+                                </div>
+                            </div>
+                        </CardContent>
+                    </Card>
+
+                    {/* Reports List */}
+                    {shiftReports.length === 0 ? (
+                        <Card>
+                            <CardContent className="py-12 text-center">
+                                <ClipboardList className="h-8 w-8 text-slate-300 mx-auto mb-3" />
+                                <p className="text-sm text-slate-400">No shift reports for this date.</p>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <div className="space-y-3">
+                            {shiftReports.map(r => {
+                                const isExpanded = expandedReport === r.id
+                                const shiftStart = new Date(r.shift_start).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })
+                                const shiftEnd = new Date(r.shift_end).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })
+
+                                return (
+                                    <Card key={r.id} className="overflow-hidden">
+                                        <CardContent className="p-0">
+                                            {/* Summary row — always visible */}
+                                            <button
+                                                onClick={() => setExpandedReport(isExpanded ? null : r.id)}
+                                                className="w-full flex items-center justify-between px-4 py-3 cursor-pointer hover:bg-slate-50 transition-colors text-left"
+                                            >
+                                                <div className="flex items-center gap-3 flex-1 min-w-0">
+                                                    <div className="flex-shrink-0 w-9 h-9 rounded-lg bg-violet-100 flex items-center justify-center">
+                                                        <ClipboardList className="h-4 w-4 text-violet-600" />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className="font-bold text-slate-800">{r.staff?.name || 'Unknown'}</span>
+                                                            <span className="text-xs text-slate-400">{r.staff?.role}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-3 mt-0.5 text-xs text-slate-500">
+                                                            <span>{shiftStart} - {shiftEnd}</span>
+                                                            <span className="text-emerald-600 font-semibold">
+                                                                {r.total_check_ins} in / {r.total_check_outs} out
+                                                            </span>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="flex items-center gap-3 shrink-0">
+                                                    <span className="text-sm font-bold text-slate-800">
+                                                        {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(r.revenue_total)}
+                                                    </span>
+                                                    {isExpanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                                                </div>
+                                            </button>
+
+                                            {/* Expanded details */}
+                                            {isExpanded && (
+                                                <div className="border-t border-slate-100 px-4 py-4 bg-slate-50/50 space-y-4">
+                                                    {/* Stats grid */}
+                                                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                                        <div className="bg-white rounded-xl p-3 border border-slate-100">
+                                                            <p className="text-xs text-slate-400">Check-ins</p>
+                                                            <p className="text-lg font-bold text-emerald-600">{r.total_check_ins}</p>
+                                                        </div>
+                                                        <div className="bg-white rounded-xl p-3 border border-slate-100">
+                                                            <p className="text-xs text-slate-400">Check-outs</p>
+                                                            <p className="text-lg font-bold text-blue-600">{r.total_check_outs}</p>
+                                                        </div>
+                                                        <div className="bg-white rounded-xl p-3 border border-slate-100">
+                                                            <p className="text-xs text-slate-400">Reservations</p>
+                                                            <p className="text-lg font-bold text-violet-600">{r.total_reservations_created}</p>
+                                                        </div>
+                                                        <div className="bg-white rounded-xl p-3 border border-slate-100">
+                                                            <p className="text-xs text-slate-400">Guests Handled</p>
+                                                            <p className="text-lg font-bold text-slate-700">{r.total_guests_handled}</p>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Revenue breakdown */}
+                                                    <div className="grid grid-cols-3 gap-3">
+                                                        <div className="flex items-center gap-2 bg-emerald-50 rounded-xl p-3 border border-emerald-100">
+                                                            <Banknote className="h-4 w-4 text-emerald-600" />
+                                                            <div>
+                                                                <p className="text-xs text-emerald-500">Cash</p>
+                                                                <p className="font-bold text-emerald-700">
+                                                                    {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(r.revenue_cash)}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 bg-blue-50 rounded-xl p-3 border border-blue-100">
+                                                            <Smartphone className="h-4 w-4 text-blue-600" />
+                                                            <div>
+                                                                <p className="text-xs text-blue-500">Digital</p>
+                                                                <p className="font-bold text-blue-700">
+                                                                    {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(r.revenue_digital)}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex items-center gap-2 bg-violet-50 rounded-xl p-3 border border-violet-100">
+                                                            <DollarSign className="h-4 w-4 text-violet-600" />
+                                                            <div>
+                                                                <p className="text-xs text-violet-500">Total</p>
+                                                                <p className="font-bold text-violet-700">
+                                                                    {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(r.revenue_total)}
+                                                                </p>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Other activity */}
+                                                    <div className="flex items-center gap-4 text-xs text-slate-500">
+                                                        {r.restock_requests_count > 0 && (
+                                                            <span className="px-2 py-1 rounded-full bg-orange-50 text-orange-600 font-medium">
+                                                                {r.restock_requests_count} restocks
+                                                            </span>
+                                                        )}
+                                                        {r.customer_issues_count > 0 && (
+                                                            <span className="px-2 py-1 rounded-full bg-red-50 text-red-600 font-medium">
+                                                                {r.customer_issues_count} issues
+                                                            </span>
+                                                        )}
+                                                        {r.expense_requests_count > 0 && (
+                                                            <span className="px-2 py-1 rounded-full bg-blue-50 text-blue-600 font-medium">
+                                                                {r.expense_requests_count} expenses
+                                                            </span>
+                                                        )}
+                                                        {r.restock_requests_count === 0 && r.customer_issues_count === 0 && r.expense_requests_count === 0 && (
+                                                            <span className="text-slate-400 italic">No other activity</span>
+                                                        )}
+                                                    </div>
+
+                                                    {/* Unit details */}
+                                                    {(r.check_in_units as any[])?.length > 0 && (
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-slate-500 mb-1.5">Check-in Units</p>
+                                                            <div className="flex flex-wrap gap-1.5">
+                                                                {(r.check_in_units as any[]).map((u: any, i: number) => (
+                                                                    <span key={i} className="text-xs bg-emerald-100 text-emerald-700 rounded-lg px-2 py-1 font-medium">
+                                                                        {u.unit_number} {u.guest_names && `- ${u.guest_names}`}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {(r.check_out_units as any[])?.length > 0 && (
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-slate-500 mb-1.5">Check-out Units</p>
+                                                            <div className="flex flex-wrap gap-1.5">
+                                                                {(r.check_out_units as any[]).map((u: any, i: number) => (
+                                                                    <span key={i} className="text-xs bg-blue-100 text-blue-700 rounded-lg px-2 py-1 font-medium">
+                                                                        {u.unit_number} {u.guest_names && `- ${u.guest_names}`}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                    {(r.reservations_list as any[])?.length > 0 && (
+                                                        <div>
+                                                            <p className="text-xs font-semibold text-slate-500 mb-1.5">Reservations Created</p>
+                                                            <div className="flex flex-wrap gap-1.5">
+                                                                {(r.reservations_list as any[]).map((u: any, i: number) => (
+                                                                    <span key={i} className="text-xs bg-violet-100 text-violet-700 rounded-lg px-2 py-1 font-medium">
+                                                                        {u.unit_number} {u.guest_names && `- ${u.guest_names}`}
+                                                                    </span>
+                                                                ))}
+                                                            </div>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            )}
+                                        </CardContent>
+                                    </Card>
+                                )
+                            })}
+                        </div>
+                    )}
                 </div>
             )}
         </div>

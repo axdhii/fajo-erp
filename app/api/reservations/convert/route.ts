@@ -122,6 +122,13 @@ export async function POST(request: NextRequest) {
             )
         }
 
+        // Look up staff ID for booking attribution
+        const { data: staffProfile } = await supabase
+            .from('staff')
+            .select('id')
+            .eq('user_id', auth.userId)
+            .single()
+
         const now = getDevNow()
         const nowIso = now.toISOString()
 
@@ -135,10 +142,11 @@ export async function POST(request: NextRequest) {
             // Only extend if guest arrived late (new checkout is later than original)
             const finalCheckOut = newCheckOut > new Date(b.check_out) ? newCheckOut.toISOString() : b.check_out
 
-            const updateData: Record<string, string | number> = {
+            const updateData: Record<string, string | number | null> = {
                 status: 'CHECKED_IN',
                 check_in: nowIso,
                 check_out: finalCheckOut,
+                created_by: staffProfile?.id || null,
             }
 
             // Only apply grand total override for single (non-group) bookings
@@ -231,14 +239,20 @@ export async function POST(request: NextRequest) {
             )
 
             for (const g of guests) {
-                if (g.id && g.aadhar_url && allGuestIds.has(g.id)) {
-                    const { error: guestUpdateError } = await supabase
-                        .from('guests')
-                        .update({ aadhar_url: g.aadhar_url })
-                        .eq('id', g.id)
+                if (g.id && allGuestIds.has(g.id)) {
+                    const updateFields: Record<string, string> = {}
+                    if (g.aadhar_url_front) updateFields.aadhar_url_front = g.aadhar_url_front
+                    if (g.aadhar_url_back) updateFields.aadhar_url_back = g.aadhar_url_back
 
-                    if (guestUpdateError) {
-                        console.error(`Guest aadhar update error for ${g.id}:`, guestUpdateError)
+                    if (Object.keys(updateFields).length > 0) {
+                        const { error: guestUpdateError } = await supabase
+                            .from('guests')
+                            .update(updateFields)
+                            .eq('id', g.id)
+
+                        if (guestUpdateError) {
+                            console.error(`Guest aadhar update error for ${g.id}:`, guestUpdateError)
+                        }
                     }
                 }
             }

@@ -26,7 +26,7 @@ export default async function ReservationsPage() {
             <div className="flex flex-col items-center justify-center p-20 text-center mt-10">
                 <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
                 <h2 className="text-xl font-bold text-red-600">Unauthorized Area</h2>
-                <p className="text-slate-500 mt-2">Only Front Desk staff and Admins can access reservations.</p>
+                <p className="text-slate-500 mt-2">Only CRE staff and Admins can access reservations.</p>
             </div>
         )
     }

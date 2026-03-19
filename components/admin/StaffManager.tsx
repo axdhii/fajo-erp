@@ -51,7 +51,7 @@ interface StaffRow {
 
 const ALL_ROLES = [
     { value: 'Admin', label: 'Admin' },
-    { value: 'FrontDesk', label: 'Front Desk' },
+    { value: 'FrontDesk', label: 'CRE' },
     { value: 'Housekeeping', label: 'Housekeeping' },
     { value: 'HR', label: 'HR' },
     { value: 'ZonalManager', label: 'Zonal Manager' },

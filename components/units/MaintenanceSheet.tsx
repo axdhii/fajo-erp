@@ -169,7 +169,7 @@ export function MaintenanceSheet({
 
                             <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3">
                                 <p className="text-xs text-amber-700 font-medium">
-                                    ⚠️ This unit will be unavailable for bookings until maintenance is cleared by the front desk.
+                                    ⚠️ This unit will be unavailable for bookings until maintenance is cleared by CRE.
                                 </p>
                             </div>
 

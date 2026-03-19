@@ -146,6 +146,13 @@ export async function POST(request: NextRequest) {
             )
         }
 
+        // Look up staff ID for booking attribution
+        const { data: staffProfile } = await supabase
+            .from('staff')
+            .select('id')
+            .eq('user_id', auth.userId)
+            .single()
+
         // Create booking with CHECKED_IN status
         const { data: booking, error: bookingError } = await supabase
             .from('bookings')
@@ -159,6 +166,7 @@ export async function POST(request: NextRequest) {
                 grand_total: finalGrandTotal,
                 notes: isBypass ? '[AUTO] Check-in payment bypassed (Emergency Room Shift)' : null,
                 status: 'CHECKED_IN',
+                created_by: staffProfile?.id || null,
             })
             .select()
             .single()
@@ -183,7 +191,8 @@ export async function POST(request: NextRequest) {
             name: g.name,
             phone: g.phone,
             aadhar_number: g.aadhar_number || null,
-            aadhar_url: g.aadhar_url || null,
+            aadhar_url_front: g.aadhar_url_front || null,
+            aadhar_url_back: g.aadhar_url_back || null,
         }))
 
         const { error: guestsError } = await supabase

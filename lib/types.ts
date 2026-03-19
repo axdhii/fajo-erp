@@ -48,7 +48,8 @@ export interface Guest {
     name: string
     phone: string
     aadhar_number: string | null
-    aadhar_url: string | null
+    aadhar_url_front: string | null
+    aadhar_url_back: string | null
     created_at: string
 }
 
@@ -66,7 +67,8 @@ export interface GuestInput {
     name: string
     phone: string
     aadhar_number: string
-    aadhar_url: string
+    aadhar_url_front: string
+    aadhar_url_back: string
 }
 
 export interface CheckInRequest {
@@ -236,6 +238,34 @@ export interface MaintenanceTicket {
     resolved_at: string | null
     unit?: { unit_number: string }
     staff?: { name: string | null }
+}
+
+// ============================================================
+// Shift Report Types
+// ============================================================
+
+export interface ShiftReport {
+    id: string
+    staff_id: string
+    hotel_id: string
+    attendance_id: string
+    shift_start: string
+    shift_end: string
+    total_check_ins: number
+    total_check_outs: number
+    total_reservations_created: number
+    total_guests_handled: number
+    check_in_units: { unit_number: string; booking_id: string; guest_names: string }[]
+    check_out_units: { unit_number: string; booking_id: string; guest_names: string }[]
+    reservations_list: { unit_number: string; booking_id: string; guest_names: string; check_in: string }[]
+    restock_requests_count: number
+    customer_issues_count: number
+    expense_requests_count: number
+    revenue_cash: number
+    revenue_digital: number
+    revenue_total: number
+    created_at: string
+    staff?: { name: string | null; role: string }
 }
 
 // ============================================================

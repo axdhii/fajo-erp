@@ -41,7 +41,8 @@ interface GuestDataItem {
     name: string
     phone: string
     aadhar_number: string
-    aadhar_url: string
+    aadhar_url_front: string
+    aadhar_url_back: string
     unit_number: string
 }
 
@@ -60,7 +61,7 @@ export function ReservationDetail({
     const [guestData, setGuestData] = useState<GuestDataItem[]>([])
     const [groupBookings, setGroupBookings] = useState<Booking[]>([])
     const [aadharBypass, setAadharBypass] = useState(false)
-    const [aadharPreviews, setAadharPreviews] = useState<Record<number, string>>({})
+    const [aadharPreviews, setAadharPreviews] = useState<Record<string, string>>({})
 
     // Fetch group siblings when booking has group_id
     useEffect(() => {
@@ -69,7 +70,7 @@ export function ReservationDetail({
                 try {
                     const { data } = await supabase
                         .from('bookings')
-                        .select('*, guests(id, name, phone, aadhar_number, aadhar_url), unit:units(unit_number)')
+                        .select('*, guests(id, name, phone, aadhar_number, aadhar_url_front, aadhar_url_back), unit:units(unit_number)')
                         .eq('group_id', booking.group_id)
                         .in('status', ['PENDING', 'CONFIRMED', 'CHECKED_IN'])
                         .order('created_at')
@@ -101,7 +102,8 @@ export function ReservationDetail({
                         name: g.name,
                         phone: g.phone,
                         aadhar_number: g.aadhar_number || '',
-                        aadhar_url: g.aadhar_url || '',
+                        aadhar_url_front: g.aadhar_url_front || '',
+                        aadhar_url_back: g.aadhar_url_back || '',
                         unit_number: (b.unit as { unit_number?: string } | undefined)?.unit_number || '',
                     }))
                 )
@@ -114,7 +116,8 @@ export function ReservationDetail({
                         name: g.name,
                         phone: g.phone,
                         aadhar_number: g.aadhar_number || '',
-                        aadhar_url: g.aadhar_url || '',
+                        aadhar_url_front: g.aadhar_url_front || '',
+                        aadhar_url_back: g.aadhar_url_back || '',
                         unit_number: booking.unit?.unit_number || '',
                     }))
                 )
@@ -178,9 +181,9 @@ export function ReservationDetail({
 
         const isBypassEnabled = typeof window !== 'undefined' && localStorage.getItem('fajo_bypass_credentials') === 'true'
         if (!isBypassEnabled && !aadharBypass) {
-            const missingAadhar = guestData.find((g) => !g.aadhar_url)
+            const missingAadhar = guestData.find((g) => !g.aadhar_url_front || !g.aadhar_url_back)
             if (missingAadhar) {
-                toast.error(`Aadhar photo is required for ${missingAadhar.name || 'all guests'}`)
+                toast.error(`Both Aadhar front and back photos are required for ${missingAadhar.name || 'all guests'}`)
                 return
             }
         }
@@ -189,7 +192,8 @@ export function ReservationDetail({
         try {
             const formattedGuests = guestData.map((g) => ({
                 ...g,
-                aadhar_url: g.aadhar_url || null,
+                aadhar_url_front: g.aadhar_url_front || null,
+                aadhar_url_back: g.aadhar_url_back || null,
             }))
 
             const res = await fetch('/api/reservations/convert', {
@@ -224,7 +228,7 @@ export function ReservationDetail({
         }
     }
 
-    const handleAadharUpload = async (index: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleAadharUpload = async (index: number, side: 'front' | 'back', e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (!file) return
 
@@ -239,7 +243,8 @@ export function ReservationDetail({
             const phone = guestData[index]?.phone || '0000000000'
             const dateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
             const monthStr = dateStr.slice(0, 7) // YYYY-MM
-            const fileName = `${monthStr}/${guestName}_${phone}_${dateStr}_${Date.now()}.jpg`
+            const baseName = `${monthStr}/${guestName}_${phone}_${dateStr}_${Date.now()}`
+            const fileName = side === 'back' ? `${baseName}_back.jpg` : `${baseName}.jpg`
 
             // Upload to Supabase Storage
             const { error: uploadErr } = await supabase.storage
@@ -247,19 +252,19 @@ export function ReservationDetail({
                 .upload(fileName, compressed, { contentType: 'image/jpeg', upsert: true })
 
             if (uploadErr) {
-                toast.error('Failed to upload Aadhar photo')
+                toast.error(`Failed to upload Aadhar ${side} photo`)
                 console.error('Upload error:', uploadErr)
                 return
             }
 
             // Store storage path in guest data (sent to API/DB)
-            handleGuestChange(guestData[index].id, 'aadhar_url', fileName)
+            handleGuestChange(guestData[index].id, side === 'front' ? 'aadhar_url_front' : 'aadhar_url_back', fileName)
 
             // Keep a local blob preview for the UI
             const previewUrl = URL.createObjectURL(compressed)
-            setAadharPreviews(prev => ({ ...prev, [index]: previewUrl }))
+            setAadharPreviews(prev => ({ ...prev, [`${index}_${side}`]: previewUrl }))
 
-            toast.success('Aadhar photo uploaded')
+            toast.success(`Aadhar ${side} photo uploaded`)
         } catch (err) {
             console.error('Aadhar upload error:', err)
             toast.error('Failed to process Aadhar photo')
@@ -431,48 +436,78 @@ export function ReservationDetail({
                                 {showPayment && (
                                     <div className="pl-9 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-300">
                                         <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
-                                            Aadhar Photo *
+                                            Aadhar Photos *
                                         </Label>
-                                        {(aadharPreviews[i] || g.aadhar_url) ? (
-                                            <div className="relative rounded-lg border border-emerald-200 bg-emerald-50/50 overflow-hidden">
-                                                {aadharPreviews[i] ? (
-                                                    <img
-                                                        src={aadharPreviews[i]}
-                                                        alt={`Aadhar - Guest ${i + 1}`}
-                                                        className="w-full h-28 object-cover"
-                                                    />
-                                                ) : (
-                                                    <div className="w-full h-28 flex items-center justify-center bg-emerald-50 text-emerald-600 text-xs font-medium">
-                                                        Aadhar photo on file
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {/* FRONT side */}
+                                            <div className="space-y-1">
+                                                <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 text-center">Front</p>
+                                                {(aadharPreviews[`${i}_front`] || g.aadhar_url_front) ? (
+                                                    <div className="relative rounded-lg border border-emerald-200 bg-emerald-50/50 overflow-hidden">
+                                                        {aadharPreviews[`${i}_front`] ? (
+                                                            <img
+                                                                src={aadharPreviews[`${i}_front`]}
+                                                                alt={`Aadhar Front - Guest ${i + 1}`}
+                                                                className="w-full h-24 object-cover"
+                                                            />
+                                                        ) : (
+                                                            <div className="w-full h-24 flex items-center justify-center bg-emerald-50 text-emerald-600 text-[10px] font-medium">
+                                                                Front on file
+                                                            </div>
+                                                        )}
+                                                        <div className="absolute top-1 right-1 flex items-center gap-0.5 bg-emerald-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full">
+                                                            <CheckCircle2 className="h-2.5 w-2.5" />
+                                                        </div>
+                                                        <label className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-center text-[10px] py-1 cursor-pointer hover:bg-black/60 transition-colors">
+                                                            Replace
+                                                            <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => handleAadharUpload(i, 'front', e)} />
+                                                        </label>
                                                     </div>
+                                                ) : (
+                                                    <label className="flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-300 px-2 py-3 cursor-pointer hover:bg-slate-50 hover:border-slate-400 transition-colors">
+                                                        <Camera className="h-4 w-4 text-slate-400" />
+                                                        <span className="text-[9px] font-semibold text-slate-500">
+                                                            {uploadingIndex === i ? 'Uploading...' : 'Capture Front'}
+                                                        </span>
+                                                        <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={uploadingIndex !== null} onChange={(e) => handleAadharUpload(i, 'front', e)} />
+                                                    </label>
                                                 )}
-                                                <div className="absolute top-2 right-2 flex items-center gap-1 bg-emerald-600 text-white text-[9px] font-bold px-2 py-0.5 rounded-full">
-                                                    <CheckCircle2 className="h-3 w-3" />
-                                                    Uploaded
-                                                </div>
-                                                <label className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-center text-xs py-1.5 cursor-pointer hover:bg-black/60 transition-colors">
-                                                    Replace Photo
-                                                    <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => handleAadharUpload(i, e)} />
-                                                </label>
                                             </div>
-                                        ) : (
-                                            <div className="grid grid-cols-2 gap-2">
-                                                <label className="flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-slate-300 px-3 py-4 cursor-pointer hover:bg-slate-50 hover:border-slate-400 transition-colors">
-                                                    <Camera className="h-5 w-5 text-slate-400" />
-                                                    <span className="text-[10px] font-semibold text-slate-500">
-                                                        {uploadingIndex === i ? 'Uploading...' : 'Take Photo'}
-                                                    </span>
-                                                    <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={uploadingIndex !== null} onChange={(e) => handleAadharUpload(i, e)} />
-                                                </label>
-                                                <label className="flex flex-col items-center justify-center gap-1.5 rounded-lg border-2 border-dashed border-slate-300 px-3 py-4 cursor-pointer hover:bg-slate-50 hover:border-slate-400 transition-colors">
-                                                    <UploadCloud className="h-5 w-5 text-slate-400" />
-                                                    <span className="text-[10px] font-semibold text-slate-500">
-                                                        {uploadingIndex === i ? 'Uploading...' : 'Upload File'}
-                                                    </span>
-                                                    <input type="file" accept="image/*" className="sr-only" disabled={uploadingIndex !== null} onChange={(e) => handleAadharUpload(i, e)} />
-                                                </label>
+                                            {/* BACK side */}
+                                            <div className="space-y-1">
+                                                <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 text-center">Back</p>
+                                                {(aadharPreviews[`${i}_back`] || g.aadhar_url_back) ? (
+                                                    <div className="relative rounded-lg border border-emerald-200 bg-emerald-50/50 overflow-hidden">
+                                                        {aadharPreviews[`${i}_back`] ? (
+                                                            <img
+                                                                src={aadharPreviews[`${i}_back`]}
+                                                                alt={`Aadhar Back - Guest ${i + 1}`}
+                                                                className="w-full h-24 object-cover"
+                                                            />
+                                                        ) : (
+                                                            <div className="w-full h-24 flex items-center justify-center bg-emerald-50 text-emerald-600 text-[10px] font-medium">
+                                                                Back on file
+                                                            </div>
+                                                        )}
+                                                        <div className="absolute top-1 right-1 flex items-center gap-0.5 bg-emerald-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full">
+                                                            <CheckCircle2 className="h-2.5 w-2.5" />
+                                                        </div>
+                                                        <label className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-center text-[10px] py-1 cursor-pointer hover:bg-black/60 transition-colors">
+                                                            Replace
+                                                            <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => handleAadharUpload(i, 'back', e)} />
+                                                        </label>
+                                                    </div>
+                                                ) : (
+                                                    <label className="flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-300 px-2 py-3 cursor-pointer hover:bg-slate-50 hover:border-slate-400 transition-colors">
+                                                        <Camera className="h-4 w-4 text-slate-400" />
+                                                        <span className="text-[9px] font-semibold text-slate-500">
+                                                            {uploadingIndex === i ? 'Uploading...' : 'Capture Back'}
+                                                        </span>
+                                                        <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={uploadingIndex !== null} onChange={(e) => handleAadharUpload(i, 'back', e)} />
+                                                    </label>
+                                                )}
                                             </div>
-                                        )}
+                                        </div>
                                     </div>
                                 )}
                             </div>

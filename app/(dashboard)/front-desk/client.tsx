@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo, useCallback } from 'react'
+import { supabase } from '@/lib/supabase/client'
 import { UnitGrid } from '@/components/units/UnitGrid'
 import { useUnitStore } from '@/lib/store/unit-store'
 import { useCurrentTime, getCheckoutAlert } from '@/lib/hooks/use-current-time'
@@ -31,6 +32,9 @@ import {
     Package,
     Receipt,
     MessageSquareWarning,
+    Banknote,
+    Smartphone,
+    IndianRupee,
 } from 'lucide-react'
 import { RestockSheet as RestockForm } from '@/components/units/RestockSheet'
 
@@ -63,6 +67,57 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
     const [expenseAmount, setExpenseAmount] = useState('')
     const [expenseCategory, setExpenseCategory] = useState('')
     const [expenseSubmitting, setExpenseSubmitting] = useState(false)
+
+    // CRE Payment counter state
+    const [shiftCash, setShiftCash] = useState(0)
+    const [shiftDigital, setShiftDigital] = useState(0)
+
+    const fetchShiftRevenue = useCallback(async () => {
+        const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+        const todayStart = `${todayIST}T00:00:00+05:30`
+
+        const { data: myBookings } = await supabase
+            .from('bookings')
+            .select('id')
+            .eq('created_by', staffId)
+            .gte('created_at', todayStart)
+
+        if (!myBookings?.length) { setShiftCash(0); setShiftDigital(0); return }
+
+        const { data: payments } = await supabase
+            .from('payments')
+            .select('amount_cash, amount_digital')
+            .in('booking_id', myBookings.map(b => b.id))
+
+        let cash = 0, digital = 0
+        if (payments) {
+            for (const p of payments) {
+                cash += Number(p.amount_cash || 0)
+                digital += Number(p.amount_digital || 0)
+            }
+        }
+        setShiftCash(cash)
+        setShiftDigital(digital)
+    }, [staffId])
+
+    useEffect(() => {
+        fetchShiftRevenue()
+    }, [fetchShiftRevenue])
+
+    // Realtime: refresh payment counter when payments change
+    useEffect(() => {
+        const channel = supabase
+            .channel(`cre_payments_${staffId.slice(0, 8)}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'payments',
+            }, () => {
+                fetchShiftRevenue()
+            })
+            .subscribe()
+        return () => { supabase.removeChannel(channel) }
+    }, [staffId, fetchShiftRevenue])
 
     // Submit customer issue
     const handleSubmitIssue = async () => {
@@ -170,8 +225,42 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
         { key: 'MAINTENANCE', label: 'Maintenance', count: stats.maintenance, icon: <Wrench className="h-3 w-3" />, color: 'text-purple-700 bg-purple-50' },
     ]
 
+    const formatCurrency = (n: number) =>
+        new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
+
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
+            {/* CRE Payment Counter */}
+            <div className="grid grid-cols-3 gap-3">
+                <div className="flex items-center gap-3 rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
+                        <Banknote className="h-4.5 w-4.5" />
+                    </div>
+                    <div>
+                        <p className="text-lg font-bold text-emerald-800 leading-none">{formatCurrency(shiftCash)}</p>
+                        <p className="text-[10px] font-medium text-emerald-500 uppercase tracking-wider mt-0.5">Cash Today</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-3 rounded-2xl bg-blue-50 border border-blue-200 px-4 py-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-600">
+                        <Smartphone className="h-4.5 w-4.5" />
+                    </div>
+                    <div>
+                        <p className="text-lg font-bold text-blue-800 leading-none">{formatCurrency(shiftDigital)}</p>
+                        <p className="text-[10px] font-medium text-blue-500 uppercase tracking-wider mt-0.5">Digital Today</p>
+                    </div>
+                </div>
+                <div className="flex items-center gap-3 rounded-2xl bg-violet-50 border border-violet-200 px-4 py-3">
+                    <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-violet-100 text-violet-600">
+                        <IndianRupee className="h-4.5 w-4.5" />
+                    </div>
+                    <div>
+                        <p className="text-lg font-bold text-violet-800 leading-none">{formatCurrency(shiftCash + shiftDigital)}</p>
+                        <p className="text-[10px] font-medium text-violet-500 uppercase tracking-wider mt-0.5">Total Today</p>
+                    </div>
+                </div>
+            </div>
+
             {/* Checkout Alert Banner */}
             {checkoutAlerts.length > 0 && (
                 <div className={`rounded-2xl border px-5 py-4 ${criticalCount > 0
@@ -420,7 +509,7 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h1 className="text-3xl font-bold tracking-tight text-slate-900">
-                        Front Desk
+                        CRE
                     </h1>
                     <p className="text-slate-500 mt-1 text-sm">
                         Manage check-ins, check-outs, and room statuses in

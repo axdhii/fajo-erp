@@ -43,7 +43,8 @@ const emptyGuest = (): GuestInput => ({
     name: '',
     phone: '',
     aadhar_number: '',
-    aadhar_url: '',
+    aadhar_url_front: '',
+    aadhar_url_back: '',
 })
 
 function formatLocalYYYYMMDD(d: Date): string {
@@ -229,7 +230,8 @@ export function ReservationSheet({
                 phone:
                     g.phone.trim() || (isBypassEnabled ? '0000000000' : ''),
                 aadhar_number: g.aadhar_number.trim() || null,
-                aadhar_url: g.aadhar_url || null,
+                aadhar_url_front: g.aadhar_url_front || null,
+                aadhar_url_back: g.aadhar_url_back || null,
             }))
 
             const payload =

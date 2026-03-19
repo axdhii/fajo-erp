@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
         // Include CHECKED_IN for multi-day stays that extend into future dates
         const { data: bookings, error } = await supabase
             .from('bookings')
-            .select('*, guests(name, phone, aadhar_url), unit:units(unit_number, type, base_price, hotel_id)')
+            .select('*, guests(name, phone, aadhar_url_front, aadhar_url_back), unit:units(unit_number, type, base_price, hotel_id)')
             .in('status', ['PENDING', 'CONFIRMED', 'CHECKED_IN'])
             .lt('check_in', toDate.toISOString())
             .gt('check_out', fromDate.toISOString())
@@ -117,6 +117,13 @@ export async function POST(request: NextRequest) {
                 )
             }
         }
+
+        // Look up staff ID for booking attribution
+        const { data: staffProfile } = await supabase
+            .from('staff')
+            .select('id')
+            .eq('user_id', auth.userId)
+            .single()
 
         const isDormBulk = Array.isArray(unitIds) && unitIds.length > 0
 
@@ -210,6 +217,7 @@ export async function POST(request: NextRequest) {
                         advance_type: isFirstBooking ? (advancePaid || null) : null,
                         notes: isFirstBooking ? (notes || null) : null,
                         group_id: groupId,
+                        created_by: staffProfile?.id || null,
                     })
                     .select()
                     .single()
@@ -235,7 +243,8 @@ export async function POST(request: NextRequest) {
                         name: guest.name,
                         phone: guest.phone,
                         aadhar_number: guest.aadhar_number || null,
-                        aadhar_url: guest.aadhar_url || null,
+                        aadhar_url_front: guest.aadhar_url_front || null,
+                        aadhar_url_back: guest.aadhar_url_back || null,
                     })
 
                 if (guestError) {
@@ -340,6 +349,7 @@ export async function POST(request: NextRequest) {
                     advance_amount: Number(advanceAmount) || 0,
                     advance_type: advancePaid || null,
                     notes: notes || null,
+                    created_by: staffProfile?.id || null,
                 })
                 .select()
                 .single()
@@ -353,12 +363,13 @@ export async function POST(request: NextRequest) {
             }
 
             // Insert guests
-            const guestRecords = guests.map((g: { name: string; phone: string; aadhar_number?: string; aadhar_url?: string }) => ({
+            const guestRecords = guests.map((g: { name: string; phone: string; aadhar_number?: string; aadhar_url_front?: string; aadhar_url_back?: string }) => ({
                 booking_id: booking.id,
                 name: g.name,
                 phone: g.phone,
                 aadhar_number: g.aadhar_number || null,
-                aadhar_url: g.aadhar_url || null,
+                aadhar_url_front: g.aadhar_url_front || null,
+                aadhar_url_back: g.aadhar_url_back || null,
             }))
 
             const { error: guestsError } = await supabase

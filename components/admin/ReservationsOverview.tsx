@@ -62,7 +62,7 @@ export function ReservationsOverview({ hotelId, hotels, staffId }: AdminTabProps
         try {
             const query = supabase
                 .from('bookings')
-                .select('*, guests(name, phone, aadhar_number, aadhar_url), unit:units(unit_number, type, hotel_id, hotel:hotels(name))')
+                .select('*, guests(name, phone, aadhar_number, aadhar_url_front, aadhar_url_back), unit:units(unit_number, type, hotel_id, hotel:hotels(name))')
                 .in('status', ['PENDING', 'CONFIRMED'])
                 .gte('check_in', fromDate + 'T00:00:00+05:30')
                 .lte('check_in', toDate + 'T23:59:59.999+05:30')

@@ -160,12 +160,13 @@ export async function PATCH(request: NextRequest) {
                 // Delete existing guests and re-insert
                 await supabase.from('guests').delete().eq('booking_id', bookingId)
 
-                const guestRecords = updates.guests.map((g: { name: string; phone: string; aadhar_number?: string; aadhar_url?: string }) => ({
+                const guestRecords = updates.guests.map((g: { name: string; phone: string; aadhar_number?: string; aadhar_url_front?: string; aadhar_url_back?: string }) => ({
                     booking_id: bookingId,
                     name: g.name,
                     phone: g.phone,
                     aadhar_number: g.aadhar_number || null,
-                    aadhar_url: g.aadhar_url || null,
+                    aadhar_url_front: g.aadhar_url_front || null,
+                    aadhar_url_back: g.aadhar_url_back || null,
                 }))
 
                 const { error: guestsError } = await supabase

@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
 
         const { data: bookings, error } = await supabase
             .from('bookings')
-            .select('*, guests(id, name, phone, aadhar_number, aadhar_url), unit:units(unit_number, type, base_price)')
+            .select('*, guests(id, name, phone, aadhar_number, aadhar_url_front, aadhar_url_back), unit:units(unit_number, type, base_price)')
             .eq('group_id', groupId)
             .order('created_at', { ascending: true })
 
