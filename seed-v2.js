@@ -71,16 +71,22 @@ async function seedV2() {
         NULL as base_salary
       FROM new_users nu;
 
-      -- 6. Insert 8 Rooms for FAJO Rooms Kaloor (101 to 108)
-      INSERT INTO units (hotel_id, unit_number, type, status, base_price)
-      SELECT '11111111-1111-1111-1111-111111111111', '1' || lpad(i::text, 2, '0'), 'ROOM'::unit_type, 'AVAILABLE'::unit_status, 2000.00
-      FROM generate_series(1, 8) i;
+      -- 6. Insert 8 Rooms for FAJO Rooms Kaloor (101 to 108) with individual pricing
+      INSERT INTO units (hotel_id, unit_number, type, status, base_price) VALUES
+      ('11111111-1111-1111-1111-111111111111', '101', 'ROOM'::unit_type, 'AVAILABLE'::unit_status, 2500.00),
+      ('11111111-1111-1111-1111-111111111111', '102', 'ROOM'::unit_type, 'AVAILABLE'::unit_status, 2000.00),
+      ('11111111-1111-1111-1111-111111111111', '103', 'ROOM'::unit_type, 'AVAILABLE'::unit_status, 2000.00),
+      ('11111111-1111-1111-1111-111111111111', '104', 'ROOM'::unit_type, 'AVAILABLE'::unit_status, 2000.00),
+      ('11111111-1111-1111-1111-111111111111', '105', 'ROOM'::unit_type, 'AVAILABLE'::unit_status, 1750.00),
+      ('11111111-1111-1111-1111-111111111111', '106', 'ROOM'::unit_type, 'AVAILABLE'::unit_status, 1750.00),
+      ('11111111-1111-1111-1111-111111111111', '107', 'ROOM'::unit_type, 'AVAILABLE'::unit_status, 1650.00),
+      ('11111111-1111-1111-1111-111111111111', '108', 'ROOM'::unit_type, 'AVAILABLE'::unit_status, 1750.00);
 
-      -- Insert 36 Dorm Beds (A1-A36) with lower/upper pricing
+      -- Insert 26 Dorm Beds (A1-A26) with lower/upper pricing
       INSERT INTO units (hotel_id, unit_number, type, status, base_price)
       SELECT '11111111-1111-1111-1111-111111111111', 'A' || i, 'DORM'::unit_type, 'AVAILABLE'::unit_status,
         CASE WHEN i <= 13 THEN 400.00 ELSE 450.00 END
-      FROM generate_series(1, 36) i;
+      FROM generate_series(1, 26) i;
 
       -- Insert 5 rooms for Aluva just for admin testing
       INSERT INTO units (hotel_id, unit_number, type, status, base_price)
