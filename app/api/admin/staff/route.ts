@@ -147,7 +147,7 @@ export async function PATCH(request: NextRequest) {
         if ('error' in adminCheck) return adminCheck.error
 
         const body = await request.json()
-        const { staff_id, name, phone, base_salary, role, hotel_id } = body
+        const { staff_id, name, phone, base_salary, role, hotel_id, password } = body
 
         if (!staff_id) {
             return NextResponse.json({ error: 'staff_id is required' }, { status: 400 })
@@ -176,6 +176,24 @@ export async function PATCH(request: NextRequest) {
 
         if (!existing) {
             return NextResponse.json({ error: 'Staff member not found' }, { status: 404 })
+        }
+
+        // Validate and apply password change via Supabase Auth (fail fast before staff update)
+        if (password) {
+            if (password.length < 6) {
+                return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 })
+            }
+            if (existing.user_id) {
+                const adminClient = getAdminClient()
+                const { error: pwError } = await adminClient.auth.admin.updateUserById(
+                    existing.user_id,
+                    { password }
+                )
+                if (pwError) {
+                    console.error('Password update error:', pwError)
+                    return NextResponse.json({ error: 'Failed to update password' }, { status: 500 })
+                }
+            }
         }
 
         const updates: Record<string, unknown> = {}

@@ -84,6 +84,7 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
     const [editSalary, setEditSalary] = useState('')
     const [editRole, setEditRole] = useState('')
     const [editHotel, setEditHotel] = useState('')
+    const [editPassword, setEditPassword] = useState('')
 
     // Add form state
     const [showAddForm, setShowAddForm] = useState(false)
@@ -135,24 +136,33 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
             toast.error('Phone must be exactly 10 digits')
             return
         }
+        if (editPassword.trim() && editPassword.trim().length < 6) {
+            toast.error('Password must be at least 6 characters')
+            return
+        }
         setLoading(true)
         try {
+            const payload: Record<string, unknown> = {
+                staff_id: sid,
+                name: editName,
+                phone: phoneTrimmed || null,
+                base_salary: editSalary,
+                role: editRole,
+                hotel_id: editHotel,
+            }
+            if (editPassword.trim()) {
+                payload.password = editPassword.trim()
+            }
             const res = await fetch('/api/admin/staff', {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    staff_id: sid,
-                    name: editName,
-                    phone: phoneTrimmed || null,
-                    base_salary: editSalary,
-                    role: editRole,
-                    hotel_id: editHotel,
-                }),
+                body: JSON.stringify(payload),
             })
             const json = await res.json()
             if (!res.ok) throw new Error(json.error)
             toast.success('Staff updated')
             setEditingId(null)
+            setEditPassword('')
             fetchStaff()
         } catch (err: unknown) {
             toast.error(err instanceof Error ? err.message : 'Update failed')
@@ -242,6 +252,7 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
         setEditSalary(String(s.base_salary || 0))
         setEditRole(s.role)
         setEditHotel(s.hotel_id)
+        setEditPassword('')
     }
 
     return (
@@ -455,6 +466,16 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
                                                             ))}
                                                         </SelectContent>
                                                     </Select>
+                                                </div>
+                                                <div>
+                                                    <Label className="text-xs text-slate-500">New Password (leave empty to keep current)</Label>
+                                                    <Input
+                                                        type="password"
+                                                        value={editPassword}
+                                                        onChange={(e) => setEditPassword(e.target.value)}
+                                                        placeholder="Leave empty to keep current"
+                                                        className="mt-1"
+                                                    />
                                                 </div>
                                             </div>
                                             <div className="flex justify-end gap-2">
