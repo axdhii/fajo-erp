@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getAuthUser } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { AlertCircle } from 'lucide-react'
 import { FrontDeskClient } from './client'
@@ -7,7 +8,7 @@ export default async function FrontDeskPage() {
     const supabase = await createClient()
 
     // Server-side auth check
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getAuthUser()
 
     if (!user) {
         redirect('/login')

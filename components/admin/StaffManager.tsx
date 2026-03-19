@@ -93,6 +93,7 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
     const [addRole, setAddRole] = useState('FrontDesk')
     const [addHotel, setAddHotel] = useState(hotelId || (hotels.length > 0 ? hotels[0].id : ''))
     const [addSalary, setAddSalary] = useState('')
+    const [addPassword, setAddPassword] = useState('')
 
     // Delete confirmation
     const [deleteTarget, setDeleteTarget] = useState<StaffRow | null>(null)
@@ -186,19 +187,28 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
             toast.error('Select a hotel')
             return
         }
+        const passwordTrimmed = addPassword.trim()
+        if (passwordTrimmed && passwordTrimmed.length < 6) {
+            toast.error('Password must be at least 6 characters')
+            return
+        }
 
         setLoading(true)
         try {
+            const payload: Record<string, unknown> = {
+                name: addName.trim(),
+                phone: phoneTrimmed,
+                role: addRole,
+                hotel_id: addHotel,
+                base_salary: addSalary ? Number(addSalary) : 0,
+            }
+            if (passwordTrimmed) {
+                payload.password = passwordTrimmed
+            }
             const res = await fetch('/api/admin/staff', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    name: addName.trim(),
-                    phone: phoneTrimmed,
-                    role: addRole,
-                    hotel_id: addHotel,
-                    base_salary: addSalary ? Number(addSalary) : 0,
-                }),
+                body: JSON.stringify(payload),
             })
             const json = await res.json()
             if (!res.ok) throw new Error(json.error)
@@ -210,6 +220,7 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
             setAddRole('FrontDesk')
             setAddHotel(hotelId || (hotels.length > 0 ? hotels[0].id : ''))
             setAddSalary('')
+            setAddPassword('')
             setShowAddForm(false)
             fetchStaff()
         } catch (err: unknown) {
@@ -341,10 +352,20 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
                                     className="mt-1"
                                 />
                             </div>
+                            <div>
+                                <Label className="text-sm font-medium text-slate-700">Password</Label>
+                                <Input
+                                    type="password"
+                                    value={addPassword}
+                                    onChange={e => setAddPassword(e.target.value)}
+                                    placeholder="Min 6 chars (optional)"
+                                    className="mt-1"
+                                />
+                            </div>
                         </div>
 
                         <p className="text-xs text-slate-500 mt-1">
-                            A login account will be created automatically using the phone number. Password is set based on role (Admin: password123, Others: fajo123).
+                            A login account will be created using the phone number. If password is left empty, the default is used (Admin: password123, Others: fajo123).
                         </p>
 
                         <div className="flex justify-end gap-2 pt-2">

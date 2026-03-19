@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { getAuthUser } from '@/lib/auth'
 import { notFound, redirect } from 'next/navigation'
 import PrintTrigger from './PrintTrigger'
 import { Building2, Phone, MapPin } from 'lucide-react'
@@ -26,7 +27,7 @@ export default async function InvoicePage(props: InvoicePageProps) {
 
     const supabase = await createClient()
 
-    const { data: { user } } = await supabase.auth.getUser()
+    const user = await getAuthUser()
     if (!user) {
         redirect('/login')
     }

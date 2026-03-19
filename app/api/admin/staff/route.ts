@@ -47,7 +47,7 @@ export async function POST(request: NextRequest) {
         if ('error' in adminCheck) return adminCheck.error
 
         const body = await request.json()
-        const { name, phone, role, hotel_id, base_salary } = body
+        const { name, phone, role, hotel_id, base_salary, password: customPassword } = body
 
         if (!name || !role || !hotel_id) {
             return NextResponse.json(
@@ -72,6 +72,14 @@ export async function POST(request: NextRequest) {
             )
         }
 
+        // Validate custom password if provided
+        if (customPassword && typeof customPassword === 'string' && customPassword.trim().length > 0 && customPassword.trim().length < 6) {
+            return NextResponse.json(
+                { error: 'Password must be at least 6 characters' },
+                { status: 400 }
+            )
+        }
+
         // Check phone uniqueness at this hotel
         const { data: existingStaff } = await supabase
             .from('staff')
@@ -87,9 +95,11 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        // Always create auth user with phone-based email
+        // Use custom password if provided, otherwise fall back to role-based default
         const email = `${phone}@fajo.local`
-        const password = role === 'Admin' ? 'password123' : 'fajo123'
+        const password = (customPassword && typeof customPassword === 'string' && customPassword.trim().length >= 6)
+            ? customPassword.trim()
+            : (role === 'Admin' ? 'password123' : 'fajo123')
 
         let adminClient
         try {
