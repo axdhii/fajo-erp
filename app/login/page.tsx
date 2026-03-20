@@ -754,8 +754,8 @@ export default function LoginPage() {
 
                             <div className="rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-sm">
                                 <div className="flex flex-col items-center gap-5">
-                                    {/* Camera preview */}
-                                    {cameraActive && !clockInPhoto && (
+                                    {/* Camera preview — video always mounted so ref is available */}
+                                    {!clockInPhoto && (
                                         <>
                                             <div className="rounded-2xl border-2 border-slate-200 overflow-hidden bg-black">
                                                 <video
@@ -768,23 +768,19 @@ export default function LoginPage() {
                                                     className="block"
                                                 />
                                             </div>
-                                            <Button
-                                                type="button"
-                                                onClick={capturePhoto}
-                                                className="h-12 px-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-base shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98] gap-2"
-                                            >
-                                                <Camera className="h-5 w-5" />
-                                                Capture Photo
-                                            </Button>
+                                            {cameraActive ? (
+                                                <Button
+                                                    type="button"
+                                                    onClick={capturePhoto}
+                                                    className="h-12 px-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-base shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98] gap-2"
+                                                >
+                                                    <Camera className="h-5 w-5" />
+                                                    Capture Photo
+                                                </Button>
+                                            ) : (
+                                                <p className="text-sm text-slate-400 animate-pulse">Starting camera...</p>
+                                            )}
                                         </>
-                                    )}
-
-                                    {/* Waiting for camera */}
-                                    {!cameraActive && !clockInPhoto && (
-                                        <div className="flex flex-col items-center gap-3 py-8">
-                                            <Loader2 className="h-6 w-6 animate-spin text-emerald-500" />
-                                            <p className="text-sm text-slate-500">Starting camera...</p>
-                                        </div>
                                     )}
 
                                     {/* Photo preview after capture */}
