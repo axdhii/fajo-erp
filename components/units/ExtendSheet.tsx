@@ -57,7 +57,7 @@ export function ExtendSheet({ unit, open, onOpenChange, onSuccess }: ExtendSheet
             d.setHours(d.getHours() + amount)
         } else {
             d.setDate(d.getDate() + amount)
-            d.setHours(unit.type === 'DORM' ? 10 : 11, 0, 0, 0)
+            // Don't reset time — preserve any previous hourly extensions (matches server)
         }
         return d
     }, [oldCheckOut, extendType, amount, unit])

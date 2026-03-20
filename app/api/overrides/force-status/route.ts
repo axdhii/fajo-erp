@@ -51,20 +51,22 @@ export async function POST(request: NextRequest) {
         if (previousStatus === 'OCCUPIED') {
             const { data: activeBookings } = await supabase
                 .from('bookings')
-                .select('id')
+                .select('id, notes')
                 .eq('unit_id', unitId)
                 .eq('status', 'CHECKED_IN')
 
             if (activeBookings && activeBookings.length > 0) {
                 const now = getDevNow()
-                await supabase
-                    .from('bookings')
-                    .update({
-                        status: 'CHECKED_OUT',
-                        check_out: now.toISOString(),
-                        notes: `[FORCE RELEASED] ${reason || 'Emergency override by CRE'}`,
-                    })
-                    .in('id', activeBookings.map(b => b.id))
+                for (const b of activeBookings) {
+                    await supabase
+                        .from('bookings')
+                        .update({
+                            status: 'CHECKED_OUT',
+                            check_out: now.toISOString(),
+                            notes: (b.notes ? b.notes + ' | ' : '') + `[FORCE RELEASED] ${reason || 'Emergency override by CRE'}`,
+                        })
+                        .eq('id', b.id)
+                }
             }
         }
 

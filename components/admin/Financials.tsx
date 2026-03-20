@@ -38,6 +38,7 @@ interface PaymentRow {
 interface OutstandingRow {
     id: string
     grand_total: number
+    advance_amount: number | null
     check_in: string
     status: string
     guests: { name: string }[]
@@ -188,7 +189,7 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
     const fetchOutstanding = useCallback(async () => {
         const { data, error } = await supabase
             .from('bookings')
-            .select('id, grand_total, check_in, status, guests(name), payments(total_paid), unit:units(unit_number, hotel_id)')
+            .select('id, grand_total, advance_amount, check_in, status, guests(name), payments(total_paid), unit:units(unit_number, hotel_id)')
             .in('status', ['CHECKED_IN', 'CHECKED_OUT'])
 
         if (error) {
@@ -196,10 +197,11 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             return
         }
 
-        // Filter client-side: where total_paid < grand_total, and by hotel
+        // Filter client-side: where advance + total_paid < grand_total, and by hotel
         const rows = (data || []).filter(b => {
             const paymentsArr = Array.isArray(b.payments) ? b.payments : b.payments ? [b.payments] : []
-            const paid = paymentsArr.reduce((sum: number, p: { total_paid: number }) => sum + Number(p.total_paid || 0), 0)
+            const advance = Number(b.advance_amount || 0)
+            const paid = advance + paymentsArr.reduce((sum: number, p: { total_paid: number }) => sum + Number(p.total_paid || 0), 0)
             return paid < Number(b.grand_total) && Number(b.grand_total) > 0
         }).filter(b => {
             if (!hotelId) return true
@@ -454,7 +456,8 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                                 <tbody>
                                     {outstanding.map(b => {
                                         const paymentsArr = Array.isArray(b.payments) ? b.payments : b.payments ? [b.payments] : []
-                                        const paid = paymentsArr.reduce((sum: number, p: { total_paid: number }) => sum + Number(p.total_paid || 0), 0)
+                                        const advance = Number(b.advance_amount || 0)
+                                        const paid = advance + paymentsArr.reduce((sum: number, p: { total_paid: number }) => sum + Number(p.total_paid || 0), 0)
                                         const due = Number(b.grand_total) - paid
                                         const unit = b.unit as unknown as { unit_number: string; hotel_id: string }
                                         return (

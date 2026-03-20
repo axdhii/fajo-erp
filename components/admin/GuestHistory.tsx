@@ -118,17 +118,17 @@ function formatDateTimeIST(iso: string | null): string {
 }
 
 function derivePaymentMethod(b: BookingRow): string {
-    const p = b.payments?.[0]
-    if (!p || p.total_paid === 0) return 'Unpaid'
-    if (p.amount_cash > 0 && p.amount_digital > 0) return 'Split'
-    if (p.amount_digital > 0) return 'Digital'
-    return 'Cash'
+    const totalCash = (b.payments || []).reduce((sum, p) => sum + Number(p.amount_cash || 0), 0)
+    const totalDigital = (b.payments || []).reduce((sum, p) => sum + Number(p.amount_digital || 0), 0)
+    if (totalCash === 0 && totalDigital === 0) return 'Unpaid'
+    if (totalCash > 0 && totalDigital > 0) return 'Split'
+    return totalDigital > 0 ? 'Digital' : 'Cash'
 }
 
 function derivePaymentStatus(b: BookingRow): string {
-    const p = b.payments?.[0]
-    if (!p || p.total_paid === 0) return 'Unpaid'
-    if (p.total_paid >= Number(b.grand_total)) return 'Paid'
+    const totalPaid = (b.payments || []).reduce((sum, p) => sum + Number(p.total_paid || 0), 0) + Number(b.advance_amount || 0)
+    if (totalPaid === 0) return 'Unpaid'
+    if (totalPaid >= Number(b.grand_total)) return 'Paid'
     return 'Partial'
 }
 

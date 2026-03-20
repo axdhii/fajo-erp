@@ -42,6 +42,13 @@ export async function POST(request: NextRequest) {
             )
         }
 
+        // Look up staff ID for checkout attribution (needed for both primary and siblings)
+        const { data: staffProfile } = await supabase
+            .from('staff')
+            .select('id')
+            .eq('user_id', auth.userId)
+            .single()
+
         // Handle group dorm checkout — process all beds in the group
         if (booking.group_id) {
             const { data: groupBookings } = await supabase
@@ -70,6 +77,7 @@ export async function POST(request: NextRequest) {
                         .from('bookings')
                         .update({
                             status: 'CHECKED_OUT',
+                            checked_out_by: staffProfile?.id || null,
                             notes: (sib.notes ? sib.notes + ' | ' : '') + `[Checked out: ${actualDeparture}]`,
                         })
                         .eq('id', sib.id)
@@ -125,13 +133,6 @@ export async function POST(request: NextRequest) {
                     total_paid: incomingTotal,
                 })
         }
-
-        // Look up staff ID for checkout attribution
-        const { data: staffProfile } = await supabase
-            .from('staff')
-            .select('id')
-            .eq('user_id', auth.userId)
-            .single()
 
         // Update booking to CHECKED_OUT
         // Keep original check_out (the paid-for checkout time)

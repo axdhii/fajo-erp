@@ -107,19 +107,9 @@ export function calculateCheckOut(
     const checkoutPseudoIst = new Date(pseudoIst)
 
     if (unitType === 'ROOM') {
-        // Room: check-in < 12 PM = today 11 AM. check-in >= 12 PM = tomorrow 11 AM
-        if (istHour < 12) {
-            checkoutPseudoIst.setUTCHours(11, 0, 0, 0)
-            if (numberOfDays > 1) {
-                checkoutPseudoIst.setUTCDate(checkoutPseudoIst.getUTCDate() + (numberOfDays - 1))
-            }
-        } else {
-            checkoutPseudoIst.setUTCDate(checkoutPseudoIst.getUTCDate() + 1)
-            checkoutPseudoIst.setUTCHours(11, 0, 0, 0)
-            if (numberOfDays > 1) {
-                checkoutPseudoIst.setUTCDate(checkoutPseudoIst.getUTCDate() + (numberOfDays - 1))
-            }
-        }
+        // Room: always checkout = checkIn + numberOfDays at 11:00 AM IST
+        checkoutPseudoIst.setUTCDate(checkoutPseudoIst.getUTCDate() + numberOfDays)
+        checkoutPseudoIst.setUTCHours(11, 0, 0, 0)
     } else {
         // Dorm: next day 10:00 AM IST
         checkoutPseudoIst.setUTCDate(checkoutPseudoIst.getUTCDate() + 1)

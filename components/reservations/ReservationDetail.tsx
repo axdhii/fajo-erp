@@ -690,6 +690,13 @@ export function ReservationDetail({
                     )}
 
                     {booking.status === 'PENDING' && (
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center mb-3">
+                            <p className="text-sm text-amber-700 font-medium">This reservation is pending confirmation.</p>
+                            <p className="text-xs text-amber-500 mt-1">Confirm the reservation before converting to check-in.</p>
+                        </div>
+                    )}
+
+                    {booking.status === 'PENDING' && (
                         <Button
                             variant="outline"
                             onClick={handleCancel}
