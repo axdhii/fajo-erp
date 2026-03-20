@@ -248,7 +248,7 @@ export function ReservationDetail({
 
             // Upload to Supabase Storage
             const { error: uploadErr } = await supabase.storage
-                .from('aadhar-photos')
+                .from('aadhars')
                 .upload(fileName, compressed, { contentType: 'image/jpeg', upsert: true })
 
             if (uploadErr) {

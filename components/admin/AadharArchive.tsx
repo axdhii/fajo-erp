@@ -59,7 +59,7 @@ export function AadharArchive({ open, onClose }: AadharArchiveProps) {
         setConfirmClear(false)
         try {
             const { data, error } = await supabase.storage
-                .from('aadhar-photos')
+                .from('aadhars')
                 .list(month, { limit: 1000 })
 
             if (error) {
@@ -119,7 +119,7 @@ export function AadharArchive({ open, onClose }: AadharArchiveProps) {
                 setDownloadProgress({ current: i + 1, total: files.length })
 
                 const { data, error } = await supabase.storage
-                    .from('aadhar-photos')
+                    .from('aadhars')
                     .download(`${month}/${files[i].name}`)
 
                 if (error) {
@@ -136,7 +136,7 @@ export function AadharArchive({ open, onClose }: AadharArchiveProps) {
             const url = URL.createObjectURL(blob)
             const a = document.createElement('a')
             a.href = url
-            a.download = `aadhar-photos-${month}.zip`
+            a.download = `aadhars-${month}.zip`
             a.click()
             URL.revokeObjectURL(url)
 

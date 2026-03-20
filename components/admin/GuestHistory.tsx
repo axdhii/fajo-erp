@@ -188,7 +188,7 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
         if (signedUrls[path]) return signedUrls[path]
 
         const { data } = await supabase.storage
-            .from('aadhar-photos')
+            .from('aadhars')
             .createSignedUrl(path, 3600)
 
         if (data?.signedUrl) {
@@ -202,7 +202,7 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
     const generate24hUrl = useCallback(async (path: string): Promise<string | null> => {
         if (!path || path.startsWith('LOCAL:') || path.startsWith('ARCHIVED:')) return null
         const { data } = await supabase.storage
-            .from('aadhar-photos')
+            .from('aadhars')
             .createSignedUrl(path, 86400)
         return data?.signedUrl || null
     }, [])

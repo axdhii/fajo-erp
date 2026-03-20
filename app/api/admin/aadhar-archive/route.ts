@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
 
         // List all files in the month folder
         const { data: files, error: listError } = await adminClient.storage
-            .from('aadhar-photos')
+            .from('aadhars')
             .list(month, { limit: 1000 })
 
         if (listError) {
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
         // Delete all files from storage
         const filePaths = realFiles.map(f => `${month}/${f.name}`)
         const { error: deleteError } = await adminClient.storage
-            .from('aadhar-photos')
+            .from('aadhars')
             .remove(filePaths)
 
         if (deleteError) {
