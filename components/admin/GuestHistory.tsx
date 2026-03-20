@@ -64,7 +64,7 @@ interface BookingRow {
         amount_cash: number
         amount_digital: number
         total_paid: number
-    }[]
+    }[] | { amount_cash: number; amount_digital: number; total_paid: number } | null
 }
 
 const PAGE_SIZE = 50
@@ -117,16 +117,24 @@ function formatDateTimeIST(iso: string | null): string {
     })
 }
 
+function normalizePayments(p: BookingRow['payments']): { amount_cash: number; amount_digital: number; total_paid: number }[] {
+    if (!p) return []
+    if (Array.isArray(p)) return p
+    return [p]
+}
+
 function derivePaymentMethod(b: BookingRow): string {
-    const totalCash = (b.payments || []).reduce((sum, p) => sum + Number(p.amount_cash || 0), 0)
-    const totalDigital = (b.payments || []).reduce((sum, p) => sum + Number(p.amount_digital || 0), 0)
+    const payments = normalizePayments(b.payments)
+    const totalCash = payments.reduce((sum, p) => sum + Number(p.amount_cash || 0), 0)
+    const totalDigital = payments.reduce((sum, p) => sum + Number(p.amount_digital || 0), 0)
     if (totalCash === 0 && totalDigital === 0) return 'Unpaid'
     if (totalCash > 0 && totalDigital > 0) return 'Split'
     return totalDigital > 0 ? 'Digital' : 'Cash'
 }
 
 function derivePaymentStatus(b: BookingRow): string {
-    const totalPaid = (b.payments || []).reduce((sum, p) => sum + Number(p.total_paid || 0), 0) + Number(b.advance_amount || 0)
+    const payments = normalizePayments(b.payments)
+    const totalPaid = payments.reduce((sum, p) => sum + Number(p.total_paid || 0), 0) + Number(b.advance_amount || 0)
     if (totalPaid === 0) return 'Unpaid'
     if (totalPaid >= Number(b.grand_total)) return 'Paid'
     return 'Partial'
@@ -431,7 +439,7 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
                 <div className="space-y-2">
                     {bookings.map((b) => {
                         const isExpanded = expandedId === b.id
-                        const payment = b.payments?.[0]
+                        const payment = normalizePayments(b.payments)[0]
                         const paymentMethod = derivePaymentMethod(b)
                         const paymentStatus = derivePaymentStatus(b)
                         const nights = deriveNights(b)
