@@ -15,7 +15,7 @@ export default async function HRPage() {
 
     const { data: profile } = await supabase
         .from('staff')
-        .select('id, hotel_id, role')
+        .select('id, hotel_id, role, hotel:hotels(name)')
         .eq('user_id', user.id)
         .single()
 
@@ -29,5 +29,5 @@ export default async function HRPage() {
         )
     }
 
-    return <HRClient hotelId={profile.hotel_id} staffId={profile.id} />
+    return <HRClient hotelId={profile.hotel_id} staffId={profile.id} hotelName={(profile.hotel as any)?.name || 'Hotel'} />
 }

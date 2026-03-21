@@ -26,7 +26,9 @@ import {
     Camera,
     UploadCloud,
     CheckCircle2,
+    UserSearch,
 } from 'lucide-react'
+import type { AadharMatch } from '@/lib/utils/merge-aadhar'
 
 interface ReservationDetailProps {
     booking: Booking | null
@@ -62,6 +64,8 @@ export function ReservationDetail({
     const [groupBookings, setGroupBookings] = useState<Booking[]>([])
     const [aadharBypass, setAadharBypass] = useState(false)
     const [aadharPreviews, setAadharPreviews] = useState<Record<string, string>>({})
+    const [aadharMatches, setAadharMatches] = useState<Record<number, AadharMatch>>({})
+    const [lookingUp, setLookingUp] = useState<number | null>(null)
 
     // Fetch group siblings when booking has group_id
     useEffect(() => {
@@ -130,6 +134,72 @@ export function ReservationDetail({
             prev.map((g) => (g.id === id ? { ...g, [field]: value } : g))
         )
     }
+
+    const handlePhoneLookup = async (index: number, phone: string) => {
+        const digits = phone.replace(/\D/g, '')
+        if (digits.length !== 10) return
+        const g = guestData[index]
+        if (g?.aadhar_url_front && g?.aadhar_url_back) return
+
+        setLookingUp(index)
+        try {
+            const { lookupAadhar } = await import('@/lib/utils/merge-aadhar')
+            const match = await lookupAadhar(digits)
+            if (match) {
+                setAadharMatches(prev => ({ ...prev, [index]: match }))
+            }
+        } catch {
+            // silent
+        } finally {
+            setLookingUp(null)
+        }
+    }
+
+    const applyAadharMerge = async (index: number) => {
+        const match = aadharMatches[index]
+        if (!match || !guestData[index]) return
+
+        handleGuestChange(guestData[index].id, 'aadhar_url_front', match.aadhar_url_front)
+        handleGuestChange(guestData[index].id, 'aadhar_url_back', match.aadhar_url_back)
+
+        try {
+            const { getAadharPublicUrl } = await import('@/lib/utils/merge-aadhar')
+            setAadharPreviews(prev => ({
+                ...prev,
+                [`${index}_front`]: getAadharPublicUrl(match.aadhar_url_front),
+                [`${index}_back`]: getAadharPublicUrl(match.aadhar_url_back),
+            }))
+        } catch {
+            // previews are non-critical
+        }
+
+        setAadharMatches(prev => {
+            const next = { ...prev }
+            delete next[index]
+            return next
+        })
+        toast.success('Aadhar photos linked from previous stay')
+    }
+
+    const dismissAadharMatch = (index: number) => {
+        setAadharMatches(prev => {
+            const next = { ...prev }
+            delete next[index]
+            return next
+        })
+    }
+
+    // Auto-lookup Aadhar for guests when payment view opens
+    useEffect(() => {
+        if (showPayment && guestData.length > 0) {
+            guestData.forEach((g, i) => {
+                if (g.phone && !g.aadhar_url_front && !g.aadhar_url_back) {
+                    handlePhoneLookup(i, g.phone)
+                }
+            })
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showPayment])
 
     if (!booking) return null
 
@@ -310,6 +380,7 @@ export function ReservationDetail({
         // Clean up blob preview URLs to prevent memory leaks
         Object.values(aadharPreviews).forEach(url => URL.revokeObjectURL(url))
         setAadharPreviews({})
+        setAadharMatches({})
         setAmountCash('')
         setAmountDigital('')
         setShowPayment(false)
@@ -437,7 +508,40 @@ export function ReservationDetail({
                                     <div className="pl-9 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-300">
                                         <Label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
                                             Aadhar Photos *
+                                            {lookingUp === i && (
+                                                <UserSearch className="inline h-3 w-3 text-blue-400 animate-pulse ml-1" />
+                                            )}
                                         </Label>
+                                        {aadharMatches[i] && (
+                                            <div className="rounded-lg border border-blue-200 bg-blue-50 p-2.5 mb-1 animate-in fade-in slide-in-from-top-1 duration-300">
+                                                <p className="text-[10px] font-semibold text-blue-700 mb-1">
+                                                    Returning guest — Aadhar on file
+                                                </p>
+                                                <p className="text-[9px] text-blue-600 mb-1.5">
+                                                    {aadharMatches[i].name} ({aadharMatches[i].phone})
+                                                </p>
+                                                <div className="flex gap-2">
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        onClick={() => applyAadharMerge(i)}
+                                                        className="h-6 text-[9px] bg-blue-600 hover:bg-blue-700 text-white gap-1 px-2"
+                                                    >
+                                                        <CheckCircle2 className="h-2.5 w-2.5" />
+                                                        Use Previous Aadhar
+                                                    </Button>
+                                                    <Button
+                                                        type="button"
+                                                        size="sm"
+                                                        variant="ghost"
+                                                        onClick={() => dismissAadharMatch(i)}
+                                                        className="h-6 text-[9px] text-blue-600 hover:text-blue-800 px-2"
+                                                    >
+                                                        Upload New
+                                                    </Button>
+                                                </div>
+                                            </div>
+                                        )}
                                         <div className="grid grid-cols-2 gap-2">
                                             {/* FRONT side */}
                                             <div className="space-y-1">

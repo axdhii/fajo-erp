@@ -250,10 +250,6 @@ export default function LoginPage() {
             setSelectedRole(null)
             setPhone('')
             setPassword('')
-        } else if (step === 4) {
-            // Skip clock-in and go to dashboard
-            stopCamera()
-            window.location.href = '/'
         }
     }
 
@@ -385,11 +381,6 @@ export default function LoginPage() {
             setClockingIn(false)
             window.location.href = '/'
         }
-    }
-
-    const handleSkipClockIn = () => {
-        stopCamera()
-        window.location.href = '/'
     }
 
     // Auto-start camera when entering step 4
@@ -830,14 +821,6 @@ export default function LoginPage() {
                                         </>
                                     )}
 
-                                    {/* Skip link */}
-                                    <button
-                                        type="button"
-                                        onClick={handleSkipClockIn}
-                                        className="text-sm text-slate-400 underline underline-offset-2 hover:text-slate-600 transition-colors mt-1"
-                                    >
-                                        Skip
-                                    </button>
                                 </div>
                             </div>
                         </div>

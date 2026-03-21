@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
+import html2canvas from 'html2canvas'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -36,6 +37,7 @@ import {
     ChevronUp,
     Banknote,
     Smartphone,
+    Download,
 } from 'lucide-react'
 import type {
     StaffMember,
@@ -49,6 +51,11 @@ import type {
 interface HRClientProps {
     hotelId: string
     staffId: string
+    hotelName: string
+}
+
+function formatCurrency(n: number): string {
+    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
 }
 
 type Tab = 'attendance' | 'incidents' | 'payroll' | 'shift-reports'
@@ -64,7 +71,7 @@ const INCIDENT_CATEGORIES: { value: IncidentCategory; label: string }[] = [
     { value: 'OTHER', label: 'Other' },
 ]
 
-export function HRClient({ hotelId, staffId }: HRClientProps) {
+export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
     const [tab, setTab] = useState<Tab>('attendance')
     const [staff, setStaff] = useState<StaffMember[]>([])
     const [attendance, setAttendance] = useState<Attendance[]>([])
@@ -115,6 +122,129 @@ export function HRClient({ hotelId, staffId }: HRClientProps) {
         new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
     )
     const [expandedReport, setExpandedReport] = useState<string | null>(null)
+    const reportRef = useRef<HTMLDivElement>(null)
+
+    // ============ DOWNLOAD SHIFT REPORT AS IMAGE ============
+    const handleDownloadReport = useCallback(async (report: ShiftReport) => {
+        if (!reportRef.current) return
+        const el = reportRef.current
+
+        const shiftStart = new Date(report.shift_start).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })
+        const shiftEnd = new Date(report.shift_end).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })
+        const shiftDate = new Date(report.shift_start).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })
+
+        el.innerHTML = `
+            <div style="width:420px;padding:32px;background:#fff;font-family:system-ui,-apple-system,sans-serif;color:#1e293b;">
+                <div style="text-align:center;margin-bottom:20px;">
+                    <div style="font-size:22px;font-weight:800;color:#1e293b;">${hotelName}</div>
+                    <div style="font-size:13px;color:#94a3b8;margin-top:4px;">Shift Report</div>
+                </div>
+                <div style="border-top:2px solid #e2e8f0;padding-top:16px;margin-bottom:16px;">
+                    <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
+                        <div>
+                            <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Staff</div>
+                            <div style="font-size:15px;font-weight:700;">${report.staff?.name || 'Unknown'}</div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Role</div>
+                            <div style="font-size:13px;font-weight:600;color:#64748b;">${report.staff?.role || ''}</div>
+                        </div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;">
+                        <div>
+                            <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Date</div>
+                            <div style="font-size:13px;font-weight:600;">${shiftDate}</div>
+                        </div>
+                        <div style="text-align:right;">
+                            <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Shift</div>
+                            <div style="font-size:13px;font-weight:600;">${shiftStart} - ${shiftEnd}</div>
+                        </div>
+                    </div>
+                </div>
+                <div style="display:flex;gap:8px;margin-bottom:16px;">
+                    <div style="flex:1;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px;text-align:center;">
+                        <div style="font-size:11px;color:#16a34a;">Check-ins</div>
+                        <div style="font-size:22px;font-weight:800;color:#15803d;">${report.total_check_ins}</div>
+                    </div>
+                    <div style="flex:1;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px;text-align:center;">
+                        <div style="font-size:11px;color:#2563eb;">Check-outs</div>
+                        <div style="font-size:22px;font-weight:800;color:#1d4ed8;">${report.total_check_outs}</div>
+                    </div>
+                    <div style="flex:1;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:12px;padding:12px;text-align:center;">
+                        <div style="font-size:11px;color:#7c3aed;">Reservations</div>
+                        <div style="font-size:22px;font-weight:800;color:#6d28d9;">${report.total_reservations_created}</div>
+                    </div>
+                </div>
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px;">
+                    <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">Revenue</div>
+                    <div style="display:flex;gap:12px;margin-bottom:12px;">
+                        <div style="flex:1;background:#f0fdf4;border-radius:10px;padding:12px;">
+                            <div style="font-size:11px;color:#16a34a;">Cash</div>
+                            <div style="font-size:24px;font-weight:800;color:#15803d;">${formatCurrency(report.revenue_cash)}</div>
+                        </div>
+                        <div style="flex:1;background:#eff6ff;border-radius:10px;padding:12px;">
+                            <div style="font-size:11px;color:#2563eb;">Digital</div>
+                            <div style="font-size:24px;font-weight:800;color:#1d4ed8;">${formatCurrency(report.revenue_digital)}</div>
+                        </div>
+                    </div>
+                    <div style="text-align:center;background:#faf5ff;border-radius:10px;padding:12px;">
+                        <div style="font-size:11px;color:#7c3aed;">Total Revenue</div>
+                        <div style="font-size:28px;font-weight:800;color:#6d28d9;">${formatCurrency(report.revenue_total)}</div>
+                    </div>
+                </div>
+                ${(report.restock_requests_count > 0 || report.customer_issues_count > 0 || report.expense_requests_count > 0) ? `
+                <div style="display:flex;gap:8px;margin-bottom:16px;">
+                    ${report.restock_requests_count > 0 ? `<div style="background:#fff7ed;color:#ea580c;font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;">${report.restock_requests_count} restocks</div>` : ''}
+                    ${report.customer_issues_count > 0 ? `<div style="background:#fef2f2;color:#dc2626;font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;">${report.customer_issues_count} issues</div>` : ''}
+                    ${report.expense_requests_count > 0 ? `<div style="background:#eff6ff;color:#2563eb;font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;">${report.expense_requests_count} expenses</div>` : ''}
+                </div>` : ''}
+                ${(report.check_in_units as any[])?.length > 0 ? `
+                <div style="margin-bottom:12px;">
+                    <div style="font-size:11px;color:#64748b;font-weight:600;margin-bottom:6px;">Check-in Units</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                        ${(report.check_in_units as any[]).map((u: any) => `<span style="font-size:11px;background:#dcfce7;color:#15803d;padding:3px 8px;border-radius:8px;font-weight:500;">${u.unit_number}${u.guest_names ? ` - ${u.guest_names}` : ''}</span>`).join('')}
+                    </div>
+                </div>` : ''}
+                ${(report.check_out_units as any[])?.length > 0 ? `
+                <div style="margin-bottom:12px;">
+                    <div style="font-size:11px;color:#64748b;font-weight:600;margin-bottom:6px;">Check-out Units</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                        ${(report.check_out_units as any[]).map((u: any) => `<span style="font-size:11px;background:#dbeafe;color:#1d4ed8;padding:3px 8px;border-radius:8px;font-weight:500;">${u.unit_number}${u.guest_names ? ` - ${u.guest_names}` : ''}</span>`).join('')}
+                    </div>
+                </div>` : ''}
+                ${(report.reservations_list as any[])?.length > 0 ? `
+                <div style="margin-bottom:12px;">
+                    <div style="font-size:11px;color:#64748b;font-weight:600;margin-bottom:6px;">Reservations</div>
+                    <div style="display:flex;flex-wrap:wrap;gap:4px;">
+                        ${(report.reservations_list as any[]).map((u: any) => `<span style="font-size:11px;background:#ede9fe;color:#6d28d9;padding:3px 8px;border-radius:8px;font-weight:500;">${u.unit_number}${u.guest_names ? ` - ${u.guest_names}` : ''}</span>`).join('')}
+                    </div>
+                </div>` : ''}
+                <div style="text-align:center;font-size:10px;color:#cbd5e1;margin-top:16px;border-top:1px solid #e2e8f0;padding-top:12px;">
+                    Generated by Fajo ERP
+                </div>
+            </div>
+        `
+
+        el.style.position = 'fixed'
+        el.style.left = '-9999px'
+        el.style.top = '0'
+        el.style.display = 'block'
+        el.style.zIndex = '-1'
+
+        try {
+            const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff' })
+            const link = document.createElement('a')
+            link.download = `shift-report-${report.staff?.name?.replace(/\s+/g, '-') || 'staff'}-${shiftDate}.png`
+            link.href = canvas.toDataURL('image/png')
+            link.click()
+            toast.success('Report downloaded')
+        } catch (err) {
+            console.error('Download report error:', err)
+            toast.error('Failed to download report')
+        } finally {
+            el.style.display = 'none'
+        }
+    }, [hotelName])
 
     // Fetch staff list (excluding Admin)
     const fetchStaff = useCallback(async () => {
@@ -1086,7 +1216,7 @@ export function HRClient({ hotelId, staffId }: HRClientProps) {
                                                 </div>
                                                 <div className="flex items-center gap-3 shrink-0">
                                                     <span className="text-sm font-bold text-slate-800">
-                                                        {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(r.revenue_total)}
+                                                        {formatCurrency(r.revenue_total)}
                                                     </span>
                                                     {isExpanded ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
                                                 </div>
@@ -1116,34 +1246,28 @@ export function HRClient({ hotelId, staffId }: HRClientProps) {
                                                     </div>
 
                                                     {/* Revenue breakdown */}
-                                                    <div className="grid grid-cols-3 gap-3">
-                                                        <div className="flex items-center gap-2 bg-emerald-50 rounded-xl p-3 border border-emerald-100">
-                                                            <Banknote className="h-4 w-4 text-emerald-600" />
-                                                            <div>
+                                                    <div className="grid grid-cols-2 gap-3">
+                                                        <div className="bg-emerald-50 rounded-xl p-4 border border-emerald-100">
+                                                            <div className="flex items-center gap-1.5 mb-1">
+                                                                <Banknote className="h-4 w-4 text-emerald-600" />
                                                                 <p className="text-xs text-emerald-500">Cash</p>
-                                                                <p className="font-bold text-emerald-700">
-                                                                    {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(r.revenue_cash)}
-                                                                </p>
                                                             </div>
+                                                            <p className="text-xl font-extrabold text-emerald-700">{formatCurrency(r.revenue_cash)}</p>
                                                         </div>
-                                                        <div className="flex items-center gap-2 bg-blue-50 rounded-xl p-3 border border-blue-100">
-                                                            <Smartphone className="h-4 w-4 text-blue-600" />
-                                                            <div>
+                                                        <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
+                                                            <div className="flex items-center gap-1.5 mb-1">
+                                                                <Smartphone className="h-4 w-4 text-blue-600" />
                                                                 <p className="text-xs text-blue-500">Digital</p>
-                                                                <p className="font-bold text-blue-700">
-                                                                    {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(r.revenue_digital)}
-                                                                </p>
                                                             </div>
+                                                            <p className="text-xl font-extrabold text-blue-700">{formatCurrency(r.revenue_digital)}</p>
                                                         </div>
-                                                        <div className="flex items-center gap-2 bg-violet-50 rounded-xl p-3 border border-violet-100">
+                                                    </div>
+                                                    <div className="bg-violet-50 rounded-xl p-4 border border-violet-100 text-center">
+                                                        <div className="flex items-center justify-center gap-1.5 mb-1">
                                                             <DollarSign className="h-4 w-4 text-violet-600" />
-                                                            <div>
-                                                                <p className="text-xs text-violet-500">Total</p>
-                                                                <p className="font-bold text-violet-700">
-                                                                    {new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(r.revenue_total)}
-                                                                </p>
-                                                            </div>
+                                                            <p className="text-xs text-violet-500">Total Revenue</p>
                                                         </div>
+                                                        <p className="text-2xl font-extrabold text-violet-700">{formatCurrency(r.revenue_total)}</p>
                                                     </div>
 
                                                     {/* Other activity */}
@@ -1205,6 +1329,19 @@ export function HRClient({ hotelId, staffId }: HRClientProps) {
                                                             </div>
                                                         </div>
                                                     )}
+
+                                                    {/* Download button */}
+                                                    <div className="pt-2 border-t border-slate-100">
+                                                        <Button
+                                                            variant="outline"
+                                                            size="sm"
+                                                            className="w-full gap-2 text-xs"
+                                                            onClick={(e) => { e.stopPropagation(); handleDownloadReport(r) }}
+                                                        >
+                                                            <Download className="h-3.5 w-3.5" />
+                                                            Download Report
+                                                        </Button>
+                                                    </div>
                                                 </div>
                                             )}
                                         </CardContent>
@@ -1215,6 +1352,9 @@ export function HRClient({ hotelId, staffId }: HRClientProps) {
                     )}
                 </div>
             )}
+
+            {/* Hidden div for report image generation */}
+            <div ref={reportRef} style={{ display: 'none' }} />
         </div>
     )
 }

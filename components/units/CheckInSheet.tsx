@@ -37,7 +37,9 @@ import {
     Sun,
     Moon,
     Printer,
+    UserSearch,
 } from 'lucide-react'
+import type { AadharMatch } from '@/lib/utils/merge-aadhar'
 
 interface CheckInSheetProps {
     unit: UnitWithBooking | null
@@ -92,6 +94,8 @@ export function CheckInSheet({
     const [isBypass, setIsBypass] = useState(false)
     const [aadharBypass, setAadharBypass] = useState(false)
     const [aadharPreviews, setAadharPreviews] = useState<Record<string, string>>({})
+    const [aadharMatches, setAadharMatches] = useState<Record<number, AadharMatch>>({})
+    const [lookingUp, setLookingUp] = useState<number | null>(null)
 
     // Countdown timer for emergency bypass
     useEffect(() => {
@@ -192,6 +196,62 @@ export function CheckInSheet({
         setGuests((prev) =>
             prev.map((g, i) => (i === index ? { ...g, [field]: value } : g))
         )
+    }
+
+    const handlePhoneLookup = async (index: number, phone: string) => {
+        const digits = phone.replace(/\D/g, '')
+        if (digits.length !== 10) return
+        // Skip if we already have aadhar photos for this guest
+        if (guests[index].aadhar_url_front && guests[index].aadhar_url_back) return
+
+        setLookingUp(index)
+        try {
+            const { lookupAadhar } = await import('@/lib/utils/merge-aadhar')
+            const match = await lookupAadhar(digits)
+            if (match) {
+                setAadharMatches(prev => ({ ...prev, [index]: match }))
+            }
+        } catch {
+            // silent — lookup is best-effort
+        } finally {
+            setLookingUp(null)
+        }
+    }
+
+    const applyAadharMerge = async (index: number) => {
+        const match = aadharMatches[index]
+        if (!match) return
+
+        updateGuest(index, 'aadhar_url_front', match.aadhar_url_front)
+        updateGuest(index, 'aadhar_url_back', match.aadhar_url_back)
+
+        // Generate public URL previews for the merged photos
+        try {
+            const { getAadharPublicUrl } = await import('@/lib/utils/merge-aadhar')
+            setAadharPreviews(prev => ({
+                ...prev,
+                [`${index}_front`]: getAadharPublicUrl(match.aadhar_url_front),
+                [`${index}_back`]: getAadharPublicUrl(match.aadhar_url_back),
+            }))
+        } catch {
+            // previews are non-critical
+        }
+
+        // Clear the match banner
+        setAadharMatches(prev => {
+            const next = { ...prev }
+            delete next[index]
+            return next
+        })
+        toast.success('Aadhar photos linked from previous stay')
+    }
+
+    const dismissAadharMatch = (index: number) => {
+        setAadharMatches(prev => {
+            const next = { ...prev }
+            delete next[index]
+            return next
+        })
     }
 
     const handleAadharUpload = async (
@@ -343,6 +403,7 @@ export function CheckInSheet({
         // Clean up blob preview URLs to prevent memory leaks
         Object.values(aadharPreviews).forEach(url => URL.revokeObjectURL(url))
         setAadharPreviews({})
+        setAadharMatches({})
         setGuests([emptyGuest()])
         setNumberOfDays(1)
         setManualCheckout('')
@@ -575,13 +636,53 @@ export function CheckInSheet({
 
                                 <div className="space-y-1.5">
                                     <Label className="text-xs text-slate-600">Phone *</Label>
-                                    <Input
-                                        placeholder="+91 98765 43210"
-                                        value={guest.phone}
-                                        onChange={(e) => updateGuest(index, 'phone', e.target.value)}
-                                        className="h-9 text-sm bg-white"
-                                    />
+                                    <div className="relative">
+                                        <Input
+                                            placeholder="+91 98765 43210"
+                                            value={guest.phone}
+                                            onChange={(e) => updateGuest(index, 'phone', e.target.value)}
+                                            onBlur={() => handlePhoneLookup(index, guest.phone)}
+                                            className="h-9 text-sm bg-white"
+                                        />
+                                        {lookingUp === index && (
+                                            <div className="absolute right-2 top-1/2 -translate-y-1/2">
+                                                <UserSearch className="h-3.5 w-3.5 text-blue-400 animate-pulse" />
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
+
+                                {/* Aadhar Merge Banner */}
+                                {aadharMatches[index] && (
+                                    <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 animate-in fade-in slide-in-from-top-1 duration-300">
+                                        <p className="text-xs font-semibold text-blue-700 mb-1.5">
+                                            Returning guest — Aadhar on file
+                                        </p>
+                                        <p className="text-[10px] text-blue-600 mb-2">
+                                            {aadharMatches[index].name} ({aadharMatches[index].phone})
+                                        </p>
+                                        <div className="flex gap-2">
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                onClick={() => applyAadharMerge(index)}
+                                                className="h-7 text-[10px] bg-blue-600 hover:bg-blue-700 text-white gap-1"
+                                            >
+                                                <CheckCircle2 className="h-3 w-3" />
+                                                Use Previous Aadhar
+                                            </Button>
+                                            <Button
+                                                type="button"
+                                                size="sm"
+                                                variant="ghost"
+                                                onClick={() => dismissAadharMatch(index)}
+                                                className="h-7 text-[10px] text-blue-600 hover:text-blue-800"
+                                            >
+                                                Upload New
+                                            </Button>
+                                        </div>
+                                    </div>
+                                )}
 
                                 {/* Aadhar Photo Upload — Front & Back */}
                                 <div className="space-y-1.5">
