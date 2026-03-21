@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -19,7 +19,10 @@ import {
     ChevronRight,
     RefreshCw,
     Calendar,
+    Download,
+    Loader2,
 } from 'lucide-react'
+import html2canvas from 'html2canvas'
 import type { AdminTabProps } from '@/app/(dashboard)/admin/client'
 
 interface PaymentRow {
@@ -91,9 +94,15 @@ function formatDateShort(iso: string): string {
 export function Financials({ hotelId, hotels }: AdminTabProps) {
     const [loading, setLoading] = useState(false)
 
-    // Date range filter
+    // Date + time range filter
     const [dateFrom, setDateFrom] = useState(todayIST())
     const [dateTo, setDateTo] = useState(todayIST())
+    const [timeFrom, setTimeFrom] = useState('00:00')
+    const [timeTo, setTimeTo] = useState('23:59')
+
+    // Report download
+    const reportRef = useRef<HTMLDivElement>(null)
+    const [generatingReport, setGeneratingReport] = useState(false)
 
     // Revenue data
     const [todayRevenue, setTodayRevenue] = useState({ cash: 0, digital: 0, total: 0 })
@@ -238,6 +247,111 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
         setHasMore(hotelId ? rows.length > 0 && (data || []).length === PAGE_SIZE : (data || []).length === PAGE_SIZE)
     }, [hotelId, dateFrom, dateTo, page])
 
+    // ── Download Financial Report as PNG ──
+    const handleDownloadReport = async () => {
+        setGeneratingReport(true)
+        try {
+            const fromIST = `${dateFrom || todayIST()}T${timeFrom}:00+05:30`
+            const toIST = `${dateTo || todayIST()}T${timeTo}:59+05:30`
+
+            const { data: bookings } = await supabase
+                .from('bookings')
+                .select('id, grand_total, status, unit:units!inner(type, hotel_id), payments(amount_cash, amount_digital, total_paid)')
+                .in('status', ['CHECKED_IN', 'CHECKED_OUT'])
+                .gte('check_in', fromIST)
+                .lte('check_in', toIST)
+
+            let filtered = bookings || []
+            if (hotelId) {
+                filtered = filtered.filter((b: Record<string, unknown>) => (b.unit as Record<string, unknown>)?.hotel_id === hotelId)
+            }
+
+            const rooms = filtered.filter((b: Record<string, unknown>) => (b.unit as Record<string, unknown>)?.type === 'ROOM')
+            const dorms = filtered.filter((b: Record<string, unknown>) => (b.unit as Record<string, unknown>)?.type === 'DORM')
+
+            const calcRev = (list: typeof filtered) => {
+                let cash = 0, digital = 0
+                for (const b of list) {
+                    const p = Array.isArray((b as Record<string, unknown>).payments) ? ((b as Record<string, unknown>).payments as Record<string, unknown>[])[0] : (b as Record<string, unknown>).payments as Record<string, unknown> | null
+                    if (p) { cash += Number(p.amount_cash || 0); digital += Number(p.amount_digital || 0) }
+                }
+                return { cash, digital }
+            }
+
+            const roomRev = calcRev(rooms)
+            const dormRev = calcRev(dorms)
+            const grandCash = roomRev.cash + dormRev.cash
+            const grandDigital = roomRev.digital + dormRev.digital
+            const grandTotal = grandCash + grandDigital
+            const hotelName = hotelId ? hotels.find(h => h.id === hotelId)?.name || 'Hotel' : 'ALL PROPERTIES'
+            const fmt = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
+            const fromDisplay = new Date(fromIST).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
+            const toDisplay = new Date(toIST).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
+            const genAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
+
+            if (reportRef.current) {
+                reportRef.current.style.display = 'block'
+                reportRef.current.innerHTML = `<div style="width:800px;padding:40px;background:white;font-family:system-ui,sans-serif;">
+                    <div style="text-align:center;margin-bottom:30px;">
+                        <h1 style="font-size:24px;font-weight:800;color:#0f172a;margin:0;">${hotelName}</h1>
+                        <h2 style="font-size:18px;font-weight:600;color:#475569;margin:4px 0 0;">FINANCIAL REPORT</h2>
+                        <div style="margin-top:12px;padding:8px 16px;background:#f8fafc;border-radius:8px;display:inline-block;">
+                            <p style="font-size:13px;color:#64748b;margin:0;">Period: ${fromDisplay}</p>
+                            <p style="font-size:13px;color:#64748b;margin:2px 0 0;">to ${toDisplay}</p>
+                        </div>
+                    </div>
+                    <div style="display:flex;gap:16px;margin-bottom:24px;">
+                        <div style="flex:1;border:2px solid #d1fae5;border-radius:12px;padding:20px;text-align:center;background:#f0fdf4;">
+                            <p style="font-size:12px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px;">Rooms</p>
+                            <p style="font-size:32px;font-weight:800;color:#065f46;margin:0;">${rooms.length}</p>
+                            <p style="font-size:11px;color:#6b7280;margin:4px 0 0;">units sold</p>
+                            <div style="margin-top:12px;display:flex;justify-content:center;gap:16px;">
+                                <div><p style="font-size:10px;color:#16a34a;font-weight:700;margin:0;">CASH</p><p style="font-size:16px;font-weight:700;color:#15803d;margin:2px 0 0;">${fmt(roomRev.cash)}</p></div>
+                                <div><p style="font-size:10px;color:#2563eb;font-weight:700;margin:0;">DIGITAL</p><p style="font-size:16px;font-weight:700;color:#1d4ed8;margin:2px 0 0;">${fmt(roomRev.digital)}</p></div>
+                            </div>
+                        </div>
+                        <div style="flex:1;border:2px solid #dbeafe;border-radius:12px;padding:20px;text-align:center;background:#eff6ff;">
+                            <p style="font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px;">Dorms</p>
+                            <p style="font-size:32px;font-weight:800;color:#1e40af;margin:0;">${dorms.length}</p>
+                            <p style="font-size:11px;color:#6b7280;margin:4px 0 0;">beds sold</p>
+                            <div style="margin-top:12px;display:flex;justify-content:center;gap:16px;">
+                                <div><p style="font-size:10px;color:#16a34a;font-weight:700;margin:0;">CASH</p><p style="font-size:16px;font-weight:700;color:#15803d;margin:2px 0 0;">${fmt(dormRev.cash)}</p></div>
+                                <div><p style="font-size:10px;color:#2563eb;font-weight:700;margin:0;">DIGITAL</p><p style="font-size:16px;font-weight:700;color:#1d4ed8;margin:2px 0 0;">${fmt(dormRev.digital)}</p></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div style="border:3px solid #c4b5fd;border-radius:12px;padding:20px;text-align:center;background:#f5f3ff;margin-bottom:24px;">
+                        <p style="font-size:12px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px;">Grand Total</p>
+                        <p style="font-size:40px;font-weight:900;color:#5b21b6;margin:0;">${fmt(grandTotal)}</p>
+                        <div style="margin-top:12px;display:flex;justify-content:center;gap:24px;">
+                            <div><p style="font-size:11px;color:#16a34a;font-weight:700;margin:0;">TOTAL CASH</p><p style="font-size:20px;font-weight:800;color:#15803d;margin:2px 0 0;">${fmt(grandCash)}</p></div>
+                            <div><p style="font-size:11px;color:#2563eb;font-weight:700;margin:0;">TOTAL DIGITAL</p><p style="font-size:20px;font-weight:800;color:#1d4ed8;margin:2px 0 0;">${fmt(grandDigital)}</p></div>
+                        </div>
+                    </div>
+                    <div style="text-align:center;padding-top:16px;border-top:1px solid #e2e8f0;">
+                        <p style="font-size:11px;color:#94a3b8;margin:0;">Generated: ${genAt} | FAJO ERP</p>
+                    </div>
+                </div>`
+
+                await new Promise(r => setTimeout(r, 300))
+                const canvas = await html2canvas(reportRef.current, { scale: 2, backgroundColor: '#ffffff' })
+                reportRef.current.style.display = 'none'
+
+                const url = canvas.toDataURL('image/png')
+                const link = document.createElement('a')
+                link.download = `Financial-Report_${hotelName.replace(/\s+/g, '-')}_${dateFrom}_to_${dateTo}.png`
+                link.href = url
+                link.click()
+                toast.success('Financial report downloaded')
+            }
+        } catch (err) {
+            console.error('Report error:', err)
+            toast.error('Failed to generate report')
+        } finally {
+            setGeneratingReport(false)
+        }
+    }
+
     // ── Effects ──
     useEffect(() => {
         fetchRevenue()
@@ -261,16 +375,28 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                         Revenue, payments, and outstanding balances{hotelId ? '' : ' across all hotels'}
                     </p>
                 </div>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => { fetchRevenue(); fetchOutstanding(); fetchPayments() }}
-                    disabled={loading}
-                    className="border-slate-200"
-                >
-                    <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
-                    Refresh
-                </Button>
+                <div className="flex gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={handleDownloadReport}
+                        disabled={generatingReport || loading}
+                        className="border-emerald-200"
+                    >
+                        {generatingReport ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
+                        {generatingReport ? 'Generating...' : 'Download Report'}
+                    </Button>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { fetchRevenue(); fetchOutstanding(); fetchPayments() }}
+                        disabled={loading}
+                        className="border-slate-200"
+                    >
+                        <RefreshCw className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : ''}`} />
+                        Refresh
+                    </Button>
+                </div>
             </div>
 
             {/* Date Range Filter */}
@@ -279,19 +405,15 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                     <div className="flex flex-wrap items-center gap-3">
                         <Calendar className="h-4 w-4 text-slate-400" />
                         <Label className="text-sm text-slate-600">Date Range:</Label>
-                        <Input
-                            type="date"
-                            value={dateFrom}
-                            onChange={e => setDateFrom(e.target.value)}
-                            className="w-40 h-8 text-sm"
-                        />
+                        <div className="flex gap-1">
+                            <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="w-36 h-8 text-sm" />
+                            <Input type="time" value={timeFrom} onChange={e => setTimeFrom(e.target.value)} className="w-24 h-8 text-sm" />
+                        </div>
                         <span className="text-slate-400 text-sm">to</span>
-                        <Input
-                            type="date"
-                            value={dateTo}
-                            onChange={e => setDateTo(e.target.value)}
-                            className="w-40 h-8 text-sm"
-                        />
+                        <div className="flex gap-1">
+                            <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="w-36 h-8 text-sm" />
+                            <Input type="time" value={timeTo} onChange={e => setTimeTo(e.target.value)} className="w-24 h-8 text-sm" />
+                        </div>
                         <Button
                             variant="ghost"
                             size="sm"
@@ -563,6 +685,8 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                     )}
                 </CardContent>
             </Card>
+            {/* Hidden report div for html2canvas */}
+            <div ref={reportRef} style={{ position: 'absolute', left: '-9999px', top: 0, display: 'none' }} />
         </div>
     )
 }

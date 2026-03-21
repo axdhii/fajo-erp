@@ -110,7 +110,10 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
     const [shiftReportDate, setShiftReportDate] = useState(
         new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
     )
+    const [shiftReportFromTime, setShiftReportFromTime] = useState('00:00')
+    const [shiftReportToTime, setShiftReportToTime] = useState('23:59')
     const [expandedReport, setExpandedReport] = useState<string | null>(null)
+    const [downloadingReport, setDownloadingReport] = useState<string | null>(null)
     const reportRef = useRef<HTMLDivElement>(null)
 
     const selectedHotelName = hotels.find(h => h.id === selectedHotelId)?.name || 'Unknown'
@@ -118,6 +121,7 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
     // ============ DOWNLOAD SHIFT REPORT AS IMAGE ============
     const handleDownloadReport = useCallback(async (report: ShiftReport) => {
         if (!reportRef.current) return
+        setDownloadingReport(report.id)
         const el = reportRef.current
 
         // Populate the hidden report div
@@ -236,6 +240,7 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
             toast.error('Failed to download report')
         } finally {
             el.style.display = 'none'
+            setDownloadingReport(null)
         }
     }, [selectedHotelName])
 
@@ -381,16 +386,16 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
 
     const fetchShiftReports = useCallback(async () => {
         if (!selectedHotelId) return
-        const from = `${shiftReportDate}T00:00:00+05:30`
-        const nextDay = new Date(new Date(from).getTime() + 86400000).toISOString()
+        const from = `${shiftReportDate}T${shiftReportFromTime}:00+05:30`
+        const to = `${shiftReportDate}T${shiftReportToTime}:59+05:30`
         try {
-            const res = await fetch(`/api/shift-reports?hotel_id=${selectedHotelId}&from=${from}&to=${nextDay}`)
+            const res = await fetch(`/api/shift-reports?hotel_id=${selectedHotelId}&from=${from}&to=${to}`)
             const json = await res.json()
             if (json.data) setShiftReports(json.data)
         } catch {
             setShiftReports([])
         }
-    }, [selectedHotelId, shiftReportDate])
+    }, [selectedHotelId, shiftReportDate, shiftReportFromTime, shiftReportToTime])
 
     // ============ DATA LOADING ============
 
@@ -1181,9 +1186,9 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
             {/* ======================== SHIFT REPORTS TAB ======================== */}
             {tab === 'shift-reports' && !loading && (
                 <div className="space-y-4">
-                    {/* Date Navigation */}
+                    {/* Date & Time Navigation */}
                     <Card className="rounded-2xl">
-                        <CardContent className="py-3 px-4">
+                        <CardContent className="py-3 px-4 space-y-2">
                             <div className="flex items-center justify-between">
                                 <div className="flex items-center gap-2">
                                     <Button variant="outline" size="sm" onClick={() => {
@@ -1213,6 +1218,27 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
                                     )}
                                 </div>
                                 <span className="text-xs text-slate-500">{shiftReports.length} reports</span>
+                            </div>
+                            <div className="flex items-center gap-2 text-xs">
+                                <span className="text-slate-400">From</span>
+                                <Input
+                                    type="time"
+                                    value={shiftReportFromTime}
+                                    onChange={e => setShiftReportFromTime(e.target.value)}
+                                    className="w-28 h-7 text-xs"
+                                />
+                                <span className="text-slate-400">To</span>
+                                <Input
+                                    type="time"
+                                    value={shiftReportToTime}
+                                    onChange={e => setShiftReportToTime(e.target.value)}
+                                    className="w-28 h-7 text-xs"
+                                />
+                                {(shiftReportFromTime !== '00:00' || shiftReportToTime !== '23:59') && (
+                                    <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => { setShiftReportFromTime('00:00'); setShiftReportToTime('23:59') }}>
+                                        Reset
+                                    </Button>
+                                )}
                             </div>
                         </CardContent>
                     </Card>
@@ -1296,14 +1322,14 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
                                                                 <Banknote className="h-4 w-4 text-emerald-600" />
                                                                 <p className="text-xs text-emerald-500">Cash</p>
                                                             </div>
-                                                            <p className="text-xl font-extrabold text-emerald-700">{formatCurrency(r.revenue_cash)}</p>
+                                                            <p className="text-2xl font-extrabold text-emerald-700">{formatCurrency(r.revenue_cash)}</p>
                                                         </div>
                                                         <div className="bg-blue-50 rounded-xl p-4 border border-blue-100">
                                                             <div className="flex items-center gap-1.5 mb-1">
                                                                 <Smartphone className="h-4 w-4 text-blue-600" />
                                                                 <p className="text-xs text-blue-500">Digital</p>
                                                             </div>
-                                                            <p className="text-xl font-extrabold text-blue-700">{formatCurrency(r.revenue_digital)}</p>
+                                                            <p className="text-2xl font-extrabold text-blue-700">{formatCurrency(r.revenue_digital)}</p>
                                                         </div>
                                                     </div>
                                                     <div className="bg-orange-50 rounded-xl p-4 border border-orange-100 text-center">
@@ -1380,10 +1406,14 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
                                                             variant="outline"
                                                             size="sm"
                                                             className="w-full gap-2 text-xs"
+                                                            disabled={downloadingReport === r.id}
                                                             onClick={(e) => { e.stopPropagation(); handleDownloadReport(r) }}
                                                         >
-                                                            <Download className="h-3.5 w-3.5" />
-                                                            Download Report
+                                                            {downloadingReport === r.id ? (
+                                                                <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Downloading...</>
+                                                            ) : (
+                                                                <><Download className="h-3.5 w-3.5" /> Download Report</>
+                                                            )}
                                                         </Button>
                                                     </div>
                                                 </div>

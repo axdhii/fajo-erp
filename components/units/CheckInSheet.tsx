@@ -27,7 +27,6 @@ import {
     BedSingle,
     Users,
     Camera,
-    UploadCloud,
     CheckCircle2,
     Banknote,
     Smartphone,
@@ -40,6 +39,12 @@ import {
     UserSearch,
 } from 'lucide-react'
 import type { AadharMatch } from '@/lib/utils/merge-aadhar'
+
+/** Holds pending front/back blobs before stitching */
+interface PendingAadhar {
+    front?: Blob
+    back?: Blob
+}
 
 interface CheckInSheetProps {
     unit: UnitWithBooking | null
@@ -96,6 +101,7 @@ export function CheckInSheet({
     const [aadharPreviews, setAadharPreviews] = useState<Record<string, string>>({})
     const [aadharMatches, setAadharMatches] = useState<Record<number, AadharMatch>>({})
     const [lookingUp, setLookingUp] = useState<number | null>(null)
+    const [pendingAadhar, setPendingAadhar] = useState<Record<number, PendingAadhar>>({})
 
     // Countdown timer for emergency bypass
     useEffect(() => {
@@ -225,14 +231,23 @@ export function CheckInSheet({
         updateGuest(index, 'aadhar_url_front', match.aadhar_url_front)
         updateGuest(index, 'aadhar_url_back', match.aadhar_url_back)
 
-        // Generate public URL previews for the merged photos
+        // Generate public URL previews for the merged/stitched photos
         try {
             const { getAadharPublicUrl } = await import('@/lib/utils/merge-aadhar')
-            setAadharPreviews(prev => ({
-                ...prev,
-                [`${index}_front`]: getAadharPublicUrl(match.aadhar_url_front),
-                [`${index}_back`]: getAadharPublicUrl(match.aadhar_url_back),
-            }))
+            if (match.stitched) {
+                // Single stitched image — show in stitched preview slot
+                setAadharPreviews(prev => ({
+                    ...prev,
+                    [`${index}_stitched`]: getAadharPublicUrl(match.aadhar_url_front),
+                }))
+            } else {
+                // Legacy separate front/back
+                setAadharPreviews(prev => ({
+                    ...prev,
+                    [`${index}_front`]: getAadharPublicUrl(match.aadhar_url_front),
+                    [`${index}_back`]: getAadharPublicUrl(match.aadhar_url_back),
+                }))
+            }
         } catch {
             // previews are non-critical
         }
@@ -254,7 +269,7 @@ export function CheckInSheet({
         })
     }
 
-    const handleAadharUpload = async (
+    const handleAadharCapture = async (
         index: number,
         side: 'front' | 'back',
         e: React.ChangeEvent<HTMLInputElement>
@@ -262,44 +277,66 @@ export function CheckInSheet({
         const file = e.target.files?.[0]
         if (!file || !unit) return
 
-        setUploadingIndex(index)
         try {
-            // Compress the image before uploading
+            // Compress the individual capture
             const { compressImage } = await import('@/lib/utils/compress-image')
             const compressed = await compressImage(file)
 
-            // Generate storage path: YYYY-MM/GuestName_Phone_Date_timestamp.jpg
-            const guestName = (guests[index].name || 'Guest').replace(/[^a-zA-Z0-9]/g, '_')
-            const phone = guests[index].phone || '0000000000'
-            const dateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
-            const monthStr = dateStr.slice(0, 7) // YYYY-MM
-            const baseName = `${monthStr}/${guestName}_${phone}_${dateStr}_${Date.now()}`
-            const fileName = side === 'back' ? `${baseName}_back.jpg` : `${baseName}.jpg`
-
-            // Upload to Supabase Storage
-            const { error: uploadErr } = await supabase.storage
-                .from('aadhars')
-                .upload(fileName, compressed, { contentType: 'image/jpeg', upsert: true })
-
-            if (uploadErr) {
-                toast.error(`Failed to upload Aadhar ${side} photo`)
-                console.error('Upload error:', uploadErr)
-                return
-            }
-
-            // Store storage path in guest state (sent to API/DB)
-            updateGuest(index, side === 'front' ? 'aadhar_url_front' : 'aadhar_url_back', fileName)
-
-            // Keep a local blob preview for the UI
+            // Store the compressed blob and show a local preview
             const previewUrl = URL.createObjectURL(compressed)
             setAadharPreviews(prev => ({ ...prev, [`${index}_${side}`]: previewUrl }))
 
-            toast.success(`Aadhar ${side} photo uploaded`)
+            const updated: PendingAadhar = { ...pendingAadhar[index], [side]: compressed }
+            setPendingAadhar(prev => ({ ...prev, [index]: updated }))
+
+            // If both sides are now captured, stitch + upload automatically
+            if (updated.front && updated.back) {
+                setUploadingIndex(index)
+                try {
+                    const { stitchAadhar } = await import('@/lib/utils/stitch-aadhar')
+                    const stitched = await stitchAadhar(updated.front, updated.back)
+
+                    // Generate storage path
+                    const guestName = (guests[index].name || 'Guest').replace(/[^a-zA-Z0-9]/g, '_')
+                    const phone = guests[index].phone || '0000000000'
+                    const dateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+                    const monthStr = dateStr.slice(0, 7) // YYYY-MM
+                    const fileName = `${monthStr}/${guestName}_${phone}_${dateStr}_${Date.now()}_stitched.jpg`
+
+                    const { error: uploadErr } = await supabase.storage
+                        .from('aadhars')
+                        .upload(fileName, stitched, { contentType: 'image/jpeg', upsert: true })
+
+                    if (uploadErr) {
+                        toast.error('Failed to upload stitched Aadhar')
+                        console.error('Upload error:', uploadErr)
+                        return
+                    }
+
+                    // Store the same path in both front and back for backward compatibility
+                    updateGuest(index, 'aadhar_url_front', fileName)
+                    updateGuest(index, 'aadhar_url_back', fileName)
+
+                    // Replace individual previews with stitched preview
+                    const stitchedPreview = URL.createObjectURL(stitched)
+                    setAadharPreviews(prev => ({
+                        ...prev,
+                        [`${index}_stitched`]: stitchedPreview,
+                    }))
+
+                    toast.success('Aadhar photos stitched & uploaded')
+                } catch (err) {
+                    console.error('Stitch/upload error:', err)
+                    toast.error('Failed to stitch Aadhar photos')
+                } finally {
+                    setUploadingIndex(null)
+                }
+            } else {
+                toast.info(`Aadhar ${side} captured — now capture the ${side === 'front' ? 'back' : 'front'} side`)
+            }
         } catch (err) {
-            console.error('Aadhar upload error:', err)
+            console.error('Aadhar capture error:', err)
             toast.error('Failed to process Aadhar photo')
-        } finally {
-            setUploadingIndex(null)
         }
     }
 
@@ -404,6 +441,7 @@ export function CheckInSheet({
         Object.values(aadharPreviews).forEach(url => URL.revokeObjectURL(url))
         setAadharPreviews({})
         setAadharMatches({})
+        setPendingAadhar({})
         setGuests([emptyGuest()])
         setNumberOfDays(1)
         setManualCheckout('')
@@ -684,67 +722,102 @@ export function CheckInSheet({
                                     </div>
                                 )}
 
-                                {/* Aadhar Photo Upload — Front & Back */}
+                                {/* Aadhar Photo Upload — Stitched (Front + Back) */}
                                 <div className="space-y-1.5">
                                     <Label className="text-xs text-slate-600">Aadhar Photos *</Label>
-                                    <div className="grid grid-cols-2 gap-2">
-                                        {/* FRONT side */}
-                                        <div className="space-y-1">
-                                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 text-center">Front</p>
-                                            {aadharPreviews[`${index}_front`] ? (
-                                                <div className="relative rounded-lg border border-emerald-200 bg-emerald-50/50 overflow-hidden">
-                                                    <img
-                                                        src={aadharPreviews[`${index}_front`]}
-                                                        alt={`Aadhar Front - Guest ${index + 1}`}
-                                                        className="w-full h-24 object-cover"
-                                                    />
-                                                    <div className="absolute top-1 right-1 flex items-center gap-0.5 bg-emerald-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full">
-                                                        <CheckCircle2 className="h-2.5 w-2.5" />
-                                                    </div>
-                                                    <label className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-center text-[10px] py-1 cursor-pointer hover:bg-black/60 transition-colors">
-                                                        Replace
-                                                        <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => handleAadharUpload(index, 'front', e)} />
-                                                    </label>
-                                                </div>
-                                            ) : (
-                                                <label className="flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-300 px-2 py-3 cursor-pointer hover:bg-slate-50 hover:border-slate-400 transition-colors">
-                                                    <Camera className="h-4 w-4 text-slate-400" />
-                                                    <span className="text-[9px] font-semibold text-slate-500">
-                                                        {uploadingIndex === index ? 'Uploading...' : 'Capture Front'}
-                                                    </span>
-                                                    <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={uploadingIndex !== null} onChange={(e) => handleAadharUpload(index, 'front', e)} />
-                                                </label>
-                                            )}
+                                    {aadharPreviews[`${index}_stitched`] ? (
+                                        /* Stitched result — single combined image */
+                                        <div className="relative rounded-lg border border-emerald-200 bg-emerald-50/50 overflow-hidden">
+                                            <img
+                                                src={aadharPreviews[`${index}_stitched`]}
+                                                alt={`Aadhar Stitched - Guest ${index + 1}`}
+                                                className="w-full h-auto max-h-48 object-contain"
+                                            />
+                                            <div className="absolute top-1 right-1 flex items-center gap-0.5 bg-emerald-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full">
+                                                <CheckCircle2 className="h-2.5 w-2.5" />
+                                                Front + Back
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    // Clear stitched data to allow re-capture
+                                                    setPendingAadhar(prev => { const n = { ...prev }; delete n[index]; return n })
+                                                    setAadharPreviews(prev => {
+                                                        const n = { ...prev }
+                                                        delete n[`${index}_front`]
+                                                        delete n[`${index}_back`]
+                                                        delete n[`${index}_stitched`]
+                                                        return n
+                                                    })
+                                                    updateGuest(index, 'aadhar_url_front', '')
+                                                    updateGuest(index, 'aadhar_url_back', '')
+                                                }}
+                                                className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-center text-[10px] py-1 cursor-pointer hover:bg-black/60 transition-colors"
+                                            >
+                                                Re-capture
+                                            </button>
                                         </div>
-                                        {/* BACK side */}
-                                        <div className="space-y-1">
-                                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 text-center">Back</p>
-                                            {aadharPreviews[`${index}_back`] ? (
-                                                <div className="relative rounded-lg border border-emerald-200 bg-emerald-50/50 overflow-hidden">
-                                                    <img
-                                                        src={aadharPreviews[`${index}_back`]}
-                                                        alt={`Aadhar Back - Guest ${index + 1}`}
-                                                        className="w-full h-24 object-cover"
-                                                    />
-                                                    <div className="absolute top-1 right-1 flex items-center gap-0.5 bg-emerald-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full">
-                                                        <CheckCircle2 className="h-2.5 w-2.5" />
+                                    ) : (
+                                        /* Capture flow: front then back */
+                                        <div className="grid grid-cols-2 gap-2">
+                                            {/* FRONT side */}
+                                            <div className="space-y-1">
+                                                <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 text-center">Front</p>
+                                                {aadharPreviews[`${index}_front`] ? (
+                                                    <div className="relative rounded-lg border border-emerald-200 bg-emerald-50/50 overflow-hidden">
+                                                        <img
+                                                            src={aadharPreviews[`${index}_front`]}
+                                                            alt={`Aadhar Front - Guest ${index + 1}`}
+                                                            className="w-full h-24 object-cover"
+                                                        />
+                                                        <div className="absolute top-1 right-1 flex items-center gap-0.5 bg-emerald-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full">
+                                                            <CheckCircle2 className="h-2.5 w-2.5" />
+                                                        </div>
+                                                        <label className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-center text-[10px] py-1 cursor-pointer hover:bg-black/60 transition-colors">
+                                                            Replace
+                                                            <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => handleAadharCapture(index, 'front', e)} />
+                                                        </label>
                                                     </div>
-                                                    <label className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-center text-[10px] py-1 cursor-pointer hover:bg-black/60 transition-colors">
-                                                        Replace
-                                                        <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => handleAadharUpload(index, 'back', e)} />
+                                                ) : (
+                                                    <label className="flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-300 px-2 py-3 cursor-pointer hover:bg-slate-50 hover:border-slate-400 transition-colors">
+                                                        <Camera className="h-4 w-4 text-slate-400" />
+                                                        <span className="text-[9px] font-semibold text-slate-500">
+                                                            {uploadingIndex === index ? 'Stitching...' : 'Capture Front'}
+                                                        </span>
+                                                        <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={uploadingIndex !== null} onChange={(e) => handleAadharCapture(index, 'front', e)} />
                                                     </label>
-                                                </div>
-                                            ) : (
-                                                <label className="flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-300 px-2 py-3 cursor-pointer hover:bg-slate-50 hover:border-slate-400 transition-colors">
-                                                    <Camera className="h-4 w-4 text-slate-400" />
-                                                    <span className="text-[9px] font-semibold text-slate-500">
-                                                        {uploadingIndex === index ? 'Uploading...' : 'Capture Back'}
-                                                    </span>
-                                                    <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={uploadingIndex !== null} onChange={(e) => handleAadharUpload(index, 'back', e)} />
-                                                </label>
-                                            )}
+                                                )}
+                                            </div>
+                                            {/* BACK side */}
+                                            <div className="space-y-1">
+                                                <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 text-center">Back</p>
+                                                {aadharPreviews[`${index}_back`] ? (
+                                                    <div className="relative rounded-lg border border-emerald-200 bg-emerald-50/50 overflow-hidden">
+                                                        <img
+                                                            src={aadharPreviews[`${index}_back`]}
+                                                            alt={`Aadhar Back - Guest ${index + 1}`}
+                                                            className="w-full h-24 object-cover"
+                                                        />
+                                                        <div className="absolute top-1 right-1 flex items-center gap-0.5 bg-emerald-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full">
+                                                            <CheckCircle2 className="h-2.5 w-2.5" />
+                                                        </div>
+                                                        <label className="absolute bottom-0 inset-x-0 bg-black/50 text-white text-center text-[10px] py-1 cursor-pointer hover:bg-black/60 transition-colors">
+                                                            Replace
+                                                            <input type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => handleAadharCapture(index, 'back', e)} />
+                                                        </label>
+                                                    </div>
+                                                ) : (
+                                                    <label className="flex flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-slate-300 px-2 py-3 cursor-pointer hover:bg-slate-50 hover:border-slate-400 transition-colors">
+                                                        <Camera className="h-4 w-4 text-slate-400" />
+                                                        <span className="text-[9px] font-semibold text-slate-500">
+                                                            {uploadingIndex === index ? 'Stitching...' : 'Capture Back'}
+                                                        </span>
+                                                        <input type="file" accept="image/*" capture="environment" className="sr-only" disabled={uploadingIndex !== null} onChange={(e) => handleAadharCapture(index, 'back', e)} />
+                                                    </label>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
+                                    )}
                                 </div>
                             </div>
                         ))}
