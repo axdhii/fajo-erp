@@ -189,6 +189,12 @@ After building a feature, mentally "use" it: I'm a CRE at the front desk. I clic
 ### Think 6: What would the client complain about?
 Think about the hotel owner reviewing a financial report, or police asking for guest records, or HR checking attendance. The data must be **accurate**, **labeled clearly**, and **formatted for non-technical people**. No UUIDs, no camelCase, no technical jargon in user-facing output.
 
+### Think 7: Every action has a sender AND a receiver — notify both
+When building any request/approval workflow (expense requests, restock, maintenance), trace BOTH sides: the person who SUBMITS and the person who ACTS. After the action is taken (approved, rejected, completed), the SUBMITTER must be notified of the outcome. Ask: "If I'm the CRE who submitted an expense request, how do I know it was approved?" If the answer is "they don't know unless they ask someone" — you have a broken workflow. Build status visibility for the submitter.
+
+### Think 8: Every output must contain its own context
+Reports, invoices, downloads, and exported files must be self-explanatory without any external reference. A financial report MUST show: what hotel, what date/time range, when it was generated. An Aadhar photo MUST embed: room number, guest name, phone, date. An invoice MUST show: hotel name, booking dates, amounts. If someone receives the output via WhatsApp or email, they should understand it completely without opening the ERP.
+
 ## Architectural Intelligence
 
 ### Arch 1: Count the network calls

@@ -176,6 +176,30 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
         }
     }
 
+    // My expense requests (to see approval status)
+    const [myExpenses, setMyExpenses] = useState<{ id: string; description: string; amount: number; status: string; rejection_reason: string | null; created_at: string }[]>([])
+
+    const fetchMyExpenses = useCallback(async () => {
+        const { data } = await supabase
+            .from('property_expenses')
+            .select('id, description, amount, status, rejection_reason, created_at')
+            .eq('requested_by', staffId)
+            .order('created_at', { ascending: false })
+            .limit(5)
+        if (data) setMyExpenses(data)
+    }, [staffId])
+
+    useEffect(() => { fetchMyExpenses() }, [fetchMyExpenses])
+
+    // Realtime for expense status updates
+    useEffect(() => {
+        const channel = supabase
+            .channel(`cre_expenses_${staffId.slice(0, 8)}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'property_expenses' }, () => { fetchMyExpenses() })
+            .subscribe()
+        return () => { supabase.removeChannel(channel) }
+    }, [staffId, fetchMyExpenses])
+
     const now = useCurrentTime(15000) // Poll every 15 seconds for time-sensitive alerts
 
     // Stats
@@ -504,6 +528,42 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
                     </div>
                 )}
             </div>
+
+            {/* My Expense Request Statuses */}
+            {myExpenses.length > 0 && (
+                <div className="rounded-2xl border border-slate-200 bg-white/50 overflow-hidden">
+                    <div className="px-5 py-3">
+                        <h3 className="text-sm font-bold text-slate-700 flex items-center gap-2">
+                            <Receipt className="h-4 w-4 text-slate-500" />
+                            My Expense Requests
+                        </h3>
+                    </div>
+                    <div className="px-5 pb-4 space-y-2">
+                        {myExpenses.map(exp => (
+                            <div key={exp.id} className="flex items-center justify-between bg-white rounded-xl px-4 py-2.5 border border-slate-100">
+                                <div className="min-w-0 flex-1">
+                                    <span className="text-sm font-medium text-slate-800 truncate block">{exp.description}</span>
+                                    <span className="text-xs text-slate-400">{formatCurrency(exp.amount)}</span>
+                                </div>
+                                <div className="flex items-center gap-2 ml-3 shrink-0">
+                                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                        exp.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' :
+                                        exp.status === 'REJECTED' ? 'bg-red-100 text-red-700' :
+                                        'bg-amber-100 text-amber-700'
+                                    }`}>
+                                        {exp.status}
+                                    </span>
+                                    {exp.status === 'REJECTED' && exp.rejection_reason && (
+                                        <span className="text-[10px] text-red-500 max-w-[120px] truncate" title={exp.rejection_reason}>
+                                            {exp.rejection_reason}
+                                        </span>
+                                    )}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
 
             {/* Page Header */}
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
