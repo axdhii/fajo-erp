@@ -78,18 +78,29 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
 
         const { data: myBookings } = await supabase
             .from('bookings')
-            .select('id')
+            .select('id, advance_amount, advance_type')
             .eq('created_by', staffId)
             .gte('created_at', todayStart)
 
         if (!myBookings?.length) { setShiftCash(0); setShiftDigital(0); return }
 
+        // Sum advances from bookings
+        let cash = 0, digital = 0
+        for (const b of myBookings) {
+            const adv = Number(b.advance_amount || 0)
+            if (adv > 0) {
+                const t = String(b.advance_type || '').toUpperCase()
+                if (t === 'DIGITAL' || t === 'UPI' || t === 'GPAY') digital += adv
+                else cash += adv
+            }
+        }
+
+        // Sum payments
         const { data: payments } = await supabase
             .from('payments')
             .select('amount_cash, amount_digital')
             .in('booking_id', myBookings.map(b => b.id))
 
-        let cash = 0, digital = 0
         if (payments) {
             for (const p of payments) {
                 cash += Number(p.amount_cash || 0)

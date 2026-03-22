@@ -117,7 +117,7 @@ export function NotificationBell({ hotelId, role, staffId }: NotificationBellPro
                                 <p className="text-xs mt-1">No notifications yet</p>
                             </div>
                         ) : (
-                            notifications.map(n => {
+                            notifications.slice(0, 15).map(n => {
                                 const inner = (
                                     <>
                                         {/* Type indicator dot */}

@@ -880,8 +880,29 @@ export function ReservationDetail({
                     {booking.status === 'PENDING' && (
                         <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 text-center mb-3">
                             <p className="text-sm text-amber-700 font-medium">This reservation is pending confirmation.</p>
-                            <p className="text-xs text-amber-500 mt-1">Confirm the reservation before converting to check-in.</p>
                         </div>
+                    )}
+
+                    {booking.status === 'PENDING' && (
+                        <Button
+                            onClick={async () => {
+                                try {
+                                    const res = await fetch('/api/reservations/cancel', {
+                                        method: 'PATCH',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ bookingId: booking.id, action: 'edit', updates: { status: 'CONFIRMED' } }),
+                                    })
+                                    if (!res.ok) { const j = await res.json(); throw new Error(j.error) }
+                                    toast.success('Reservation confirmed')
+                                    onOpenChange(false)
+                                } catch (err: unknown) {
+                                    toast.error(err instanceof Error ? err.message : 'Failed to confirm')
+                                }
+                            }}
+                            className="w-full h-10 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-xl mb-2"
+                        >
+                            Confirm Reservation
+                        </Button>
                     )}
 
                     {booking.status === 'PENDING' && (

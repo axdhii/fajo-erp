@@ -104,7 +104,7 @@ export async function POST(request: NextRequest) {
 
         // Validate payment if balance is due (skip when admin force-checkout)
         if (!force && balanceDue > 0) {
-            if (Math.abs(incomingTotal - balanceDue) > 0.01) {
+            if (Math.abs(incomingTotal - balanceDue) >= 1) {
                 return NextResponse.json(
                     { error: `Payment of ₹${incomingTotal} does not match balance of ₹${balanceDue}` },
                     { status: 400 }

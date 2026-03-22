@@ -110,6 +110,7 @@ export async function PATCH(request: NextRequest) {
                 'advance_type',
                 'expected_arrival',
                 'notes',
+                'status',
             ]
 
             const sanitizedUpdates: Record<string, unknown> = {}
@@ -124,6 +125,13 @@ export async function PATCH(request: NextRequest) {
                     { error: 'No valid fields to update' },
                     { status: 400 }
                 )
+            }
+
+            // Status change validation: only PENDING→CONFIRMED allowed
+            if (sanitizedUpdates.status) {
+                if (booking.status !== 'PENDING' || sanitizedUpdates.status !== 'CONFIRMED') {
+                    return NextResponse.json({ error: 'Can only confirm PENDING reservations' }, { status: 400 })
+                }
             }
 
             // Conflict check when dates are being changed

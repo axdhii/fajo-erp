@@ -134,9 +134,12 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'Failed to update restock request' }, { status: 500 })
         }
 
-        // Notify the CRE who requested
+        // Notify the requester (use their actual role, not hardcoded FrontDesk)
         if (data.requested_by) {
-            try { await supabase.from('notifications').insert({ hotel_id: data.hotel_id, recipient_role: 'FrontDesk', recipient_staff_id: data.requested_by, type: 'RESTOCK_DONE', title: 'Restock Completed', message: `${data.items} — restocked by ${callerStaff.name || 'staff'}`, link: '/front-desk', source_table: 'restock_requests', source_id: data.id }) } catch { /* never block */ }
+            try {
+                const { data: requester } = await supabase.from('staff').select('role').eq('id', data.requested_by).single()
+                await supabase.from('notifications').insert({ hotel_id: data.hotel_id, recipient_role: requester?.role || 'FrontDesk', recipient_staff_id: data.requested_by, type: 'RESTOCK_DONE', title: 'Restock Completed', message: `${data.items} — restocked by ${callerStaff.name || 'staff'}`, link: '/front-desk', source_table: 'restock_requests', source_id: data.id })
+            } catch { /* never block */ }
         }
 
         return NextResponse.json({ data })
