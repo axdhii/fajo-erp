@@ -22,7 +22,7 @@ import {
     Download,
     Loader2,
 } from 'lucide-react'
-import html2canvas from 'html2canvas'
+// html2canvas imported dynamically in handleDownloadReport
 import type { AdminTabProps } from '@/app/(dashboard)/admin/client'
 
 interface PaymentRow {
@@ -251,15 +251,19 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
     const handleDownloadReport = async () => {
         setGeneratingReport(true)
         try {
+            const html2canvas = (await import('html2canvas')).default
+
             const fromIST = `${dateFrom || todayIST()}T${timeFrom}:00+05:30`
             const toIST = `${dateTo || todayIST()}T${timeTo}:59+05:30`
 
-            const { data: bookings } = await supabase
+            const { data: bookings, error: queryError } = await supabase
                 .from('bookings')
                 .select('id, grand_total, status, unit:units!inner(type, hotel_id), payments(amount_cash, amount_digital, total_paid)')
                 .in('status', ['CHECKED_IN', 'CHECKED_OUT'])
                 .gte('check_in', fromIST)
                 .lte('check_in', toIST)
+
+            if (queryError) throw new Error(`Query failed: ${queryError.message}`)
 
             let filtered = bookings || []
             if (hotelId) {
@@ -272,8 +276,13 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             const calcRev = (list: typeof filtered) => {
                 let cash = 0, digital = 0
                 for (const b of list) {
-                    const p = Array.isArray((b as Record<string, unknown>).payments) ? ((b as Record<string, unknown>).payments as Record<string, unknown>[])[0] : (b as Record<string, unknown>).payments as Record<string, unknown> | null
-                    if (p) { cash += Number(p.amount_cash || 0); digital += Number(p.amount_digital || 0) }
+                    const raw = (b as Record<string, unknown>).payments
+                    const payments = Array.isArray(raw) ? raw : raw ? [raw] : []
+                    for (const p of payments) {
+                        const pay = p as Record<string, unknown>
+                        cash += Number(pay.amount_cash || 0)
+                        digital += Number(pay.amount_digital || 0)
+                    }
                 }
                 return { cash, digital }
             }
@@ -289,9 +298,16 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             const toDisplay = new Date(toIST).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
             const genAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
 
-            if (reportRef.current) {
-                reportRef.current.style.display = 'block'
-                reportRef.current.innerHTML = `<div style="width:800px;padding:40px;background:white;font-family:system-ui,sans-serif;">
+            if (!reportRef.current) throw new Error('Report container not found')
+
+            {
+                const el = reportRef.current
+                el.style.display = 'block'
+                el.style.position = 'fixed'
+                el.style.left = '0'
+                el.style.top = '0'
+                el.style.zIndex = '-1'
+                el.innerHTML = `<div style="width:800px;padding:40px;background:white;font-family:system-ui,sans-serif;">
                     <div style="text-align:center;margin-bottom:30px;">
                         <h1 style="font-size:24px;font-weight:800;color:#0f172a;margin:0;">${hotelName}</h1>
                         <h2 style="font-size:18px;font-weight:600;color:#475569;margin:4px 0 0;">FINANCIAL REPORT</h2>
@@ -334,8 +350,8 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                 </div>`
 
                 await new Promise(r => setTimeout(r, 300))
-                const canvas = await html2canvas(reportRef.current, { scale: 2, backgroundColor: '#ffffff' })
-                reportRef.current.style.display = 'none'
+                const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true })
+                el.style.display = 'none'
 
                 const url = canvas.toDataURL('image/png')
                 const link = document.createElement('a')
@@ -346,7 +362,7 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             }
         } catch (err) {
             console.error('Report error:', err)
-            toast.error('Failed to generate report')
+            toast.error(err instanceof Error ? `Report failed: ${err.message}` : 'Failed to generate report')
         } finally {
             setGeneratingReport(false)
         }
@@ -686,7 +702,7 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                 </CardContent>
             </Card>
             {/* Hidden report div for html2canvas */}
-            <div ref={reportRef} style={{ position: 'absolute', left: '-9999px', top: 0, display: 'none' }} />
+            <div ref={reportRef} style={{ display: 'none' }} />
         </div>
     )
 }
