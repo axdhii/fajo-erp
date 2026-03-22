@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -22,7 +22,6 @@ import {
     Download,
     Loader2,
 } from 'lucide-react'
-// html2canvas imported dynamically in handleDownloadReport
 import type { AdminTabProps } from '@/app/(dashboard)/admin/client'
 
 interface PaymentRow {
@@ -101,7 +100,6 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
     const [timeTo, setTimeTo] = useState('23:59')
 
     // Report download
-    const reportRef = useRef<HTMLDivElement>(null)
     const [generatingReport, setGeneratingReport] = useState(false)
 
     // Revenue data
@@ -310,80 +308,112 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             const toDisplay = new Date(toIST).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
             const genAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
 
-            if (!reportRef.current) throw new Error('Report container not found')
+            // Draw report directly on canvas (no html2canvas — avoids Tailwind v4 CSS issues)
+            const canvas = document.createElement('canvas')
+            const W = 800, H = 600
+            canvas.width = W * 2
+            canvas.height = H * 2
+            const ctx = canvas.getContext('2d')!
+            ctx.scale(2, 2)
 
-            {
-                const el = reportRef.current
-                el.style.display = 'block'
-                el.style.position = 'fixed'
-                el.style.left = '0'
-                el.style.top = '0'
-                el.style.zIndex = '-1'
-                el.innerHTML = `<div style="width:800px;padding:40px;background:white;font-family:system-ui,sans-serif;">
-                    <div style="text-align:center;margin-bottom:30px;">
-                        <h1 style="font-size:24px;font-weight:800;color:#0f172a;margin:0;">${hotelName}</h1>
-                        <h2 style="font-size:18px;font-weight:600;color:#475569;margin:4px 0 0;">FINANCIAL REPORT</h2>
-                        <div style="margin-top:12px;padding:8px 16px;background:#f8fafc;border-radius:8px;display:inline-block;">
-                            <p style="font-size:13px;color:#64748b;margin:0;">Period: ${fromDisplay}</p>
-                            <p style="font-size:13px;color:#64748b;margin:2px 0 0;">to ${toDisplay}</p>
-                        </div>
-                    </div>
-                    <div style="display:flex;gap:16px;margin-bottom:24px;">
-                        <div style="flex:1;border:2px solid #d1fae5;border-radius:12px;padding:20px;text-align:center;background:#f0fdf4;">
-                            <p style="font-size:12px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px;">Rooms</p>
-                            <p style="font-size:32px;font-weight:800;color:#065f46;margin:0;">${rooms.length}</p>
-                            <p style="font-size:11px;color:#6b7280;margin:4px 0 0;">units sold</p>
-                            <div style="margin-top:12px;display:flex;justify-content:center;gap:16px;">
-                                <div><p style="font-size:10px;color:#16a34a;font-weight:700;margin:0;">CASH</p><p style="font-size:16px;font-weight:700;color:#15803d;margin:2px 0 0;">${fmt(roomRev.cash)}</p></div>
-                                <div><p style="font-size:10px;color:#2563eb;font-weight:700;margin:0;">DIGITAL</p><p style="font-size:16px;font-weight:700;color:#1d4ed8;margin:2px 0 0;">${fmt(roomRev.digital)}</p></div>
-                            </div>
-                        </div>
-                        <div style="flex:1;border:2px solid #dbeafe;border-radius:12px;padding:20px;text-align:center;background:#eff6ff;">
-                            <p style="font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px;">Dorms</p>
-                            <p style="font-size:32px;font-weight:800;color:#1e40af;margin:0;">${dorms.length}</p>
-                            <p style="font-size:11px;color:#6b7280;margin:4px 0 0;">beds sold</p>
-                            <div style="margin-top:12px;display:flex;justify-content:center;gap:16px;">
-                                <div><p style="font-size:10px;color:#16a34a;font-weight:700;margin:0;">CASH</p><p style="font-size:16px;font-weight:700;color:#15803d;margin:2px 0 0;">${fmt(dormRev.cash)}</p></div>
-                                <div><p style="font-size:10px;color:#2563eb;font-weight:700;margin:0;">DIGITAL</p><p style="font-size:16px;font-weight:700;color:#1d4ed8;margin:2px 0 0;">${fmt(dormRev.digital)}</p></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div style="border:3px solid #c4b5fd;border-radius:12px;padding:20px;text-align:center;background:#f5f3ff;margin-bottom:24px;">
-                        <p style="font-size:12px;font-weight:700;color:#7c3aed;text-transform:uppercase;letter-spacing:1px;margin:0 0 8px;">Grand Total</p>
-                        <p style="font-size:40px;font-weight:900;color:#5b21b6;margin:0;">${fmt(grandTotal)}</p>
-                        <div style="margin-top:12px;display:flex;justify-content:center;gap:24px;">
-                            <div><p style="font-size:11px;color:#16a34a;font-weight:700;margin:0;">TOTAL CASH</p><p style="font-size:20px;font-weight:800;color:#15803d;margin:2px 0 0;">${fmt(grandCash)}</p></div>
-                            <div><p style="font-size:11px;color:#2563eb;font-weight:700;margin:0;">TOTAL DIGITAL</p><p style="font-size:20px;font-weight:800;color:#1d4ed8;margin:2px 0 0;">${fmt(grandDigital)}</p></div>
-                        </div>
-                    </div>
-                    <div style="text-align:center;padding-top:16px;border-top:1px solid #e2e8f0;">
-                        <p style="font-size:11px;color:#94a3b8;margin:0;">Generated: ${genAt} | FAJO ERP</p>
-                    </div>
-                </div>`
+            // Background
+            ctx.fillStyle = '#ffffff'
+            ctx.fillRect(0, 0, W, H)
 
-                await new Promise(r => setTimeout(r, 300))
-                const canvas = await html2canvas(el, {
-                    scale: 2,
-                    backgroundColor: '#ffffff',
-                    useCORS: true,
-                    removeContainer: true,
-                    foreignObjectRendering: false,
-                    logging: false,
-                    onclone: (doc: Document) => {
-                        // Remove all stylesheets to avoid unsupported CSS color functions (lab, oklch)
-                        const styles = doc.querySelectorAll('style, link[rel="stylesheet"]')
-                        styles.forEach(s => s.remove())
-                    },
-                })
-                el.style.display = 'none'
+            // Header
+            ctx.textAlign = 'center'
+            ctx.fillStyle = '#0f172a'
+            ctx.font = 'bold 22px system-ui, sans-serif'
+            ctx.fillText(hotelName.toUpperCase(), W / 2, 45)
+            ctx.fillStyle = '#475569'
+            ctx.font = '600 16px system-ui, sans-serif'
+            ctx.fillText('FINANCIAL REPORT', W / 2, 70)
+            ctx.fillStyle = '#64748b'
+            ctx.font = '13px system-ui, sans-serif'
+            ctx.fillText(`Period: ${fromDisplay}`, W / 2, 100)
+            ctx.fillText(`to ${toDisplay}`, W / 2, 118)
 
-                const url = canvas.toDataURL('image/png')
-                const link = document.createElement('a')
-                link.download = `Financial-Report_${hotelName.replace(/\s+/g, '-')}_${dateFrom}_to_${dateTo}.png`
-                link.href = url
-                link.click()
-                toast.success('Financial report downloaded')
+            // Rooms card
+            const drawCard = (x: number, y: number, w: number, h: number, title: string, count: number, unit: string, cash: number, digital: number, borderColor: string, bgColor: string, titleColor: string) => {
+                ctx.fillStyle = bgColor
+                ctx.beginPath()
+                ctx.roundRect(x, y, w, h, 12)
+                ctx.fill()
+                ctx.strokeStyle = borderColor
+                ctx.lineWidth = 2
+                ctx.stroke()
+
+                ctx.textAlign = 'center'
+                ctx.fillStyle = titleColor
+                ctx.font = 'bold 11px system-ui, sans-serif'
+                ctx.fillText(title.toUpperCase(), x + w / 2, y + 25)
+                ctx.fillStyle = '#0f172a'
+                ctx.font = 'bold 32px system-ui, sans-serif'
+                ctx.fillText(String(count), x + w / 2, y + 62)
+                ctx.fillStyle = '#6b7280'
+                ctx.font = '11px system-ui, sans-serif'
+                ctx.fillText(unit, x + w / 2, y + 80)
+
+                ctx.font = 'bold 9px system-ui, sans-serif'
+                ctx.fillStyle = '#16a34a'
+                ctx.fillText('CASH', x + w / 4, y + 105)
+                ctx.fillStyle = '#2563eb'
+                ctx.fillText('DIGITAL', x + (w * 3) / 4, y + 105)
+
+                ctx.font = 'bold 14px system-ui, sans-serif'
+                ctx.fillStyle = '#15803d'
+                ctx.fillText(fmt(cash), x + w / 4, y + 122)
+                ctx.fillStyle = '#1d4ed8'
+                ctx.fillText(fmt(digital), x + (w * 3) / 4, y + 122)
             }
+
+            drawCard(40, 145, 350, 140, 'Rooms', rooms.length, 'units sold', roomRev.cash, roomRev.digital, '#d1fae5', '#f0fdf4', '#059669')
+            drawCard(410, 145, 350, 140, 'Dorms', dorms.length, 'beds sold', dormRev.cash, dormRev.digital, '#dbeafe', '#eff6ff', '#2563eb')
+
+            // Grand Total card
+            ctx.fillStyle = '#f5f3ff'
+            ctx.beginPath()
+            ctx.roundRect(40, 310, 720, 150, 12)
+            ctx.fill()
+            ctx.strokeStyle = '#c4b5fd'
+            ctx.lineWidth = 3
+            ctx.stroke()
+
+            ctx.textAlign = 'center'
+            ctx.fillStyle = '#7c3aed'
+            ctx.font = 'bold 11px system-ui, sans-serif'
+            ctx.fillText('GRAND TOTAL', W / 2, 335)
+            ctx.fillStyle = '#5b21b6'
+            ctx.font = 'bold 38px system-ui, sans-serif'
+            ctx.fillText(fmt(grandTotal), W / 2, 380)
+
+            ctx.font = 'bold 10px system-ui, sans-serif'
+            ctx.fillStyle = '#16a34a'
+            ctx.fillText('TOTAL CASH', W / 2 - 120, 410)
+            ctx.fillStyle = '#2563eb'
+            ctx.fillText('TOTAL DIGITAL', W / 2 + 120, 410)
+
+            ctx.font = 'bold 18px system-ui, sans-serif'
+            ctx.fillStyle = '#15803d'
+            ctx.fillText(fmt(grandCash), W / 2 - 120, 435)
+            ctx.fillStyle = '#1d4ed8'
+            ctx.fillText(fmt(grandDigital), W / 2 + 120, 435)
+
+            // Footer
+            ctx.fillStyle = '#e2e8f0'
+            ctx.fillRect(40, 490, 720, 1)
+            ctx.fillStyle = '#94a3b8'
+            ctx.font = '11px system-ui, sans-serif'
+            ctx.textAlign = 'center'
+            ctx.fillText(`Generated: ${genAt} | FAJO ERP`, W / 2, 520)
+
+            // Download
+            const url = canvas.toDataURL('image/png')
+            const link = document.createElement('a')
+            link.download = `Financial-Report_${hotelName.replace(/\s+/g, '-')}_${dateFrom}_to_${dateTo}.png`
+            link.href = url
+            link.click()
+            toast.success('Financial report downloaded')
         } catch (err) {
             console.error('Report error:', err)
             toast.error(err instanceof Error ? `Report failed: ${err.message}` : 'Failed to generate report')
@@ -725,8 +755,6 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                     )}
                 </CardContent>
             </Card>
-            {/* Hidden report div for html2canvas */}
-            <div ref={reportRef} style={{ display: 'none' }} />
         </div>
     )
 }
