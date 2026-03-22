@@ -103,6 +103,20 @@ const ROLE_META: Record<RoleKey, RoleInfo> = {
 const AUTO_CLOCK_ROLES: RoleKey[] = ['FrontDesk', 'Housekeeping', 'HR']
 
 /* ------------------------------------------------------------------ */
+/*  Role → dashboard route mapping                                     */
+/* ------------------------------------------------------------------ */
+
+const ROLE_ROUTE: Record<RoleKey, string> = {
+    Admin: '/admin',
+    HR: '/hr',
+    ZonalManager: '/zonal',
+    ZonalOps: '/zonal-ops',
+    ZonalHK: '/zonal-hk',
+    Housekeeping: '/housekeeping',
+    FrontDesk: '/front-desk',
+}
+
+/* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
 
@@ -284,7 +298,8 @@ export default function LoginPage() {
                 return
             }
 
-            window.location.href = '/'
+            // Direct redirect to role-specific dashboard (skip root page hop)
+            window.location.href = selectedRole ? ROLE_ROUTE[selectedRole] : '/'
         } catch {
             toast.error('Invalid phone number or password')
         } finally {
@@ -350,7 +365,7 @@ export default function LoginPage() {
                 .eq('user_id', user.id)
                 .single()
             if (!profile) {
-                window.location.href = '/'
+                window.location.href = selectedRole ? ROLE_ROUTE[selectedRole] : '/'
                 return
             }
 
@@ -379,7 +394,8 @@ export default function LoginPage() {
             toast.error('Clock-in failed')
         } finally {
             setClockingIn(false)
-            window.location.href = '/'
+            // Direct redirect to role-specific dashboard
+            window.location.href = selectedRole ? ROLE_ROUTE[selectedRole] : '/'
         }
     }
 

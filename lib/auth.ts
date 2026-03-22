@@ -1,9 +1,34 @@
 // ============================================================
-// Fajo ERP — API Route Authentication Helper
+// Fajo ERP — Authentication Helpers
 // ============================================================
 
 import { createClient } from '@/lib/supabase/server'
+import { headers } from 'next/headers'
 import { NextResponse } from 'next/server'
+
+// ── Staff profile injected by middleware ────────────────────
+export interface StaffContext {
+    staffId: string
+    hotelId: string
+    role: string
+}
+
+/**
+ * Read the staff context headers that the middleware injected.
+ * Use in Server Components (pages) instead of re-querying the DB.
+ * Returns null if any header is missing (should never happen for
+ * protected routes because middleware redirects first).
+ */
+export async function getStaffFromHeaders(): Promise<StaffContext | null> {
+    const h = await headers()
+    const staffId = h.get('x-staff-id')
+    const hotelId = h.get('x-staff-hotel-id')
+    const role = h.get('x-staff-role')
+    if (!staffId || !hotelId || !role) return null
+    return { staffId, hotelId, role }
+}
+
+// ── Legacy helpers (still used by API routes & invoice page) ─
 
 interface AuthResult {
     authenticated: true
@@ -15,19 +40,6 @@ interface AuthError {
     response: NextResponse
 }
 
-/**
- * Verify that the request is from an authenticated user.
- * Use at the top of every API route handler.
- *
- * Uses getUser() first (server-validated), then falls back to
- * getSession() (JWT-only) to handle cases where the middleware
- * refreshed the token but the Route Handler's cookies() reads
- * stale cookies.
- *
- * Usage:
- *   const auth = await requireAuth()
- *   if (!auth.authenticated) return auth.response
- */
 /**
  * Get the authenticated user for Server Components (pages).
  * Uses getUser() first, falls back to getSession() for cookie staleness.

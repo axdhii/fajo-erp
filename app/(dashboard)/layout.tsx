@@ -23,14 +23,7 @@ export default function DashboardLayout({
         }
     }, [user, isLoading, router])
 
-    if (isLoading || !user) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-slate-50">
-                <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent"></div>
-            </div>
-        )
-    }
-
+    // Non-blocking: render children immediately, redirect will kick in if unauthenticated
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900 font-sans selection:bg-emerald-500/30">
             <Header />

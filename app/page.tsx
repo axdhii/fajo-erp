@@ -1,38 +1,33 @@
-"use client"
-import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
-import { useAuthStore } from '@/lib/store/auth-store'
+import { redirect } from 'next/navigation'
+import { createClient } from '@/lib/supabase/server'
 
-export default function Home() {
-  const router = useRouter()
-  const { user, profile, isLoading, checkAuth } = useAuthStore()
+const ROLE_ROUTE: Record<string, string> = {
+  Admin: '/admin',
+  HR: '/hr',
+  ZonalManager: '/zonal',
+  ZonalOps: '/zonal-ops',
+  ZonalHK: '/zonal-hk',
+  Housekeeping: '/housekeeping',
+  FrontDesk: '/front-desk',
+}
 
-  useEffect(() => {
-    checkAuth()
-  }, [checkAuth])
+export default async function Home() {
+  const supabase = await createClient()
+  const { data: { session } } = await supabase.auth.getSession()
 
-  useEffect(() => {
-    if (!isLoading) {
-      if (!user) {
-        router.push('/login')
-      } else if (profile) {
-        if (profile.role === 'Admin') router.push('/admin')
-        else if (profile.role === 'HR') router.push('/hr')
-        else if (profile.role === 'ZonalManager') router.push('/zonal')
-        else if (profile.role === 'ZonalOps') router.push('/zonal-ops')
-        else if (profile.role === 'ZonalHK') router.push('/zonal-hk')
-        else if (profile.role === 'Housekeeping') router.push('/housekeeping')
-        else router.push('/front-desk')
-      } else {
-        // User exists but no staff profile — redirect to login
-        router.push('/login')
-      }
-    }
-  }, [user, profile, isLoading, router])
+  if (!session?.user) {
+    redirect('/login')
+  }
 
-  return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent"></div>
-    </div>
-  )
+  const { data: staff } = await supabase
+    .from('staff')
+    .select('role')
+    .eq('user_id', session.user.id)
+    .single()
+
+  if (!staff?.role) {
+    redirect('/login')
+  }
+
+  redirect(ROLE_ROUTE[staff.role] || '/front-desk')
 }

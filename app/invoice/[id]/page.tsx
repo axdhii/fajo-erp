@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { getAuthUser } from '@/lib/auth'
-import { notFound, redirect } from 'next/navigation'
+import { notFound } from 'next/navigation'
 import PrintTrigger from './PrintTrigger'
 import { Building2, Phone, MapPin } from 'lucide-react'
 
@@ -25,12 +24,8 @@ export default async function InvoicePage(props: InvoicePageProps) {
     const params = await props.params;
     const bookingId = params.id
 
+    // Auth is enforced by middleware — no need to call getAuthUser() here
     const supabase = await createClient()
-
-    const user = await getAuthUser()
-    if (!user) {
-        redirect('/login')
-    }
 
     const { data: booking, error } = await supabase
         .from('bookings')

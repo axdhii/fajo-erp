@@ -1,13 +1,36 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
-// Public routes that don't need authentication
+// Routes that don't require authentication
 const publicRoutes = ['/login', '/']
 
+// Role -> allowed path prefixes
+const ROLE_ROUTES: Record<string, string[]> = {
+    Admin: ['/admin', '/front-desk', '/reservations', '/housekeeping', '/hr', '/zonal', '/zonal-ops', '/zonal-hk'],
+    FrontDesk: ['/front-desk', '/reservations'],
+    Housekeeping: ['/housekeeping'],
+    HR: ['/hr'],
+    ZonalManager: ['/zonal', '/zonal-ops', '/zonal-hk'],
+    ZonalOps: ['/zonal', '/zonal-ops'],
+    ZonalHK: ['/zonal', '/zonal-hk'],
+}
+
+// Where to redirect a user who tries to access a route they can't
+function defaultPathForRole(role: string): string {
+    switch (role) {
+        case 'Admin': return '/admin'
+        case 'HR': return '/hr'
+        case 'Housekeeping': return '/housekeeping'
+        case 'ZonalManager': return '/zonal'
+        case 'ZonalOps': return '/zonal-ops'
+        case 'ZonalHK': return '/zonal-hk'
+        default: return '/front-desk'
+    }
+}
+
 export async function middleware(request: NextRequest) {
-    let supabaseResponse = NextResponse.next({
-        request,
-    })
+    // Track cookies set by Supabase auth so we can replay them onto the final response
+    let refreshedCookies: { name: string; value: string; options: Record<string, unknown> }[] = []
 
     const supabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -18,109 +41,85 @@ export async function middleware(request: NextRequest) {
                     return request.cookies.getAll()
                 },
                 setAll(cookiesToSet) {
+                    // Buffer cookies; we'll apply them to whichever response we return
+                    refreshedCookies = cookiesToSet as typeof refreshedCookies
                     cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-                    supabaseResponse = NextResponse.next({ request })
-                    cookiesToSet.forEach(({ name, value, options }) =>
-                        supabaseResponse.cookies.set(name, value, options)
-                    )
                 },
             },
         }
     )
 
+    // Helper: apply buffered Supabase auth cookies to any response
+    function applyCookies(res: NextResponse) {
+        for (const { name, value, options } of refreshedCookies) {
+            res.cookies.set(name, value, options)
+        }
+        return res
+    }
+
     const { data: { user } } = await supabase.auth.getUser()
 
     const { pathname } = request.nextUrl
 
-    // Allow public routes
+    // ── Public routes ──────────────────────────────────────────────
     if (publicRoutes.includes(pathname)) {
         if (user && pathname === '/login') {
-            return NextResponse.redirect(new URL('/', request.url))
+            return applyCookies(NextResponse.redirect(new URL('/', request.url)))
         }
-        return supabaseResponse
+        return applyCookies(NextResponse.next({ request }))
     }
 
-    // API routes: don't redirect to login (would return HTML to JSON-expecting clients)
-    // Instead let the API handle its own auth or work without auth
+    // ── API routes: let them handle their own auth ─────────────────
     if (pathname.startsWith('/api/')) {
-        return supabaseResponse
+        return applyCookies(NextResponse.next({ request }))
     }
 
-    // Protect ALL dashboard routes
+    // ── Invoice routes: authentication only, no role check ─────────
+    if (pathname.startsWith('/invoice/')) {
+        if (!user) {
+            return applyCookies(NextResponse.redirect(new URL('/login', request.url)))
+        }
+        return applyCookies(NextResponse.next({ request }))
+    }
+
+    // ── All other routes require authentication ────────────────────
     if (!user) {
-        const loginUrl = new URL('/login', request.url)
-        return NextResponse.redirect(loginUrl)
+        return applyCookies(NextResponse.redirect(new URL('/login', request.url)))
     }
 
-    // Role-based route protection for admin
-    if (pathname.startsWith('/admin')) {
-        const { data: profile } = await supabase
-            .from('staff')
-            .select('role')
-            .eq('user_id', user.id)
-            .single()
+    // ── Fetch staff profile ONCE ───────────────────────────────────
+    const { data: profile } = await supabase
+        .from('staff')
+        .select('id, hotel_id, role')
+        .eq('user_id', user.id)
+        .single()
 
-        if (!profile || profile.role !== 'Admin') {
-            return NextResponse.redirect(new URL('/front-desk', request.url))
-        }
+    if (!profile) {
+        return applyCookies(NextResponse.redirect(new URL('/login', request.url)))
     }
 
-    // Role-based route protection for Zonal Ops
-    if (pathname.startsWith('/zonal-ops')) {
-        const { data: profile } = await supabase
-            .from('staff')
-            .select('role')
-            .eq('user_id', user.id)
-            .single()
+    // ── Role-based route protection ────────────────────────────────
+    const allowedPrefixes = ROLE_ROUTES[profile.role] || ['/front-desk']
+    const isAllowed = allowedPrefixes.some((prefix) => pathname.startsWith(prefix))
 
-        if (!profile || !['Admin', 'ZonalManager', 'ZonalOps'].includes(profile.role)) {
-            const redirectPath = profile?.role === 'HR' ? '/hr' : profile?.role === 'Housekeeping' ? '/housekeeping' : '/front-desk'
-            return NextResponse.redirect(new URL(redirectPath, request.url))
-        }
+    if (!isAllowed) {
+        return applyCookies(
+            NextResponse.redirect(new URL(defaultPathForRole(profile.role), request.url))
+        )
     }
 
-    // Role-based route protection for Zonal HK
-    if (pathname.startsWith('/zonal-hk')) {
-        const { data: profile } = await supabase
-            .from('staff')
-            .select('role')
-            .eq('user_id', user.id)
-            .single()
+    // ── Inject staff context into request headers for server pages ─
+    // Eliminates the need for each page to re-query auth + staff table.
+    const requestHeaders = new Headers(request.headers)
+    requestHeaders.set('x-staff-id', profile.id)
+    requestHeaders.set('x-staff-hotel-id', profile.hotel_id)
+    requestHeaders.set('x-staff-role', profile.role)
 
-        if (!profile || !['Admin', 'ZonalManager', 'ZonalHK'].includes(profile.role)) {
-            const redirectPath = profile?.role === 'HR' ? '/hr' : profile?.role === 'Housekeeping' ? '/housekeeping' : '/front-desk'
-            return NextResponse.redirect(new URL(redirectPath, request.url))
-        }
-    }
+    const response = NextResponse.next({
+        request: { headers: requestHeaders },
+    })
 
-    // Role-based route protection for Zonal Manager overview
-    if (pathname.startsWith('/zonal')) {
-        const { data: profile } = await supabase
-            .from('staff')
-            .select('role')
-            .eq('user_id', user.id)
-            .single()
-
-        if (!profile || !['Admin', 'ZonalManager', 'ZonalOps', 'ZonalHK'].includes(profile.role)) {
-            const redirectPath = profile?.role === 'HR' ? '/hr' : profile?.role === 'Housekeeping' ? '/housekeeping' : '/front-desk'
-            return NextResponse.redirect(new URL(redirectPath, request.url))
-        }
-    }
-
-    // Role-based route protection for HR
-    if (pathname.startsWith('/hr')) {
-        const { data: profile } = await supabase
-            .from('staff')
-            .select('role')
-            .eq('user_id', user.id)
-            .single()
-
-        if (!profile || !['Admin', 'HR'].includes(profile.role)) {
-            return NextResponse.redirect(new URL('/front-desk', request.url))
-        }
-    }
-
-    return supabaseResponse
+    return applyCookies(response)
 }
 
 export const config = {

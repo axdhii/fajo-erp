@@ -1,33 +1,19 @@
 import { createClient } from '@/lib/supabase/server'
-import { getAuthUser } from '@/lib/auth'
+import { getStaffFromHeaders } from '@/lib/auth'
 import { redirect } from 'next/navigation'
-import { AlertCircle } from 'lucide-react'
 import { HRClient } from './client'
 
 export default async function HRPage() {
+    const staff = await getStaffFromHeaders()
+    if (!staff) redirect('/login')
+
+    // Hotel name is needed for shift report downloads — single lightweight query
     const supabase = await createClient()
-
-    const user = await getAuthUser()
-
-    if (!user) {
-        redirect('/login')
-    }
-
-    const { data: profile } = await supabase
-        .from('staff')
-        .select('id, hotel_id, role, hotel:hotels(name)')
-        .eq('user_id', user.id)
+    const { data: hotel } = await supabase
+        .from('hotels')
+        .select('name')
+        .eq('id', staff.hotelId)
         .single()
 
-    if (!profile || (profile.role !== 'Admin' && profile.role !== 'HR')) {
-        return (
-            <div className="flex flex-col items-center justify-center p-20 text-center mt-10">
-                <AlertCircle className="h-12 w-12 text-red-500 mb-4" />
-                <h2 className="text-xl font-bold text-red-600">Unauthorized Area</h2>
-                <p className="text-slate-500 mt-2">Only HR staff and Admins can access this dashboard.</p>
-            </div>
-        )
-    }
-
-    return <HRClient hotelId={profile.hotel_id} staffId={profile.id} hotelName={(profile.hotel as any)?.name || 'Hotel'} />
+    return <HRClient hotelId={staff.hotelId} staffId={staff.staffId} hotelName={hotel?.name || 'Hotel'} />
 }
