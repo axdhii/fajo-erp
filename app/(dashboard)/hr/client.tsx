@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import html2canvas from 'html2canvas'
+// html2canvas imported dynamically in handleDownloadReport
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -131,6 +131,7 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
     const handleDownloadReport = useCallback(async (report: ShiftReport) => {
         if (!reportRef.current) return
         setDownloadingReport(report.id)
+        const html2canvas = (await import('html2canvas')).default
         const el = reportRef.current
 
         const shiftStart = new Date(report.shift_start).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })
@@ -236,7 +237,10 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
         el.style.zIndex = '-1'
 
         try {
-            const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff' })
+            const canvas = await html2canvas(el, {
+                scale: 2, backgroundColor: '#ffffff', logging: false,
+                onclone: (doc: Document) => { doc.querySelectorAll('style, link[rel="stylesheet"]').forEach(s => s.remove()) },
+            })
             const link = document.createElement('a')
             link.download = `shift-report-${report.staff?.name?.replace(/\s+/g, '-') || 'staff'}-${shiftDate}.png`
             link.href = canvas.toDataURL('image/png')

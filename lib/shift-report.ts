@@ -11,7 +11,7 @@ export async function generateShiftReport(
     // 1. Check-ins (bookings created by this staff, status CHECKED_IN or CHECKED_OUT)
     const { data: checkIns } = await supabase
         .from('bookings')
-        .select('id, unit_id, grand_total, guests(name), unit:units(unit_number)')
+        .select('id, unit_id, grand_total, advance_amount, advance_type, guests(name), unit:units(unit_number)')
         .eq('created_by', staffId)
         .gte('created_at', clockIn)
         .lte('created_at', clockOut)
@@ -74,6 +74,19 @@ export async function generateShiftReport(
         if (payments) {
             revenueCash = payments.reduce((s, p) => s + Number(p.amount_cash || 0), 0)
             revenueDigital = payments.reduce((s, p) => s + Number(p.amount_digital || 0), 0)
+        }
+    }
+
+    // Include advance_amount from check-ins (collected at reservation/check-in time)
+    for (const b of (checkIns || [])) {
+        const advance = Number((b as Record<string, unknown>).advance_amount || 0)
+        if (advance > 0) {
+            const advType = String((b as Record<string, unknown>).advance_type || '').toUpperCase()
+            if (advType === 'DIGITAL' || advType === 'UPI' || advType === 'GPAY') {
+                revenueDigital += advance
+            } else {
+                revenueCash += advance
+            }
         }
     }
 

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-import html2canvas from 'html2canvas'
+// html2canvas imported dynamically in handleDownloadReport
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -122,6 +122,7 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
     const handleDownloadReport = useCallback(async (report: ShiftReport) => {
         if (!reportRef.current) return
         setDownloadingReport(report.id)
+        const html2canvas = (await import('html2canvas')).default
         const el = reportRef.current
 
         // Populate the hidden report div
@@ -229,7 +230,10 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
         el.style.zIndex = '-1'
 
         try {
-            const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff' })
+            const canvas = await html2canvas(el, {
+                scale: 2, backgroundColor: '#ffffff', logging: false,
+                onclone: (doc: Document) => { doc.querySelectorAll('style, link[rel="stylesheet"]').forEach(s => s.remove()) },
+            })
             const link = document.createElement('a')
             link.download = `shift-report-${report.staff?.name?.replace(/\s+/g, '-') || 'staff'}-${shiftDate}.png`
             link.href = canvas.toDataURL('image/png')
@@ -271,66 +275,39 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
 
     const fetchPayments = useCallback(async () => {
         if (!selectedHotelId) return
-        // Get all unit IDs for the selected hotel
-        const { data: units } = await supabase
-            .from('units')
-            .select('id')
-            .eq('hotel_id', selectedHotelId)
-        if (!units || units.length === 0) { setPayments([]); return }
-        const unitIds = units.map(u => u.id)
 
-        // Get today's IST date range
         const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
         const todayStart = `${todayIST}T00:00:00+05:30`
         const tomorrowDate = new Date(new Date(todayStart).getTime() + 86400000).toISOString()
 
-        // Get today's bookings for this hotel
-        const { data: bookings } = await supabase
-            .from('bookings')
-            .select('id, unit_id')
-            .in('unit_id', unitIds)
-
-        if (!bookings || bookings.length === 0) { setPayments([]); return }
-        const bookingIds = bookings.map(b => b.id)
-
-        // Get today's payments
+        // Single joined query — no N+1 loops
         const { data: paymentData } = await supabase
             .from('payments')
-            .select('*')
-            .in('booking_id', bookingIds)
+            .select('id, booking_id, amount_cash, amount_digital, total_paid, created_at, booking:bookings(unit_id, unit:units(unit_number, hotel_id), guests(name))')
             .gte('created_at', todayStart)
             .lt('created_at', tomorrowDate)
             .order('created_at', { ascending: false })
 
         if (!paymentData) { setPayments([]); return }
 
-        // Enrich each payment with booking + unit + guest info
-        const bookingMap = new Map(bookings.map(b => [b.id, b]))
+        // Filter by hotel and map to PaymentRow shape
         const enriched: PaymentRow[] = []
-
         for (const p of paymentData) {
-            const booking = bookingMap.get(p.booking_id)
-            if (!booking) continue
-
-            // Find unit info
-            const { data: unitData } = await supabase
-                .from('units')
-                .select('unit_number, hotel_id')
-                .eq('id', booking.unit_id)
-                .single()
-
-            // Find guest name
-            const { data: guests } = await supabase
-                .from('guests')
-                .select('name')
-                .eq('booking_id', p.booking_id)
-                .limit(1)
-
+            const bk = p.booking as unknown as Record<string, unknown> | null
+            if (!bk) continue
+            const unit = bk.unit as Record<string, unknown> | null
+            if (!unit || unit.hotel_id !== selectedHotelId) continue
+            const guests = Array.isArray(bk.guests) ? bk.guests : bk.guests ? [bk.guests] : []
             enriched.push({
-                ...p,
+                id: p.id,
+                booking_id: p.booking_id,
+                amount_cash: p.amount_cash,
+                amount_digital: p.amount_digital,
+                total_paid: p.total_paid,
+                created_at: p.created_at,
                 booking: {
-                    unit: unitData,
-                    guests: guests || [],
+                    unit: { unit_number: unit.unit_number as string, hotel_id: unit.hotel_id as string },
+                    guests: guests as { name: string }[],
                 },
             })
         }

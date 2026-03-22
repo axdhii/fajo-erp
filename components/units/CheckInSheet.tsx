@@ -141,14 +141,10 @@ export function CheckInSheet({
         if (!unit) return new Date()
         const isDorm = unit.type === 'DORM'
         const d = new Date(checkInDate)
-        if (isDorm) {
-            d.setDate(d.getDate() + numberOfDays)
-            d.setHours(10, 0, 0, 0)
-        } else {
-            d.setDate(d.getDate() + numberOfDays)
-            d.setHours(11, 0, 0, 0)
-        }
-        return d
+        d.setDate(d.getDate() + numberOfDays)
+        // Construct checkout time explicitly in IST
+        const dateStr = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+        return new Date(`${dateStr}T${isDorm ? '10' : '11'}:00:00+05:30`)
     }, [checkInDate, numberOfDays, manualCheckout, unit])
 
     // Calculate pricing — multi-day: base price × days for both rooms and dorms

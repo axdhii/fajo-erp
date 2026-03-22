@@ -258,7 +258,7 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
 
             const { data: bookings, error: queryError } = await supabase
                 .from('bookings')
-                .select('id, grand_total, status, unit:units!inner(type, hotel_id), payments(amount_cash, amount_digital, total_paid)')
+                .select('id, grand_total, advance_amount, advance_type, status, unit:units!inner(type, hotel_id), payments(amount_cash, amount_digital, total_paid)')
                 .in('status', ['CHECKED_IN', 'CHECKED_OUT'])
                 .gte('check_in', fromIST)
                 .lte('check_in', toIST)
@@ -276,7 +276,19 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             const calcRev = (list: typeof filtered) => {
                 let cash = 0, digital = 0
                 for (const b of list) {
-                    const raw = (b as Record<string, unknown>).payments
+                    const bk = b as Record<string, unknown>
+                    // Include advance_amount
+                    const advance = Number(bk.advance_amount || 0)
+                    if (advance > 0) {
+                        const advType = String(bk.advance_type || '').toUpperCase()
+                        if (advType === 'DIGITAL' || advType === 'UPI' || advType === 'GPAY') {
+                            digital += advance
+                        } else {
+                            cash += advance
+                        }
+                    }
+                    // Include payments
+                    const raw = bk.payments
                     const payments = Array.isArray(raw) ? raw : raw ? [raw] : []
                     for (const p of payments) {
                         const pay = p as Record<string, unknown>
@@ -350,7 +362,19 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                 </div>`
 
                 await new Promise(r => setTimeout(r, 300))
-                const canvas = await html2canvas(el, { scale: 2, backgroundColor: '#ffffff', useCORS: true })
+                const canvas = await html2canvas(el, {
+                    scale: 2,
+                    backgroundColor: '#ffffff',
+                    useCORS: true,
+                    removeContainer: true,
+                    foreignObjectRendering: false,
+                    logging: false,
+                    onclone: (doc: Document) => {
+                        // Remove all stylesheets to avoid unsupported CSS color functions (lab, oklch)
+                        const styles = doc.querySelectorAll('style, link[rel="stylesheet"]')
+                        styles.forEach(s => s.remove())
+                    },
+                })
                 el.style.display = 'none'
 
                 const url = canvas.toDataURL('image/png')
