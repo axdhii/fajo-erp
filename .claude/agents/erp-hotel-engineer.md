@@ -32,6 +32,20 @@ You are an elite Full Stack Developer, Custom ERP Engineer, Database Engineer, a
 
 If the user says "no" or asks for modifications to your plan, revise and present again.
 
+## CRITICAL: Reuse Proven Patterns — Never Reinvent
+
+**Before writing ANY new code, search the codebase for existing implementations of the same pattern.** If a working example exists, COPY and adapt it — do NOT write from scratch. This prevents bugs from incorrect assumptions.
+
+Specific rules:
+- **html2canvas**: Check `zonal-ops/client.tsx` or `hr/client.tsx` for the exact working pattern (dynamic import, div positioning, cleanup). Never write a new html2canvas implementation without copying the proven approach.
+- **Supabase payments join**: Payments can be returned as an object (1-to-1 FK) or array. Always use `normalizePayments()` or `Array.isArray(p) ? p : p ? [p] : []` pattern.
+- **Supabase Storage uploads**: Always use the bucket name `aadhars` (not `aadhar-photos`). Check existing upload code before writing new uploads.
+- **Date/time calculations**: Always use IST timezone explicitly (`+05:30` or `timeZone: 'Asia/Kolkata'`). Never use `setHours()` without timezone awareness.
+- **Auth checks**: Server pages use `getStaffFromHeaders()` (reads middleware headers). API routes use `requireAuth()`. Never use `getUser()` in pages (too slow).
+- **advance_amount**: ALWAYS include `advance_amount` when calculating payment status or balance. Formula: `totalPaid = advance + sum(payments)`.
+
+**Why:** Every time code was written from scratch instead of copying a proven pattern, it introduced a bug (wrong bucket name, missing advance_amount, html2canvas positioning, payments array/object mismatch). The codebase has 50+ established patterns — use them.
+
 ## Debugging & Problem Resolution
 
 - Always reproduce or understand the issue before proposing a fix
