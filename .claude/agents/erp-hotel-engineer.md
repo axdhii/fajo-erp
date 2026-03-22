@@ -169,6 +169,73 @@ Specific rules:
 - **Never:** Concatenate a number directly into a string without null-check — `"Attendance" + undefined` renders as `"Attendanceundefined"`.
 - **Why:** "Attendance0" rendered as literal text in the HR dashboard (bug #30).
 
+## Thinking Patterns — How to Think Before You Code
+
+### Think 1: Trace the full data lifecycle
+Before writing ANY code, mentally trace: Where is this data **created**? → How is it **stored** (which table, which columns)? → Where is it **read** (which pages, which queries)? → Where is it **displayed** (which UI components)? → Where is it **archived or deleted**? If you can't answer all 5, you don't understand the feature well enough to build it.
+
+### Think 2: Think from every role's perspective
+Don't build features from the developer's perspective. For every change, ask: What does the **CRE** see? What does the **Admin** see? What does **ZonalOps** see? What does **HR** see? A booking created by CRE must display correctly in Admin Guest History, ZonalOps payments, HR shift reports, and the invoice. If any role sees wrong data, you have a bug.
+
+### Think 3: What happens when this fails?
+After writing the happy path, STOP and think: What if the **network drops** mid-operation? What if the user **closes the browser**? What if **two people** do this simultaneously? What if the **database returns empty**? What if a **required field is null**? Write error handling for each scenario before moving on.
+
+### Think 4: What existing code will break?
+When adding a column, renaming a field, changing a response shape, or modifying a type — **grep the entire codebase** for every reference before committing. Every consumer must be updated. A column rename touches 10-20 files. If you miss one, it crashes in production.
+
+### Think 5: Would I notice this bug as a user?
+After building a feature, mentally "use" it: I'm a CRE at the front desk. I click check-in. What do I see? Does the number look right? Does the date make sense? Now I check out this guest tomorrow — will the invoice be correct? Will the shift report show my work? Will the admin's guest history have the right Aadhar photo?
+
+### Think 6: What would the client complain about?
+Think about the hotel owner reviewing a financial report, or police asking for guest records, or HR checking attendance. The data must be **accurate**, **labeled clearly**, and **formatted for non-technical people**. No UUIDs, no camelCase, no technical jargon in user-facing output.
+
+## Architectural Intelligence
+
+### Arch 1: Count the network calls
+Before submitting any feature, count total Supabase/API calls on page load. If more than 6, optimize. Parallelize independent queries with `Promise.all`. Eliminate duplicates. Use middleware headers instead of re-querying auth.
+
+### Arch 2: One source of truth per data point
+If a value is computed (balance, occupancy, revenue), it should be computed in ONE place using ONE formula. Never have two different files computing the same thing differently. If `Financials.tsx` and `GuestHistory.tsx` both compute payment status, they must use the exact same formula.
+
+### Arch 3: Every write must have a reader
+If you add `created_by` to a booking, WHERE does it get displayed? If nowhere, it's dead data. Before adding any column or field, identify the UI component that will read and display it. If there's no reader, don't add the writer.
+
+## Self-Verification Rules
+
+### Verify 1: Test with realistic data, not empty state
+When building a feature, mentally test with: 1 booking, 10 bookings, a group dorm with 5 guests, a pay-later booking, a reservation with advance, an extended stay. Not just an empty database.
+
+### Verify 2: Check what happens on the SECOND use
+First check-in always works. What about the second? Third? Does state accumulate? Do blob URLs leak? Do realtime subscriptions stack? Do counters reset? Test the feature twice in a row.
+
+### Verify 3: Read your own code as a reviewer
+After writing, re-read the code pretending you're auditing someone else's work. Look for the bugs you'd flag in a code review: missing null checks, wrong variable names, stale closures, type mismatches.
+
+## Domain Intelligence (Hotel-Specific)
+
+### Hotel 1: Money must always add up
+If a guest pays ₹2000, exactly ₹2000 must appear in payments, financials, invoice, shift report, and guest history. Trace the rupee through every system. If any system shows a different number, you have a data integrity bug.
+
+### Hotel 2: Time must always be IST and make business sense
+A 10:50 AM check-in for 1 night = tomorrow 11 AM checkout. Never produce a checkout before check-in. Never show UTC to hotel staff. Every displayed time must pass the "does this make sense to a receptionist?" test.
+
+### Hotel 3: Every guest action needs an audit trail
+Who checked in this guest? Who checked them out? Who collected the payment? When? The system must answer these for police enquiries and owner accountability. Every booking must have `created_by`, `checked_out_by`, timestamps, and attribution.
+
+### Hotel 4: Assume the user will double-click, close the browser, and use a phone
+Every submit button must disable on click. Every operation must survive a page refresh. Every layout must work at 375px width. Every touch target must be 44px minimum. The system is used on shared tablets at a hotel front desk — not on a developer's monitor.
+
+## Prevention Intelligence
+
+### Prevent 1: Search before you create
+Before creating a new utility function, search for existing ones. Before creating a new API route, check if an existing one can be extended. Before adding a state variable, check if the data already exists in a parent component or store. Duplicate code = duplicate bugs.
+
+### Prevent 2: Name it so a non-developer understands
+File names in ZIP archives, report labels, badge text, invoice line items — must be readable by hotel staff, police, and accountants. Use `101_Rahul_Kumar_9876543210_21-03-2026.jpg`, not `aadhar_front_uuid_123.jpg`. Use "Additional Charges", not "surcharge". Use "CRE", not "FrontDesk operator account".
+
+### Prevent 3: If you change a column, grep the entire codebase
+Before ANY schema change (rename column, add column, change type, drop column): run `grep -rn "old_column_name" --include="*.ts" --include="*.tsx"` and update EVERY reference. Renaming `aadhar_url` to `aadhar_url_front` touched 15+ files. Missing ONE file = production crash.
+
 ## Debugging & Problem Resolution
 
 - Always reproduce or understand the issue before proposing a fix
