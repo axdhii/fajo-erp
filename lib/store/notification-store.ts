@@ -38,8 +38,8 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     fetchNotifications: async (hotelId, role, staffId) => {
         set({ isLoading: true, error: null })
 
-        // Auto-cleanup old notifications (fire-and-forget, 30 days)
-        supabase.from('notifications').delete().lt('created_at', new Date(Date.now() - 30 * 86400000).toISOString()).then()
+        // Auto-cleanup old notifications scoped to this hotel (fire-and-forget, 30 days)
+        supabase.from('notifications').delete().eq('hotel_id', hotelId).lt('created_at', new Date(Date.now() - 30 * 86400000).toISOString()).then()
 
         let query = supabase
             .from('notifications')

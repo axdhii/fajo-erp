@@ -20,7 +20,11 @@ export async function GET(request: NextRequest) {
             .order('created_at', { ascending: false })
 
         if (hotelId) query = query.eq('hotel_id', hotelId)
-        if (month) query = query.eq('month', `${month}-01`)
+        if (month) {
+            // Accept both YYYY-MM and YYYY-MM-01 formats
+            const monthValue = month.length === 7 ? `${month}-01` : month
+            query = query.eq('month', monthValue)
+        }
 
         const { data, error } = await query
 

@@ -123,7 +123,7 @@ export default async function InvoicePage(props: InvoicePageProps) {
                             Date of Issue
                         </h2>
                         <p className="text-sm font-semibold text-slate-900">
-                            {formatDate(new Date().toISOString())}
+                            {formatDate(booking.status === 'CHECKED_OUT' && booking.updated_at ? booking.updated_at : booking.created_at)}
                         </p>
                     </div>
                 </div>

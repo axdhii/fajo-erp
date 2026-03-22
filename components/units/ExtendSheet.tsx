@@ -52,14 +52,16 @@ export function ExtendSheet({ unit, open, onOpenChange, onSuccess }: ExtendSheet
 
     const newCheckOutPreview = useMemo(() => {
         if (!oldCheckOut || !unit) return null
-        const d = new Date(oldCheckOut)
+        // Use pseudo-IST math to match the server-side calculation exactly
+        const istOffsetMs = 5.5 * 60 * 60 * 1000
+        const pseudoIst = new Date(oldCheckOut.getTime() + istOffsetMs)
         if (extendType === 'HOURS') {
-            d.setHours(d.getHours() + amount)
+            pseudoIst.setUTCHours(pseudoIst.getUTCHours() + amount)
         } else {
-            d.setDate(d.getDate() + amount)
+            pseudoIst.setUTCDate(pseudoIst.getUTCDate() + amount)
             // Don't reset time — preserve any previous hourly extensions (matches server)
         }
-        return d
+        return new Date(pseudoIst.getTime() - istOffsetMs)
     }, [oldCheckOut, extendType, amount, unit])
 
     const handleSubmit = async () => {
@@ -177,7 +179,7 @@ export function ExtendSheet({ unit, open, onOpenChange, onSuccess }: ExtendSheet
                                     <p className="text-xs text-slate-500">Current</p>
                                     <p className="font-semibold text-slate-700 line-through opacity-70">
                                         {oldCheckOut.toLocaleString('en-IN', {
-                                            month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+                                            timeZone: 'Asia/Kolkata', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
                                         })}
                                     </p>
                                 </div>
@@ -186,7 +188,7 @@ export function ExtendSheet({ unit, open, onOpenChange, onSuccess }: ExtendSheet
                                     <p className="text-xs text-blue-500 font-medium">New</p>
                                     <p className="font-bold text-blue-700">
                                         {newCheckOutPreview.toLocaleString('en-IN', {
-                                            month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
+                                            timeZone: 'Asia/Kolkata', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit'
                                         })}
                                     </p>
                                 </div>

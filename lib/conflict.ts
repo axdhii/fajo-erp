@@ -103,11 +103,10 @@ export function calculateCheckOut(
     const istOffsetMs = 5.5 * 60 * 60 * 1000
     const pseudoIst = new Date(checkIn.getTime() + istOffsetMs)
 
-    const istHour = pseudoIst.getUTCHours()
     const checkoutPseudoIst = new Date(pseudoIst)
 
     if (unitType === 'ROOM') {
-        // Room: always checkout = checkIn + numberOfDays at 11:00 AM IST
+        // Room: checkout = checkIn + numberOfDays at 11:00 AM IST
         checkoutPseudoIst.setUTCDate(checkoutPseudoIst.getUTCDate() + numberOfDays)
         checkoutPseudoIst.setUTCHours(11, 0, 0, 0)
     } else {

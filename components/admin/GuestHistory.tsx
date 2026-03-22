@@ -439,7 +439,7 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
                 <div className="space-y-2">
                     {bookings.map((b) => {
                         const isExpanded = expandedId === b.id
-                        const payment = normalizePayments(b.payments)[0]
+                        const allPayments = normalizePayments(b.payments)
                         const paymentMethod = derivePaymentMethod(b)
                         const paymentStatus = derivePaymentStatus(b)
                         const nights = deriveNights(b)
@@ -698,19 +698,19 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
                                                     <div>
                                                         <span className="text-slate-400">Cash</span>
                                                         <p className="font-semibold text-slate-800">
-                                                            {'\u20B9'}{(payment?.amount_cash ?? 0).toLocaleString('en-IN')}
+                                                            {'\u20B9'}{allPayments.reduce((sum, p) => sum + Number(p.amount_cash || 0), 0).toLocaleString('en-IN')}
                                                         </p>
                                                     </div>
                                                     <div>
                                                         <span className="text-slate-400">Digital</span>
                                                         <p className="font-semibold text-slate-800">
-                                                            {'\u20B9'}{(payment?.amount_digital ?? 0).toLocaleString('en-IN')}
+                                                            {'\u20B9'}{allPayments.reduce((sum, p) => sum + Number(p.amount_digital || 0), 0).toLocaleString('en-IN')}
                                                         </p>
                                                     </div>
                                                     <div>
                                                         <span className="text-slate-400">Total Paid</span>
                                                         <p className="font-semibold text-emerald-700">
-                                                            {'\u20B9'}{(payment?.total_paid ?? 0).toLocaleString('en-IN')}
+                                                            {'\u20B9'}{allPayments.reduce((sum, p) => sum + Number(p.total_paid || 0), 0).toLocaleString('en-IN')}
                                                         </p>
                                                     </div>
                                                     <div>

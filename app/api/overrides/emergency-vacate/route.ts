@@ -46,22 +46,24 @@ export async function POST(request: NextRequest) {
         const now = getDevNow()
         const vacateReason = reason || 'Emergency vacate by CRE'
 
-        // Close all active bookings on this unit
+        // Close all active bookings on this unit (preserve existing notes)
         const { data: activeBookings } = await supabase
             .from('bookings')
-            .select('id')
+            .select('id, notes')
             .eq('unit_id', unitId)
             .eq('status', 'CHECKED_IN')
 
         if (activeBookings && activeBookings.length > 0) {
-            await supabase
-                .from('bookings')
-                .update({
-                    status: 'CHECKED_OUT',
-                    check_out: now.toISOString(),
-                    notes: `[EMERGENCY VACATE] ${vacateReason}`,
-                })
-                .in('id', activeBookings.map(b => b.id))
+            for (const b of activeBookings) {
+                await supabase
+                    .from('bookings')
+                    .update({
+                        status: 'CHECKED_OUT',
+                        check_out: now.toISOString(),
+                        notes: (b.notes ? b.notes + ' | ' : '') + `[EMERGENCY VACATE] ${vacateReason}`,
+                    })
+                    .eq('id', b.id)
+            }
         }
 
         // Set unit to MAINTENANCE

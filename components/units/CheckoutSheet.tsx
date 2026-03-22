@@ -69,15 +69,27 @@ export function CheckoutSheet({
                 } else {
                     setBooking(data as Booking)
 
-                    // Fetch payment
-                    const { data: paymentData } = await supabase
+                    // Fetch ALL payments (bookings can have multiple from extensions)
+                    const { data: paymentRows } = await supabase
                         .from('payments')
                         .select('*')
                         .eq('booking_id', data.id)
-                        .limit(1)
-                        .single()
 
-                    if (paymentData) setPayment(paymentData)
+                    // Merge all payment records into a single summary
+                    if (paymentRows && paymentRows.length > 0) {
+                        const merged = paymentRows.reduce(
+                            (acc, p) => ({
+                                id: p.id,
+                                booking_id: p.booking_id,
+                                amount_cash: acc.amount_cash + Number(p.amount_cash || 0),
+                                amount_digital: acc.amount_digital + Number(p.amount_digital || 0),
+                                total_paid: acc.total_paid + Number(p.total_paid || 0),
+                                created_at: p.created_at,
+                            }),
+                            { id: '', booking_id: '', amount_cash: 0, amount_digital: 0, total_paid: 0, created_at: '' }
+                        )
+                        setPayment(merged)
+                    }
                 }
                 setIsLoadingBooking(false)
             }
@@ -181,6 +193,7 @@ export function CheckoutSheet({
 
     const checkInTime = booking
         ? new Date(booking.check_in).toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata',
             day: 'numeric',
             month: 'short',
             hour: '2-digit',
@@ -190,6 +203,7 @@ export function CheckoutSheet({
 
     const expectedCheckout = booking?.check_out
         ? new Date(booking.check_out).toLocaleString('en-IN', {
+            timeZone: 'Asia/Kolkata',
             day: 'numeric',
             month: 'short',
             hour: '2-digit',
@@ -198,6 +212,7 @@ export function CheckoutSheet({
         : '—'
 
     const actualCheckoutTime = now.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
         day: 'numeric',
         month: 'short',
         hour: '2-digit',

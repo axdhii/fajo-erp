@@ -136,12 +136,12 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                 .select('amount_cash, amount_digital, total_paid, booking:bookings(unit_id, unit:units(hotel_id))')
                 .gte('created_at', monthStart + 'T00:00:00+05:30')
 
-            // Range revenue (user-selected dates)
+            // Range revenue (user-selected dates + times)
             const { data: rangePayments } = await supabase
                 .from('payments')
                 .select('amount_cash, amount_digital, total_paid, booking:bookings(unit_id, unit:units(hotel_id))')
-                .gte('created_at', dateFrom + 'T00:00:00+05:30')
-                .lte('created_at', dateTo + 'T23:59:59+05:30')
+                .gte('created_at', `${dateFrom}T${timeFrom}:00+05:30`)
+                .lte('created_at', `${dateTo}T${timeTo}:59+05:30`)
 
             // Filter by selected hotel if applicable
             type PaymentWithBooking = { amount_cash: number; amount_digital: number; total_paid: number; booking: { unit: { hotel_id: string } } }
@@ -190,14 +190,17 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
         } finally {
             setLoading(false)
         }
-    }, [hotelId, hotels, dateFrom, dateTo])
+    }, [hotelId, hotels, dateFrom, dateTo, timeFrom, timeTo])
 
     // ── Fetch outstanding balances ──
     const fetchOutstanding = useCallback(async () => {
+        // Only check recent bookings (last 90 days) to avoid unbounded query growth
+        const ninetyDaysAgo = new Date(Date.now() - 90 * 86400000).toISOString()
         const { data, error } = await supabase
             .from('bookings')
             .select('id, grand_total, advance_amount, check_in, status, guests(name), payments(total_paid), unit:units(unit_number, hotel_id)')
             .in('status', ['CHECKED_IN', 'CHECKED_OUT'])
+            .gte('check_in', ninetyDaysAgo)
 
         if (error) {
             console.error('Outstanding fetch error:', error)
