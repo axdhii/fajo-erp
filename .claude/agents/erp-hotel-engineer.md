@@ -46,6 +46,129 @@ Specific rules:
 
 **Why:** Every time code was written from scratch instead of copying a proven pattern, it introduced a bug (wrong bucket name, missing advance_amount, html2canvas positioning, payments array/object mismatch). The codebase has 50+ established patterns — use them.
 
+## Bug Prevention Checklist (23 Rules)
+
+### 1. Always include advance_amount in balance calculations
+- **Do:** `totalPaid = advance_amount + sum(all payment records)`. Check every place that computes balance or payment status.
+- **Never:** Calculate balance from payments alone — guests who paid advance on reservations get double-charged.
+- **Why:** Caused double-charging at checkout and false "outstanding balance" flags in financials (bugs #1, #6, #8).
+
+### 2. Normalize payments to array before processing
+- **Do:** `const pays = Array.isArray(p) ? p : p ? [p] : []` or use `normalizePayments()`.
+- **Never:** Assume `.payments` is always an array — Supabase returns an object for 1-to-1 FK joins.
+- **Why:** Guest history crash and financials miscalculation both traced to this (bugs #8, bbebb56).
+
+### 3. Sum ALL payment records, not just the first
+- **Do:** `.reduce((sum, p) => sum + (p.amount_paid || 0), 0)` across the full normalized array.
+- **Never:** Read only `payments[0].amount_paid` — guests can have multiple payment records (split payments, extensions).
+- **Why:** Outstanding balances showed for fully paid bookings; payment method display was wrong (bugs #8, #30 in audit).
+
+### 4. Use IST timezone explicitly in all date/time logic
+- **Do:** Append `+05:30` to date strings or use `{ timeZone: 'Asia/Kolkata' }` in formatters.
+- **Never:** Use `new Date()` or `setHours()` without timezone — Vercel runs in UTC, not IST.
+- **Why:** Invoice times showed UTC, reservation dates lagged, check-in dates drifted (bugs #28, 547193d, 7a9149e).
+
+### 5. Capture timestamps once when a form opens
+- **Do:** `const checkInTime = useRef(new Date())` on sheet open. Use that ref throughout.
+- **Never:** Call `new Date()` on every render or in an interval — the value shifts while the user fills the form.
+- **Why:** Check-in date shifted every 30 seconds while the form was open (bug #14).
+
+### 6. Process ALL siblings in group dorm operations
+- **Do:** Query all bookings with the same `group_id`, then update every one.
+- **Never:** Update only the primary booking — siblings stay OCCUPIED/stale.
+- **Check:** Checkout, aadhar upload, status updates, and notes must loop through all group members.
+- **Why:** Group checkout left beds OCCUPIED; aadhar update only hit the primary booking (bugs #5, #27).
+
+### 7. Roll back on partial failure — never leave half-saved state
+- **Do:** If payment insert fails after booking update, revert the booking. If group convert fails partway, roll back already-converted bookings.
+- **Never:** Let a secondary write fail silently while the primary write persists.
+- **Why:** Payment insert failure silently lost money; partial group converts left ghost check-ins (bugs #3, low-risk #4).
+
+### 8. Add DB constraints for invariants, not just app-level checks
+- **Do:** Use unique partial indexes (e.g., `bookings(unit_id) WHERE status='CHECKED_IN'`) for critical invariants.
+- **Never:** Rely solely on application code to prevent race conditions — two simultaneous requests bypass app guards.
+- **Why:** Two simultaneous check-ins to the same unit were possible before the DB index (bug #4).
+
+### 9. Guard state transitions — reject invalid status changes
+- **Do:** Validate current status before allowing transition (e.g., payroll: DRAFT->FINALIZED->PAID only).
+- **Never:** Accept a status update without checking the current state.
+- **Check:** Maintenance tickets, restock requests, attendance validation, payroll finalization.
+- **Why:** Re-resolution of tickets, re-completion of restocks, re-approval of attendance all occurred (bugs #18-22).
+
+### 10. Use the correct Supabase bucket name
+- **Do:** Always use `'aadhars'` for document uploads. Search existing code before using any bucket name.
+- **Never:** Guess bucket names like `'aadhar-photos'` — they silently fail on upload.
+- **Why:** Aadhar uploads broke because the wrong bucket name was used (025d7e2).
+
+### 11. Use getStaffFromHeaders() in server pages, requireAuth() in API routes
+- **Do:** Server pages read `x-staff-id`, `x-staff-hotel-id`, `x-staff-role` from middleware headers.
+- **Never:** Call `getUser()` in server pages (adds 300-600ms network call per page load).
+- **Why:** Duplicate auth calls caused 4-6s page loads; switching to header reads cut it to 1.5-2s (6b2e801).
+
+### 12. Handle the three loading states: loading, error, empty
+- **Do:** Render distinct UI for `isLoading`, `error`, and `data.length === 0`.
+- **Never:** Show only a spinner with no error/empty fallback — if the fetch fails, the spinner runs forever.
+- **Why:** Login page had infinite spinner when RLS blocked anonymous queries (92c999f).
+
+### 13. Check RLS policies for anonymous access on public pages
+- **Do:** Verify that tables queried on unauthenticated pages (login, public invoice) have `anon` SELECT policies.
+- **Never:** Assume authenticated-only RLS is fine — the login page runs as anonymous.
+- **Why:** Hotels and staff tables blocked anon users, breaking the login flow entirely (92c999f).
+
+### 14. Dynamic-import browser-only libraries in Next.js
+- **Do:** `const html2canvas = (await import('html2canvas')).default` inside the handler function.
+- **Never:** Top-level `import html2canvas from 'html2canvas'` — it crashes SSR because `window` doesn't exist.
+- **Check:** html2canvas, any canvas/DOM library, camera APIs.
+- **Why:** Financial report download failed on initial load due to SSR import (84dd5e6).
+
+### 15. Keep blob URLs alive until the user is done, revoke on cleanup
+- **Do:** Store blob URL in state, revoke in `useEffect` cleanup or on form reset.
+- **Never:** Revoke a blob URL immediately after creating it — the preview image breaks.
+- **Why:** Aadhar photo showed broken image after upload because the blob was revoked too early (bug #13).
+
+### 16. Mount camera/video elements before requesting the stream
+- **Do:** Render `<video>` in JSX unconditionally (hidden if needed), then assign `srcObject` after `getUserMedia()`.
+- **Never:** Conditionally render the video element based on step/state — it may not exist when the stream arrives.
+- **Why:** Clock-in camera showed black screen because the video element wasn't mounted during step 4 (596f051).
+
+### 17. Preserve original scheduled times during checkout and extensions
+- **Do:** Keep the original `check_out` time; log actual departure in `notes` or a separate field.
+- **Never:** Overwrite `check_out` with `NOW()` — it destroys the scheduled checkout for reporting.
+- **Check:** DAY extensions should add days without resetting the time component.
+- **Why:** Cron dorm-checkout overwrote scheduled times; day extensions reset checkout time (bugs #25, low-risk #2).
+
+### 18. Validate data before setting loading state
+- **Do:** Run input validation first, then `setIsSubmitting(true)`, then call the API.
+- **Never:** Set `isSubmitting(true)` before validation — if validation fails, the button stays disabled forever.
+- **Why:** Checkout button stuck disabled after invalid payment amount (bug #11).
+
+### 19. Guard destructive/dev routes in production
+- **Do:** Check `process.env.NODE_ENV !== 'production'` AND require Admin role for migration/cleanup endpoints.
+- **Never:** Leave dev routes unguarded — they are accessible via URL in production.
+- **Why:** Destructive migration routes (cleanup-hk, migrate-dorms) were accessible in prod (bug #17).
+
+### 20. Send numeric fields as numbers, not strings
+- **Do:** `base_salary: Number(value)` or `parseInt(value, 10)` before sending to API.
+- **Never:** Send form input values directly — they are strings and cause NaN or type mismatches.
+- **Check:** base_salary, amount_paid, number_of_guests, number_of_days.
+- **Why:** Staff edit saved NaN for base_salary; payment amounts miscompared as strings (e361303).
+
+### 21. Use next-day boundary for date range queries
+- **Do:** For "all records on date X", query `>= X` AND `< X+1 day` (exclusive upper bound).
+- **Never:** Use `<= X 23:59:59` — it misses the last second and has timezone edge cases.
+- **Why:** Attendance duplicate check missed records in the last second of the day (bug #24).
+
+### 22. Match date format to the DB column type
+- **Do:** Check if the column is DATE (`YYYY-MM-DD`), TIMESTAMPTZ, or TEXT before constructing queries.
+- **Never:** Query a DATE column with `YYYY-MM` — it will match zero rows.
+- **Check:** Payroll `month` column expects `YYYY-MM-01`; attendance uses TIMESTAMPTZ.
+- **Why:** Payroll page was blank because the query format didn't match the DB column (bug #10).
+
+### 23. Use conditional chaining for counts and badges
+- **Do:** `(count ?? 0) > 0` before rendering a badge or counter.
+- **Never:** Concatenate a number directly into a string without null-check — `"Attendance" + undefined` renders as `"Attendanceundefined"`.
+- **Why:** "Attendance0" rendered as literal text in the HR dashboard (bug #30).
+
 ## Debugging & Problem Resolution
 
 - Always reproduce or understand the issue before proposing a fix
