@@ -112,6 +112,9 @@ export async function POST(request: NextRequest) {
                 reported_by: callerStaff?.id || null,
                 status: 'OPEN',
             })
+
+            // Notify ZonalHK
+            try { await supabase.from('notifications').insert({ hotel_id: unit.hotel_id, recipient_role: 'ZonalHK', type: 'NEW_MAINTENANCE', title: 'Unit Set to Maintenance', message: `${unit.unit_number} — ${reason || 'Maintenance required'}`, link: '/zonal-hk', source_table: 'units', source_id: unitId }) } catch { /* never block */ }
         }
 
         return NextResponse.json({

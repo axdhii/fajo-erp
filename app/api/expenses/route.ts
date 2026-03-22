@@ -86,6 +86,9 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Failed to create expense request' }, { status: 500 })
         }
 
+        // Notify ZonalOps
+        try { await supabase.from('notifications').insert({ hotel_id: callerStaff.hotel_id, recipient_role: 'ZonalOps', type: 'NEW_EXPENSE', title: 'New Expense Request', message: `${description} — ₹${amount}`, link: '/zonal-ops', source_table: 'property_expenses', source_id: data.id }) } catch { /* never block */ }
+
         return NextResponse.json({ data })
     } catch (err) {
         console.error('Expenses POST error:', err)
@@ -160,6 +163,18 @@ export async function PATCH(request: NextRequest) {
             console.error('Expense review error:', error)
             return NextResponse.json({ error: 'Failed to review expense' }, { status: 500 })
         }
+
+        // Notify the CRE who submitted
+        try {
+            const isApproved = action === 'APPROVED'
+            await supabase.from('notifications').insert({
+                hotel_id: data.hotel_id, recipient_role: 'FrontDesk', recipient_staff_id: data.requested_by,
+                type: isApproved ? 'EXPENSE_APPROVED' : 'EXPENSE_REJECTED',
+                title: isApproved ? 'Expense Approved' : 'Expense Rejected',
+                message: `${data.description} — ₹${data.amount} ${isApproved ? 'approved' : 'rejected'}${!isApproved && rejection_reason ? ': ' + rejection_reason : ''}`,
+                link: '/front-desk', source_table: 'property_expenses', source_id: data.id,
+            })
+        } catch { /* never block */ }
 
         return NextResponse.json({ data })
     } catch (err) {

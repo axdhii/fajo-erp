@@ -84,6 +84,11 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Failed to create maintenance ticket' }, { status: 500 })
         }
 
+        // Notify ZonalHK
+        try { await supabase.from('notifications').insert({ hotel_id, recipient_role: 'ZonalHK', type: 'NEW_MAINTENANCE', title: 'New Maintenance Ticket', message: `${data.unit?.unit_number ? data.unit.unit_number + ' — ' : ''}${description}`, link: '/zonal-hk', source_table: 'maintenance_tickets', source_id: data.id }) } catch { /* never block */ }
+        // If URGENT, also notify ZonalManager
+        if (priority === 'URGENT') { try { await supabase.from('notifications').insert({ hotel_id, recipient_role: 'ZonalManager', type: 'URGENT_MAINTENANCE', title: 'URGENT Maintenance', message: `${data.unit?.unit_number ? data.unit.unit_number + ' — ' : ''}${description}`, link: '/zonal', source_table: 'maintenance_tickets', source_id: data.id }) } catch { /* never block */ } }
+
         return NextResponse.json({ data })
     } catch (err) {
         console.error('Maintenance POST error:', err)
@@ -177,6 +182,12 @@ export async function PATCH(request: NextRequest) {
                     .eq('id', data.unit_id)
                     .eq('status', 'MAINTENANCE')
             }
+        }
+
+        // Notify FrontDesk when resolved
+        if (status === 'RESOLVED') {
+            const unitNum = data.unit?.unit_number || 'Unit'
+            try { await supabase.from('notifications').insert({ hotel_id: data.hotel_id, recipient_role: 'FrontDesk', type: 'MAINTENANCE_RESOLVED', title: 'Maintenance Resolved', message: `${unitNum} — back to available`, link: '/front-desk', source_table: 'maintenance_tickets', source_id: data.id }) } catch { /* never block */ }
         }
 
         return NextResponse.json({ data })

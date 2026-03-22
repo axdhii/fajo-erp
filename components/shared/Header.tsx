@@ -4,6 +4,7 @@ import { BookOpen, Calendar, Clock, ClipboardList, Globe, LayoutDashboard, LogOu
 import Link from 'next/link'
 import { useAuthStore } from '@/lib/store/auth-store'
 import { usePathname } from 'next/navigation'
+import { NotificationBell } from './NotificationBell'
 
 export function Header() {
     const { profile, signOut } = useAuthStore()
@@ -103,6 +104,7 @@ export function Header() {
                     </div>
                     {/* Show role badge on mobile only */}
                     <span className="sm:hidden text-xs font-medium text-slate-500">{profile.role}</span>
+                    <NotificationBell hotelId={profile.hotel_id} role={profile.role} staffId={profile.id} />
                     <button onClick={signOut} title="Sign Out" className="flex items-center gap-2 rounded-full border border-slate-200 p-2.5 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
                         <LogOut className="h-5 w-5" />
                     </button>

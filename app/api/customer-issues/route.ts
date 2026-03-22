@@ -83,6 +83,9 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Failed to report customer issue' }, { status: 500 })
         }
 
+        // Notify ZonalOps
+        try { await supabase.from('notifications').insert({ hotel_id: callerStaff.hotel_id, recipient_role: 'ZonalOps', type: 'NEW_ISSUE', title: 'New Customer Issue', message: description, link: '/zonal-ops', source_table: 'customer_issues', source_id: data.id }) } catch { /* never block */ }
+
         return NextResponse.json({ data })
     } catch (err) {
         console.error('Customer issues POST error:', err)
@@ -151,6 +154,11 @@ export async function PATCH(request: NextRequest) {
         if (error) {
             console.error('Customer issue update error:', error)
             return NextResponse.json({ error: 'Failed to update customer issue' }, { status: 500 })
+        }
+
+        // Notify the CRE who reported (on resolve)
+        if (status === 'RESOLVED' && data.reported_by) {
+            try { await supabase.from('notifications').insert({ hotel_id: data.hotel_id, recipient_role: 'FrontDesk', recipient_staff_id: data.reported_by, type: 'ISSUE_RESOLVED', title: 'Customer Issue Resolved', message: `${data.description} — resolved`, link: '/front-desk', source_table: 'customer_issues', source_id: data.id }) } catch { /* never block */ }
         }
 
         return NextResponse.json({ data })

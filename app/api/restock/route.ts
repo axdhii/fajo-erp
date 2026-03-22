@@ -70,6 +70,9 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Failed to create restock request' }, { status: 500 })
         }
 
+        // Notify ZonalOps
+        try { await supabase.from('notifications').insert({ hotel_id, recipient_role: 'ZonalOps', type: 'NEW_RESTOCK', title: 'New Restock Request', message: items, link: '/zonal-ops', source_table: 'restock_requests', source_id: data.id }) } catch { /* never block */ }
+
         return NextResponse.json({ data })
     } catch (err) {
         console.error('Restock POST error:', err)
@@ -128,6 +131,11 @@ export async function PATCH(request: NextRequest) {
         if (error) {
             console.error('Restock update error:', error)
             return NextResponse.json({ error: 'Failed to update restock request' }, { status: 500 })
+        }
+
+        // Notify the CRE who requested
+        if (data.requested_by) {
+            try { await supabase.from('notifications').insert({ hotel_id: data.hotel_id, recipient_role: 'FrontDesk', recipient_staff_id: data.requested_by, type: 'RESTOCK_DONE', title: 'Restock Completed', message: `${data.items} — restocked`, link: '/front-desk', source_table: 'restock_requests', source_id: data.id }) } catch { /* never block */ }
         }
 
         return NextResponse.json({ data })
