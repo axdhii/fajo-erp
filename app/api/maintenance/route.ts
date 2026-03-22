@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { getDevNow } from '@/lib/dev-time'
 
 // GET /api/maintenance — list maintenance tickets
 export async function GET(request: NextRequest) {
@@ -106,7 +107,7 @@ export async function PATCH(request: NextRequest) {
 
         // Derive resolved_by from authenticated user's staff record
         const { data: callerStaff } = await supabase
-            .from('staff').select('id').eq('user_id', auth.userId).single()
+            .from('staff').select('id, name').eq('user_id', auth.userId).single()
         if (!callerStaff) {
             return NextResponse.json({ error: 'Staff record not found' }, { status: 403 })
         }
@@ -141,7 +142,7 @@ export async function PATCH(request: NextRequest) {
             }
             updates.status = status
             if (status === 'RESOLVED') {
-                updates.resolved_at = new Date().toISOString()
+                updates.resolved_at = getDevNow().toISOString()
                 updates.resolved_by = callerStaff.id
             }
         }
@@ -187,7 +188,7 @@ export async function PATCH(request: NextRequest) {
         // Notify FrontDesk when resolved
         if (status === 'RESOLVED') {
             const unitNum = data.unit?.unit_number || 'Unit'
-            try { await supabase.from('notifications').insert({ hotel_id: data.hotel_id, recipient_role: 'FrontDesk', type: 'MAINTENANCE_RESOLVED', title: 'Maintenance Resolved', message: `${unitNum} — back to available`, link: '/front-desk', source_table: 'maintenance_tickets', source_id: data.id }) } catch { /* never block */ }
+            try { await supabase.from('notifications').insert({ hotel_id: data.hotel_id, recipient_role: 'FrontDesk', type: 'MAINTENANCE_RESOLVED', title: 'Maintenance Resolved', message: `${unitNum} — back to available (resolved by ${callerStaff.name || 'staff'})`, link: '/front-desk', source_table: 'maintenance_tickets', source_id: data.id }) } catch { /* never block */ }
         }
 
         return NextResponse.json({ data })

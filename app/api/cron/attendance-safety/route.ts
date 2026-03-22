@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { getDevNow } from '@/lib/dev-time'
 
 // GET /api/cron/attendance-safety
 // Called by Vercel Cron at shift boundaries (7:15 AM and 7:15 PM IST).
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
         }
 
         const supabase = await createClient()
-        const now = new Date()
+        const now = getDevNow()
 
         // Determine which shift just ended based on IST hour
         const istHour = parseInt(

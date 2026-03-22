@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { generateShiftReport } from '@/lib/shift-report'
+import { getDevNow } from '@/lib/dev-time'
 
 // PATCH /api/attendance/clock-out — clock out
 export async function PATCH(request: NextRequest) {
@@ -43,7 +44,7 @@ export async function PATCH(request: NextRequest) {
         const { data, error } = await supabase
             .from('attendance')
             .update({
-                clock_out: new Date().toISOString(),
+                clock_out: getDevNow().toISOString(),
                 status: 'CLOCKED_OUT',
             })
             .eq('id', existing.id)
@@ -63,7 +64,7 @@ export async function PATCH(request: NextRequest) {
             try {
                 const { data: report } = await generateShiftReport(
                     supabase, existing.staff_id, existing.hotel_id,
-                    existing.clock_in, new Date().toISOString(), existing.id
+                    existing.clock_in, getDevNow().toISOString(), existing.id
                 )
                 return NextResponse.json({ data, shiftReport: report })
             } catch (err) {

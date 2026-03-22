@@ -1,9 +1,8 @@
 'use client'
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
-// html2canvas imported dynamically in handleDownloadReport
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
@@ -114,126 +113,232 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
     const [shiftReportToTime, setShiftReportToTime] = useState('23:59')
     const [expandedReport, setExpandedReport] = useState<string | null>(null)
     const [downloadingReport, setDownloadingReport] = useState<string | null>(null)
-    const reportRef = useRef<HTMLDivElement>(null)
 
     const selectedHotelName = hotels.find(h => h.id === selectedHotelId)?.name || 'Unknown'
 
-    // ============ DOWNLOAD SHIFT REPORT AS IMAGE ============
+    // ============ DOWNLOAD SHIFT REPORT AS IMAGE (native Canvas — no html2canvas) ============
     const handleDownloadReport = useCallback(async (report: ShiftReport) => {
-        if (!reportRef.current) return
         setDownloadingReport(report.id)
-        const html2canvas = (await import('html2canvas')).default
-        const el = reportRef.current
 
-        // Populate the hidden report div
         const shiftStart = new Date(report.shift_start).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })
         const shiftEnd = new Date(report.shift_end).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit' })
         const shiftDate = new Date(report.shift_start).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })
+        const fmt = (n: number) => formatCurrency(n)
 
-        el.innerHTML = `
-            <div style="width:420px;padding:32px;background:#fff;font-family:system-ui,-apple-system,sans-serif;color:#1e293b;">
-                <div style="text-align:center;margin-bottom:20px;">
-                    <div style="font-size:22px;font-weight:800;color:#1e293b;">${selectedHotelName}</div>
-                    <div style="font-size:13px;color:#94a3b8;margin-top:4px;">Shift Report</div>
-                </div>
-                <div style="border-top:2px solid #e2e8f0;padding-top:16px;margin-bottom:16px;">
-                    <div style="display:flex;justify-content:space-between;margin-bottom:8px;">
-                        <div>
-                            <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Staff</div>
-                            <div style="font-size:15px;font-weight:700;">${report.staff?.name || 'Unknown'}</div>
-                        </div>
-                        <div style="text-align:right;">
-                            <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Role</div>
-                            <div style="font-size:13px;font-weight:600;color:#64748b;">${report.staff?.role || ''}</div>
-                        </div>
-                    </div>
-                    <div style="display:flex;justify-content:space-between;">
-                        <div>
-                            <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Date</div>
-                            <div style="font-size:13px;font-weight:600;">${shiftDate}</div>
-                        </div>
-                        <div style="text-align:right;">
-                            <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;">Shift</div>
-                            <div style="font-size:13px;font-weight:600;">${shiftStart} - ${shiftEnd}</div>
-                        </div>
-                    </div>
-                </div>
-                <div style="display:flex;gap:8px;margin-bottom:16px;">
-                    <div style="flex:1;background:#f0fdf4;border:1px solid #bbf7d0;border-radius:12px;padding:12px;text-align:center;">
-                        <div style="font-size:11px;color:#16a34a;">Check-ins</div>
-                        <div style="font-size:22px;font-weight:800;color:#15803d;">${report.total_check_ins}</div>
-                    </div>
-                    <div style="flex:1;background:#eff6ff;border:1px solid #bfdbfe;border-radius:12px;padding:12px;text-align:center;">
-                        <div style="font-size:11px;color:#2563eb;">Check-outs</div>
-                        <div style="font-size:22px;font-weight:800;color:#1d4ed8;">${report.total_check_outs}</div>
-                    </div>
-                    <div style="flex:1;background:#f5f3ff;border:1px solid #ddd6fe;border-radius:12px;padding:12px;text-align:center;">
-                        <div style="font-size:11px;color:#7c3aed;">Reservations</div>
-                        <div style="font-size:22px;font-weight:800;color:#6d28d9;">${report.total_reservations_created}</div>
-                    </div>
-                </div>
-                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:16px;margin-bottom:16px;">
-                    <div style="font-size:11px;color:#94a3b8;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:12px;">Revenue</div>
-                    <div style="display:flex;gap:12px;margin-bottom:12px;">
-                        <div style="flex:1;background:#f0fdf4;border-radius:10px;padding:12px;">
-                            <div style="font-size:11px;color:#16a34a;">Cash</div>
-                            <div style="font-size:24px;font-weight:800;color:#15803d;">${formatCurrency(report.revenue_cash)}</div>
-                        </div>
-                        <div style="flex:1;background:#eff6ff;border-radius:10px;padding:12px;">
-                            <div style="font-size:11px;color:#2563eb;">Digital</div>
-                            <div style="font-size:24px;font-weight:800;color:#1d4ed8;">${formatCurrency(report.revenue_digital)}</div>
-                        </div>
-                    </div>
-                    <div style="text-align:center;background:#fff7ed;border-radius:10px;padding:12px;">
-                        <div style="font-size:11px;color:#ea580c;">Total Revenue</div>
-                        <div style="font-size:28px;font-weight:800;color:#c2410c;">${formatCurrency(report.revenue_total)}</div>
-                    </div>
-                </div>
-                ${(report.restock_requests_count > 0 || report.customer_issues_count > 0 || report.expense_requests_count > 0) ? `
-                <div style="display:flex;gap:8px;margin-bottom:16px;">
-                    ${report.restock_requests_count > 0 ? `<div style="background:#fff7ed;color:#ea580c;font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;">${report.restock_requests_count} restocks</div>` : ''}
-                    ${report.customer_issues_count > 0 ? `<div style="background:#fef2f2;color:#dc2626;font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;">${report.customer_issues_count} issues</div>` : ''}
-                    ${report.expense_requests_count > 0 ? `<div style="background:#eff6ff;color:#2563eb;font-size:12px;font-weight:600;padding:4px 10px;border-radius:20px;">${report.expense_requests_count} expenses</div>` : ''}
-                </div>` : ''}
-                ${(report.check_in_units as any[])?.length > 0 ? `
-                <div style="margin-bottom:12px;">
-                    <div style="font-size:11px;color:#64748b;font-weight:600;margin-bottom:6px;">Check-in Units</div>
-                    <div style="display:flex;flex-wrap:wrap;gap:4px;">
-                        ${(report.check_in_units as any[]).map((u: any) => `<span style="font-size:11px;background:#dcfce7;color:#15803d;padding:3px 8px;border-radius:8px;font-weight:500;">${u.unit_number}${u.guest_names ? ` - ${u.guest_names}` : ''}</span>`).join('')}
-                    </div>
-                </div>` : ''}
-                ${(report.check_out_units as any[])?.length > 0 ? `
-                <div style="margin-bottom:12px;">
-                    <div style="font-size:11px;color:#64748b;font-weight:600;margin-bottom:6px;">Check-out Units</div>
-                    <div style="display:flex;flex-wrap:wrap;gap:4px;">
-                        ${(report.check_out_units as any[]).map((u: any) => `<span style="font-size:11px;background:#dbeafe;color:#1d4ed8;padding:3px 8px;border-radius:8px;font-weight:500;">${u.unit_number}${u.guest_names ? ` - ${u.guest_names}` : ''}</span>`).join('')}
-                    </div>
-                </div>` : ''}
-                ${(report.reservations_list as any[])?.length > 0 ? `
-                <div style="margin-bottom:12px;">
-                    <div style="font-size:11px;color:#64748b;font-weight:600;margin-bottom:6px;">Reservations</div>
-                    <div style="display:flex;flex-wrap:wrap;gap:4px;">
-                        ${(report.reservations_list as any[]).map((u: any) => `<span style="font-size:11px;background:#ede9fe;color:#6d28d9;padding:3px 8px;border-radius:8px;font-weight:500;">${u.unit_number}${u.guest_names ? ` - ${u.guest_names}` : ''}</span>`).join('')}
-                    </div>
-                </div>` : ''}
-                <div style="text-align:center;font-size:10px;color:#cbd5e1;margin-top:16px;border-top:1px solid #e2e8f0;padding-top:12px;">
-                    Generated by Fajo ERP
-                </div>
-            </div>
-        `
+        const checkInUnits = (report.check_in_units as any[]) || []
+        const checkOutUnits = (report.check_out_units as any[]) || []
+        const reservationsList = (report.reservations_list as any[]) || []
+        const badges: string[] = []
+        if (report.restock_requests_count > 0) badges.push(`${report.restock_requests_count} restocks`)
+        if (report.customer_issues_count > 0) badges.push(`${report.customer_issues_count} issues`)
+        if (report.expense_requests_count > 0) badges.push(`${report.expense_requests_count} expenses`)
 
-        // Show the element temporarily for capture
-        el.style.position = 'fixed'
-        el.style.left = '-9999px'
-        el.style.top = '0'
-        el.style.display = 'block'
-        el.style.zIndex = '-1'
+        // Calculate dynamic height
+        let H = 520
+        if (badges.length > 0) H += 30
+        if (checkInUnits.length > 0) H += 20 + Math.ceil(checkInUnits.length / 3) * 22
+        if (checkOutUnits.length > 0) H += 20 + Math.ceil(checkOutUnits.length / 3) * 22
+        if (reservationsList.length > 0) H += 20 + Math.ceil(reservationsList.length / 3) * 22
+        H += 40 // footer
 
         try {
-            const canvas = await html2canvas(el, {
-                scale: 2, backgroundColor: '#ffffff', logging: false,
-                onclone: (doc: Document) => { doc.querySelectorAll('style, link[rel="stylesheet"]').forEach(s => s.remove()) },
-            })
+            const W = 480
+            const canvas = document.createElement('canvas')
+            canvas.width = W * 2
+            canvas.height = H * 2
+            const ctx = canvas.getContext('2d')!
+            ctx.scale(2, 2)
+
+            // Background
+            ctx.fillStyle = '#ffffff'
+            ctx.fillRect(0, 0, W, H)
+
+            let y = 30
+
+            // Header — hotel name + subtitle
+            ctx.textAlign = 'center'
+            ctx.fillStyle = '#1e293b'
+            ctx.font = 'bold 20px system-ui, sans-serif'
+            ctx.fillText(selectedHotelName, W / 2, y)
+            y += 18
+            ctx.fillStyle = '#94a3b8'
+            ctx.font = '12px system-ui, sans-serif'
+            ctx.fillText('Shift Report', W / 2, y)
+            y += 20
+
+            // Divider
+            ctx.fillStyle = '#e2e8f0'
+            ctx.fillRect(30, y, W - 60, 2)
+            y += 18
+
+            // Staff info row
+            ctx.textAlign = 'left'
+            ctx.fillStyle = '#94a3b8'
+            ctx.font = '600 9px system-ui, sans-serif'
+            ctx.fillText('STAFF', 30, y)
+            ctx.textAlign = 'right'
+            ctx.fillText('ROLE', W - 30, y)
+            y += 14
+            ctx.textAlign = 'left'
+            ctx.fillStyle = '#1e293b'
+            ctx.font = 'bold 14px system-ui, sans-serif'
+            ctx.fillText(report.staff?.name || 'Unknown', 30, y)
+            ctx.textAlign = 'right'
+            ctx.fillStyle = '#64748b'
+            ctx.font = '600 12px system-ui, sans-serif'
+            ctx.fillText(report.staff?.role || '', W - 30, y)
+            y += 16
+
+            // Date + shift row
+            ctx.textAlign = 'left'
+            ctx.fillStyle = '#94a3b8'
+            ctx.font = '600 9px system-ui, sans-serif'
+            ctx.fillText('DATE', 30, y)
+            ctx.textAlign = 'right'
+            ctx.fillText('SHIFT', W - 30, y)
+            y += 14
+            ctx.textAlign = 'left'
+            ctx.fillStyle = '#1e293b'
+            ctx.font = '600 12px system-ui, sans-serif'
+            ctx.fillText(shiftDate, 30, y)
+            ctx.textAlign = 'right'
+            ctx.fillText(`${shiftStart} - ${shiftEnd}`, W - 30, y)
+            y += 24
+
+            // Stats cards (Check-ins / Check-outs / Reservations)
+            const cardW = (W - 76) / 3
+            const drawStatCard = (x: number, label: string, value: number, bgColor: string, borderColor: string, labelColor: string, valueColor: string) => {
+                ctx.fillStyle = bgColor
+                ctx.beginPath()
+                ctx.roundRect(x, y, cardW, 55, 10)
+                ctx.fill()
+                ctx.strokeStyle = borderColor
+                ctx.lineWidth = 1
+                ctx.stroke()
+                ctx.textAlign = 'center'
+                ctx.fillStyle = labelColor
+                ctx.font = '600 9px system-ui, sans-serif'
+                ctx.fillText(label, x + cardW / 2, y + 18)
+                ctx.fillStyle = valueColor
+                ctx.font = 'bold 20px system-ui, sans-serif'
+                ctx.fillText(String(value), x + cardW / 2, y + 44)
+            }
+            drawStatCard(30, 'Check-ins', report.total_check_ins, '#f0fdf4', '#bbf7d0', '#16a34a', '#15803d')
+            drawStatCard(30 + cardW + 8, 'Check-outs', report.total_check_outs, '#eff6ff', '#bfdbfe', '#2563eb', '#1d4ed8')
+            drawStatCard(30 + (cardW + 8) * 2, 'Reservations', report.total_reservations_created, '#f5f3ff', '#ddd6fe', '#7c3aed', '#6d28d9')
+            y += 70
+
+            // Revenue section
+            ctx.fillStyle = '#f8fafc'
+            ctx.beginPath()
+            ctx.roundRect(30, y, W - 60, 140, 10)
+            ctx.fill()
+            ctx.strokeStyle = '#e2e8f0'
+            ctx.lineWidth = 1
+            ctx.stroke()
+
+            ctx.textAlign = 'left'
+            ctx.fillStyle = '#94a3b8'
+            ctx.font = '600 9px system-ui, sans-serif'
+            ctx.fillText('REVENUE', 46, y + 18)
+
+            // Cash box
+            const revBoxW = (W - 90) / 2
+            ctx.fillStyle = '#f0fdf4'
+            ctx.beginPath()
+            ctx.roundRect(42, y + 28, revBoxW, 45, 8)
+            ctx.fill()
+            ctx.textAlign = 'center'
+            ctx.fillStyle = '#16a34a'
+            ctx.font = '600 9px system-ui, sans-serif'
+            ctx.fillText('Cash', 42 + revBoxW / 2, y + 44)
+            ctx.fillStyle = '#15803d'
+            ctx.font = 'bold 18px system-ui, sans-serif'
+            ctx.fillText(fmt(report.revenue_cash), 42 + revBoxW / 2, y + 66)
+
+            // Digital box
+            ctx.fillStyle = '#eff6ff'
+            ctx.beginPath()
+            ctx.roundRect(42 + revBoxW + 8, y + 28, revBoxW, 45, 8)
+            ctx.fill()
+            ctx.textAlign = 'center'
+            ctx.fillStyle = '#2563eb'
+            ctx.font = '600 9px system-ui, sans-serif'
+            ctx.fillText('Digital', 42 + revBoxW + 8 + revBoxW / 2, y + 44)
+            ctx.fillStyle = '#1d4ed8'
+            ctx.font = 'bold 18px system-ui, sans-serif'
+            ctx.fillText(fmt(report.revenue_digital), 42 + revBoxW + 8 + revBoxW / 2, y + 66)
+
+            // Total revenue box
+            ctx.fillStyle = '#fff7ed'
+            ctx.beginPath()
+            ctx.roundRect(42, y + 82, W - 84, 48, 8)
+            ctx.fill()
+            ctx.textAlign = 'center'
+            ctx.fillStyle = '#ea580c'
+            ctx.font = '600 9px system-ui, sans-serif'
+            ctx.fillText('Total Revenue', W / 2, y + 98)
+            ctx.fillStyle = '#c2410c'
+            ctx.font = 'bold 22px system-ui, sans-serif'
+            ctx.fillText(fmt(report.revenue_total), W / 2, y + 122)
+            y += 150
+
+            // Badges
+            if (badges.length > 0) {
+                ctx.textAlign = 'left'
+                ctx.font = '600 10px system-ui, sans-serif'
+                let bx = 30
+                for (const badge of badges) {
+                    const tw = ctx.measureText(badge).width + 16
+                    ctx.fillStyle = badge.includes('restock') ? '#fff7ed' : badge.includes('issues') ? '#fef2f2' : '#eff6ff'
+                    ctx.beginPath()
+                    ctx.roundRect(bx, y, tw, 20, 10)
+                    ctx.fill()
+                    ctx.fillStyle = badge.includes('restock') ? '#ea580c' : badge.includes('issues') ? '#dc2626' : '#2563eb'
+                    ctx.fillText(badge, bx + 8, y + 14)
+                    bx += tw + 6
+                }
+                y += 30
+            }
+
+            // Unit lists helper
+            const drawUnitList = (title: string, units: any[], bgColor: string, textColor: string) => {
+                if (units.length === 0) return
+                ctx.textAlign = 'left'
+                ctx.fillStyle = '#64748b'
+                ctx.font = '600 9px system-ui, sans-serif'
+                ctx.fillText(title, 30, y + 10)
+                y += 18
+                let ux = 30
+                for (const u of units) {
+                    const label = `${u.unit_number}${u.guest_names ? ` - ${u.guest_names}` : ''}`
+                    const tw = ctx.measureText(label).width + 14
+                    if (ux + tw > W - 30) { ux = 30; y += 22 }
+                    ctx.fillStyle = bgColor
+                    ctx.beginPath()
+                    ctx.roundRect(ux, y - 4, tw, 18, 6)
+                    ctx.fill()
+                    ctx.fillStyle = textColor
+                    ctx.font = '500 9px system-ui, sans-serif'
+                    ctx.fillText(label, ux + 7, y + 8)
+                    ux += tw + 4
+                }
+                y += 22
+            }
+
+            drawUnitList('Check-in Units', checkInUnits, '#dcfce7', '#15803d')
+            drawUnitList('Check-out Units', checkOutUnits, '#dbeafe', '#1d4ed8')
+            drawUnitList('Reservations', reservationsList, '#ede9fe', '#6d28d9')
+
+            // Footer
+            ctx.fillStyle = '#e2e8f0'
+            ctx.fillRect(30, y + 5, W - 60, 1)
+            ctx.fillStyle = '#cbd5e1'
+            ctx.font = '9px system-ui, sans-serif'
+            ctx.textAlign = 'center'
+            ctx.fillText('Generated by Fajo ERP', W / 2, y + 22)
+
+            // Download
             const link = document.createElement('a')
             link.download = `shift-report-${report.staff?.name?.replace(/\s+/g, '-') || 'staff'}-${shiftDate}.png`
             link.href = canvas.toDataURL('image/png')
@@ -243,7 +348,6 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
             console.error('Download report error:', err)
             toast.error('Failed to download report')
         } finally {
-            el.style.display = 'none'
             setDownloadingReport(null)
         }
     }, [selectedHotelName])
@@ -1404,8 +1508,6 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
                 </div>
             )}
 
-            {/* Hidden div for report image generation */}
-            <div ref={reportRef} style={{ display: 'none' }} />
         </div>
     )
 }

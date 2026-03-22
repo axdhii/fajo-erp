@@ -249,8 +249,6 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
     const handleDownloadReport = async () => {
         setGeneratingReport(true)
         try {
-            const html2canvas = (await import('html2canvas')).default
-
             const fromIST = `${dateFrom || todayIST()}T${timeFrom}:00+05:30`
             const toIST = `${dateTo || todayIST()}T${timeTo}:59+05:30`
 

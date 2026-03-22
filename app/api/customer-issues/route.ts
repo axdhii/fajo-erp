@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { getDevNow } from '@/lib/dev-time'
 
 // GET /api/customer-issues — list customer issues for a hotel
 export async function GET(request: NextRequest) {
@@ -103,7 +104,7 @@ export async function PATCH(request: NextRequest) {
 
         // Derive resolved_by from authenticated user's staff record
         const { data: callerStaff } = await supabase
-            .from('staff').select('id, role').eq('user_id', auth.userId).single()
+            .from('staff').select('id, role, name').eq('user_id', auth.userId).single()
         if (!callerStaff) {
             return NextResponse.json({ error: 'Staff record not found' }, { status: 403 })
         }
@@ -138,7 +139,7 @@ export async function PATCH(request: NextRequest) {
 
         if (status === 'RESOLVED') {
             updatePayload.resolved_by = callerStaff.id
-            updatePayload.resolved_at = new Date().toISOString()
+            updatePayload.resolved_at = getDevNow().toISOString()
             if (resolution_notes) {
                 updatePayload.resolution_notes = resolution_notes
             }
@@ -158,7 +159,10 @@ export async function PATCH(request: NextRequest) {
 
         // Notify the CRE who reported (on resolve)
         if (status === 'RESOLVED' && data.reported_by) {
-            try { await supabase.from('notifications').insert({ hotel_id: data.hotel_id, recipient_role: 'FrontDesk', recipient_staff_id: data.reported_by, type: 'ISSUE_RESOLVED', title: 'Customer Issue Resolved', message: `${data.description} — resolved`, link: '/front-desk', source_table: 'customer_issues', source_id: data.id }) } catch { /* never block */ }
+            try {
+                const { data: reporter } = await supabase.from('staff').select('role').eq('id', data.reported_by).single()
+                await supabase.from('notifications').insert({ hotel_id: data.hotel_id, recipient_role: reporter?.role || 'FrontDesk', recipient_staff_id: data.reported_by, type: 'ISSUE_RESOLVED', title: 'Customer Issue Resolved', message: `${data.description} — resolved by ${callerStaff.name || 'staff'}`, link: '/front-desk', source_table: 'customer_issues', source_id: data.id })
+            } catch { /* never block */ }
         }
 
         return NextResponse.json({ data })

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { getDevNow } from '@/lib/dev-time'
 
 function determineShift(clockInDate: Date): 'DAY' | 'NIGHT' {
     // Convert to IST hours
@@ -65,7 +66,7 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Photo is required for clock-in' }, { status: 400 })
         }
 
-        const now = new Date()
+        const now = getDevNow()
         const shift = determineShift(now)
 
         // Check if staff already has an active (not clocked out) attendance record
@@ -155,7 +156,7 @@ export async function PATCH(request: NextRequest) {
             .update({
                 validation_status,
                 validated_by: validated_by || null,
-                validated_at: new Date().toISOString(),
+                validated_at: getDevNow().toISOString(),
             })
             .eq('id', attendance_id)
             .select('*, staff!attendance_staff_id_fkey(id, name, role, phone)')

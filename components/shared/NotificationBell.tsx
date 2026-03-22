@@ -5,34 +5,15 @@ import { Bell, CheckCheck, ExternalLink, Inbox } from 'lucide-react'
 import Link from 'next/link'
 import { useNotificationStore, type Notification } from '@/lib/store/notification-store'
 
-// ── Relative time helper ──────────────────────────────────────
-function timeAgo(dateStr: string): string {
-    const now = Date.now()
-    const then = new Date(dateStr).getTime()
-    const diffSec = Math.floor((now - then) / 1000)
-
-    if (diffSec < 60) return 'just now'
-    const diffMin = Math.floor(diffSec / 60)
-    if (diffMin < 60) return `${diffMin}m ago`
-    const diffHr = Math.floor(diffMin / 60)
-    if (diffHr < 24) return `${diffHr}h ago`
-    const diffDay = Math.floor(diffHr / 24)
-    if (diffDay < 7) return `${diffDay}d ago`
-    return new Date(dateStr).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
-}
+import { timeAgo } from '@/lib/utils/time'
 
 // ── Type-to-color mapping ─────────────────────────────────────
 function typeColor(type: string): string {
-    switch (type) {
-        case 'EXPENSE': return 'bg-amber-500'
-        case 'MAINTENANCE': return 'bg-red-500'
-        case 'ISSUE': return 'bg-orange-500'
-        case 'RESTOCK': return 'bg-blue-500'
-        case 'BOOKING': return 'bg-emerald-500'
-        case 'HR': return 'bg-violet-500'
-        case 'ATTENDANCE': return 'bg-indigo-500'
-        default: return 'bg-slate-500'
-    }
+    if (type.includes('EXPENSE')) return 'bg-amber-500'
+    if (type.includes('MAINTENANCE')) return 'bg-red-500'
+    if (type.includes('ISSUE')) return 'bg-orange-500'
+    if (type.includes('RESTOCK')) return 'bg-blue-500'
+    return 'bg-slate-500'
 }
 
 // ── Main component ────────────────────────────────────────────
@@ -92,7 +73,7 @@ export function NotificationBell({ hotelId, role, staffId }: NotificationBellPro
                 ref={buttonRef}
                 onClick={() => setOpen(prev => !prev)}
                 title="Notifications"
-                className="relative flex items-center justify-center rounded-full border border-slate-200 p-2.5 hover:bg-slate-100 transition-colors"
+                className="relative flex items-center justify-center rounded-full border border-slate-200 p-3 hover:bg-slate-100 transition-colors"
             >
                 <Bell className="h-5 w-5 text-slate-600" />
                 {unreadCount > 0 && (

@@ -28,13 +28,8 @@ FAJO ERP is a Next.js hotel management system deployed on Vercel with Supabase b
 
 **API Routes:** /api/bookings (check-in), /api/bookings/checkout, /api/bookings/extend, /api/reservations (CRUD), /api/reservations/cancel, /api/reservations/convert, /api/housekeeping, /api/staff, /api/attendance, /api/attendance/clock-out, /api/staff-incidents, /api/payroll, /api/maintenance, /api/restock, /api/laundry, /api/expenses, /api/customer-issues, /api/zonal/overview, /api/admin/staff, /api/admin/aadhar-archive, /api/overrides/force-status, /api/overrides/emergency-vacate, /api/dev/*.
 
-**Known issues from 2026-03-22 full audit (6 bugs):**
-1. shift-report.ts revenue ignores advance_amount (MEDIUM)
-2. Financials.tsx downloadable report calcRev ignores advance_amount (HIGH)
-3. ZonalOps payments tab has N+1 query — 2 extra DB calls per payment row in for-loop (HIGH)
-4. html2canvas statically imported in zonal-ops and hr client pages instead of dynamic import (MEDIUM)
-5. CheckInSheet checkout preview uses browser local setHours, not IST (MEDIUM)
-6. clock-out route uses new Date() instead of getDevNow() (LOW, dev-only)
+**Known issues from 2026-03-22 full audit: ALL FIXED (2026-03-23)**
+All 6 audit bugs resolved: shift-report advance_amount, Financials calcRev, ZonalOps N+1 query, html2canvas replaced with native Canvas in zonal-ops+hr+financials, CheckInSheet IST checkout preview, and all API routes now use getDevNow() instead of new Date().
 
 **Why:** Understanding this architecture is essential for designing cross-module features and debugging data flow between dashboards.
 

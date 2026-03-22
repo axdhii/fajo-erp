@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { getDevNow } from '@/lib/dev-time'
 
 // GET /api/expenses — list property expenses for a hotel
 export async function GET(request: NextRequest) {
@@ -106,7 +107,7 @@ export async function PATCH(request: NextRequest) {
 
         // Derive reviewed_by from authenticated user's staff record
         const { data: callerStaff } = await supabase
-            .from('staff').select('id, role').eq('user_id', auth.userId).single()
+            .from('staff').select('id, role, name').eq('user_id', auth.userId).single()
         if (!callerStaff) {
             return NextResponse.json({ error: 'Staff record not found' }, { status: 403 })
         }
@@ -145,7 +146,7 @@ export async function PATCH(request: NextRequest) {
         const updatePayload: Record<string, unknown> = {
             status: action,
             reviewed_by: callerStaff.id,
-            reviewed_at: new Date().toISOString(),
+            reviewed_at: getDevNow().toISOString(),
         }
 
         if (action === 'REJECTED' && rejection_reason) {
@@ -164,14 +165,16 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'Failed to review expense' }, { status: 500 })
         }
 
-        // Notify the CRE who submitted
+        // Notify the submitter (use their actual role, not hardcoded FrontDesk)
         try {
+            const { data: submitter } = await supabase.from('staff').select('role').eq('id', data.requested_by).single()
             const isApproved = action === 'APPROVED'
+            const actorName = callerStaff.name || 'staff'
             await supabase.from('notifications').insert({
-                hotel_id: data.hotel_id, recipient_role: 'FrontDesk', recipient_staff_id: data.requested_by,
+                hotel_id: data.hotel_id, recipient_role: submitter?.role || 'FrontDesk', recipient_staff_id: data.requested_by,
                 type: isApproved ? 'EXPENSE_APPROVED' : 'EXPENSE_REJECTED',
                 title: isApproved ? 'Expense Approved' : 'Expense Rejected',
-                message: `${data.description} — ₹${data.amount} ${isApproved ? 'approved' : 'rejected'}${!isApproved && rejection_reason ? ': ' + rejection_reason : ''}`,
+                message: `${data.description} — ₹${data.amount} ${isApproved ? 'approved' : 'rejected'} by ${actorName}${!isApproved && rejection_reason ? ': ' + rejection_reason : ''}`,
                 link: '/front-desk', source_table: 'property_expenses', source_id: data.id,
             })
         } catch { /* never block */ }

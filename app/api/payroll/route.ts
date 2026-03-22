@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { getDevNow } from '@/lib/dev-time'
 
 // GET /api/payroll
 export async function GET(request: NextRequest) {
@@ -235,7 +236,7 @@ export async function PATCH(request: NextRequest) {
                 )
             }
             updates.status = 'PAID'
-            updates.paid_at = new Date().toISOString()
+            updates.paid_at = getDevNow().toISOString()
         } else {
             return NextResponse.json({ error: 'Invalid action. Use "finalize", "pay", or "edit"' }, { status: 400 })
         }

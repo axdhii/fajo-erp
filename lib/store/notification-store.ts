@@ -20,6 +20,8 @@ interface NotificationState {
     notifications: Notification[]
     unreadCount: number
     isLoading: boolean
+    error: string | null
+    initialized: boolean
     fetchNotifications: (hotelId: string, role: string, staffId: string) => Promise<void>
     markAsRead: (id: string) => Promise<void>
     markAllAsRead: (hotelId: string, role: string, staffId: string) => Promise<void>
@@ -30,12 +32,15 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     notifications: [],
     unreadCount: 0,
     isLoading: false,
+    error: null,
+    initialized: false,
 
     fetchNotifications: async (hotelId, role, staffId) => {
-        set({ isLoading: true })
+        set({ isLoading: true, error: null })
 
-        // Fetch notifications targeted to this user's role OR directly to them
-        // Admin sees all notifications for their hotel
+        // Auto-cleanup old notifications (fire-and-forget, 30 days)
+        supabase.from('notifications').delete().lt('created_at', new Date(Date.now() - 30 * 86400000).toISOString()).then()
+
         let query = supabase
             .from('notifications')
             .select('*')
@@ -43,10 +48,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
             .order('created_at', { ascending: false })
             .limit(50)
 
-        if (role === 'Admin') {
-            // Admin sees everything for their hotel — no extra filter
-        } else {
-            // Non-admin: see notifications for their role OR addressed to them personally
+        if (role !== 'Admin') {
             query = query.or(`recipient_role.eq.${role},recipient_staff_id.eq.${staffId}`)
         }
 
@@ -54,7 +56,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
 
         if (error) {
             console.error('Failed to fetch notifications:', error)
-            set({ isLoading: false })
+            set({ isLoading: false, error: error.message })
             return
         }
 
@@ -63,106 +65,83 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
             notifications,
             unreadCount: notifications.filter(n => !n.read).length,
             isLoading: false,
+            error: null,
         })
     },
 
     markAsRead: async (id) => {
+        const prev = { notifications: get().notifications, unreadCount: get().unreadCount }
         // Optimistic update
         set(state => ({
-            notifications: state.notifications.map(n =>
-                n.id === id ? { ...n, read: true } : n
-            ),
+            notifications: state.notifications.map(n => n.id === id ? { ...n, read: true } : n),
             unreadCount: Math.max(0, state.unreadCount - (state.notifications.find(n => n.id === id && !n.read) ? 1 : 0)),
         }))
 
-        const { error } = await supabase
-            .from('notifications')
-            .update({ read: true })
-            .eq('id', id)
-
+        const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id)
         if (error) {
             console.error('Failed to mark notification as read:', error)
+            set(prev) // rollback
         }
     },
 
     markAllAsRead: async (hotelId, role, staffId) => {
+        const prev = { notifications: get().notifications, unreadCount: get().unreadCount }
         // Optimistic update
         set(state => ({
             notifications: state.notifications.map(n => ({ ...n, read: true })),
             unreadCount: 0,
         }))
 
-        let query = supabase
-            .from('notifications')
-            .update({ read: true })
-            .eq('hotel_id', hotelId)
-            .eq('read', false)
-
+        let query = supabase.from('notifications').update({ read: true }).eq('hotel_id', hotelId).eq('read', false)
         if (role !== 'Admin') {
             query = query.or(`recipient_role.eq.${role},recipient_staff_id.eq.${staffId}`)
         }
 
         const { error } = await query
-
         if (error) {
             console.error('Failed to mark all as read:', error)
+            set(prev) // rollback
         }
     },
 
     subscribe: (hotelId, role, staffId) => {
-        const channelName = `notif_${staffId.slice(0, 8)}`
-        const subscription = supabase
-            .channel(channelName)
-            .on(
-                'postgres_changes',
-                {
-                    event: 'INSERT',
-                    schema: 'public',
-                    table: 'notifications',
-                    filter: `hotel_id=eq.${hotelId}`,
-                },
-                (payload) => {
-                    const newNotif = payload.new as Notification
+        if (get().initialized) return () => {} // already subscribed
+        set({ initialized: true })
 
-                    // Only add if it targets this user
-                    const isForMe =
-                        role === 'Admin' ||
-                        newNotif.recipient_role === role ||
-                        newNotif.recipient_staff_id === staffId
-
-                    if (isForMe) {
-                        set(state => ({
-                            notifications: [newNotif, ...state.notifications].slice(0, 50),
-                            unreadCount: state.unreadCount + 1,
-                        }))
-                    }
+        const channel = supabase
+            .channel(`notif_${staffId.slice(0, 8)}`)
+            .on('postgres_changes', {
+                event: 'INSERT',
+                schema: 'public',
+                table: 'notifications',
+                filter: `hotel_id=eq.${hotelId}`,
+            }, (payload) => {
+                const n = payload.new as Notification
+                const isForMe = role === 'Admin' || n.recipient_role === role || n.recipient_staff_id === staffId
+                if (isForMe) {
+                    set(state => ({
+                        notifications: [n, ...state.notifications].slice(0, 50),
+                        unreadCount: state.unreadCount + 1,
+                    }))
                 }
-            )
-            .on(
-                'postgres_changes',
-                {
-                    event: 'UPDATE',
-                    schema: 'public',
-                    table: 'notifications',
-                    filter: `hotel_id=eq.${hotelId}`,
-                },
-                (payload) => {
-                    const updated = payload.new as Notification
-                    set(state => {
-                        const notifications = state.notifications.map(n =>
-                            n.id === updated.id ? updated : n
-                        )
-                        return {
-                            notifications,
-                            unreadCount: notifications.filter(n => !n.read).length,
-                        }
-                    })
-                }
-            )
+            })
+            .on('postgres_changes', {
+                event: 'UPDATE',
+                schema: 'public',
+                table: 'notifications',
+                filter: `hotel_id=eq.${hotelId}`,
+            }, (payload) => {
+                const updated = payload.new as Notification
+                set(state => {
+                    const notifications = state.notifications.map(n => n.id === updated.id ? updated : n)
+                    return { notifications, unreadCount: notifications.filter(n => !n.read).length }
+                })
+            })
             .subscribe()
 
         return () => {
-            supabase.removeChannel(subscription)
+            supabase.removeChannel(channel)
+            set({ initialized: false })
         }
     },
 }))

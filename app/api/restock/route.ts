@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { getDevNow } from '@/lib/dev-time'
 
 // GET /api/restock — list restock requests
 export async function GET(request: NextRequest) {
@@ -90,7 +91,7 @@ export async function PATCH(request: NextRequest) {
 
         // Derive completed_by from authenticated user's staff record
         const { data: callerStaff } = await supabase
-            .from('staff').select('id').eq('user_id', auth.userId).single()
+            .from('staff').select('id, name').eq('user_id', auth.userId).single()
         if (!callerStaff) {
             return NextResponse.json({ error: 'Staff record not found' }, { status: 403 })
         }
@@ -121,7 +122,7 @@ export async function PATCH(request: NextRequest) {
             .from('restock_requests')
             .update({
                 status: 'DONE',
-                completed_at: new Date().toISOString(),
+                completed_at: getDevNow().toISOString(),
                 completed_by: callerStaff.id,
             })
             .eq('id', request_id)
@@ -135,7 +136,7 @@ export async function PATCH(request: NextRequest) {
 
         // Notify the CRE who requested
         if (data.requested_by) {
-            try { await supabase.from('notifications').insert({ hotel_id: data.hotel_id, recipient_role: 'FrontDesk', recipient_staff_id: data.requested_by, type: 'RESTOCK_DONE', title: 'Restock Completed', message: `${data.items} — restocked`, link: '/front-desk', source_table: 'restock_requests', source_id: data.id }) } catch { /* never block */ }
+            try { await supabase.from('notifications').insert({ hotel_id: data.hotel_id, recipient_role: 'FrontDesk', recipient_staff_id: data.requested_by, type: 'RESTOCK_DONE', title: 'Restock Completed', message: `${data.items} — restocked by ${callerStaff.name || 'staff'}`, link: '/front-desk', source_table: 'restock_requests', source_id: data.id }) } catch { /* never block */ }
         }
 
         return NextResponse.json({ data })

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { getDevNow } from '@/lib/dev-time'
 
 // GET /api/staff-incidents
 export async function GET(request: NextRequest) {
@@ -64,7 +65,7 @@ export async function POST(request: NextRequest) {
                 category,
                 description: description || null,
                 penalty_amount: Math.max(0, Number(penalty_amount) || 0),
-                incident_date: incident_date || new Date().toISOString().split('T')[0],
+                incident_date: incident_date || getDevNow().toISOString().split('T')[0],
                 recorded_by: recorded_by || null,
             })
             .select('*, staff:staff_id(id, name, role)')

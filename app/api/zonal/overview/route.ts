@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { getDevNow } from '@/lib/dev-time'
 
 // GET /api/zonal/overview — consolidated multi-hotel overview for Zonal Manager
 export async function GET() {
@@ -18,7 +19,7 @@ export async function GET() {
         }
 
         // IST date calculations
-        const now = new Date()
+        const now = getDevNow()
         const todayIST = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
         const todayMidnightIST = `${todayIST}T00:00:00+05:30`
         const sevenDaysAgoDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)

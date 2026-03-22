@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { getDevNow } from '@/lib/dev-time'
 
 // GET /api/laundry — list laundry orders
 export async function GET(request: NextRequest) {
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
                 item_count: item_count || null,
                 notes: notes || null,
                 status: 'OUT',
-                sent_at: new Date().toISOString(),
+                sent_at: getDevNow().toISOString(),
                 created_by: callerStaff.id,
             })
             .select('*, staff:created_by(name)')
@@ -139,7 +140,7 @@ export async function PATCH(request: NextRequest) {
                     return NextResponse.json({ error: 'Order is already paid — cannot revert to returned' }, { status: 409 })
                 }
                 updates.status = 'RETURNED'
-                updates.returned_at = new Date().toISOString()
+                updates.returned_at = getDevNow().toISOString()
             }
 
             // Guard: can't mark PAID if not RETURNED
