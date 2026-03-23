@@ -99,8 +99,19 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
     const [timeFrom, setTimeFrom] = useState('00:00')
     const [timeTo, setTimeTo] = useState('23:59')
 
-    // Report download
+    // Report download + preview modal
     const [generatingReport, setGeneratingReport] = useState(false)
+    const [reportModalOpen, setReportModalOpen] = useState(false)
+    const [rptRoomsSold, setRptRoomsSold] = useState(0)
+    const [rptRoomsCash, setRptRoomsCash] = useState(0)
+    const [rptRoomsDigital, setRptRoomsDigital] = useState(0)
+    const [rptDormsSold, setRptDormsSold] = useState(0)
+    const [rptDormsCash, setRptDormsCash] = useState(0)
+    const [rptDormsDigital, setRptDormsDigital] = useState(0)
+    const [rptNotes, setRptNotes] = useState('')
+    const [rptHotelName, setRptHotelName] = useState('')
+    const [rptFromDisplay, setRptFromDisplay] = useState('')
+    const [rptToDisplay, setRptToDisplay] = useState('')
 
     // Revenue data
     const [todayRevenue, setTodayRevenue] = useState({ cash: 0, digital: 0, total: 0 })
@@ -248,8 +259,8 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
         setHasMore(hotelId ? rows.length > 0 && (data || []).length === PAGE_SIZE : (data || []).length === PAGE_SIZE)
     }, [hotelId, dateFrom, dateTo, page])
 
-    // ── Download Financial Report as PNG ──
-    const handleDownloadReport = async () => {
+    // ── Step 1: Generate Report (query data, open preview modal) ──
+    const handleGenerateReport = async () => {
         setGeneratingReport(true)
         try {
             const fromIST = `${dateFrom || todayIST()}T${timeFrom}:00+05:30`
@@ -276,17 +287,12 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                 let cash = 0, digital = 0
                 for (const b of list) {
                     const bk = b as Record<string, unknown>
-                    // Include advance_amount
                     const advance = Number(bk.advance_amount || 0)
                     if (advance > 0) {
                         const advType = String(bk.advance_type || '').toUpperCase()
-                        if (advType === 'DIGITAL' || advType === 'UPI' || advType === 'GPAY') {
-                            digital += advance
-                        } else {
-                            cash += advance
-                        }
+                        if (advType === 'DIGITAL' || advType === 'UPI' || advType === 'GPAY') digital += advance
+                        else cash += advance
                     }
-                    // Include payments
                     const raw = bk.payments
                     const payments = Array.isArray(raw) ? raw : raw ? [raw] : []
                     for (const p of payments) {
@@ -300,121 +306,22 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
 
             const roomRev = calcRev(rooms)
             const dormRev = calcRev(dorms)
-            const grandCash = roomRev.cash + dormRev.cash
-            const grandDigital = roomRev.digital + dormRev.digital
-            const grandTotal = grandCash + grandDigital
-            const hotelName = hotelId ? hotels.find(h => h.id === hotelId)?.name || 'Hotel' : 'ALL PROPERTIES'
-            const fmt = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
-            const fromDisplay = new Date(fromIST).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
-            const toDisplay = new Date(toIST).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
-            const genAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
+            const hn = hotelId ? hotels.find(h => h.id === hotelId)?.name || 'Hotel' : 'ALL PROPERTIES'
+            const fd = new Date(fromIST).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
+            const td = new Date(toIST).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
 
-            // Draw report directly on canvas (no html2canvas — avoids Tailwind v4 CSS issues)
-            const canvas = document.createElement('canvas')
-            const W = 800, H = 600
-            canvas.width = W * 2
-            canvas.height = H * 2
-            const ctx = canvas.getContext('2d')!
-            ctx.scale(2, 2)
-
-            // Background
-            ctx.fillStyle = '#ffffff'
-            ctx.fillRect(0, 0, W, H)
-
-            // Header
-            ctx.textAlign = 'center'
-            ctx.fillStyle = '#0f172a'
-            ctx.font = 'bold 22px system-ui, sans-serif'
-            ctx.fillText(hotelName.toUpperCase(), W / 2, 45)
-            ctx.fillStyle = '#475569'
-            ctx.font = '600 16px system-ui, sans-serif'
-            ctx.fillText('FINANCIAL REPORT', W / 2, 70)
-            ctx.fillStyle = '#64748b'
-            ctx.font = '13px system-ui, sans-serif'
-            ctx.fillText(`Period: ${fromDisplay}`, W / 2, 100)
-            ctx.fillText(`to ${toDisplay}`, W / 2, 118)
-
-            // Rooms card
-            const drawCard = (x: number, y: number, w: number, h: number, title: string, count: number, unit: string, cash: number, digital: number, borderColor: string, bgColor: string, titleColor: string) => {
-                ctx.fillStyle = bgColor
-                ctx.beginPath()
-                ctx.roundRect(x, y, w, h, 12)
-                ctx.fill()
-                ctx.strokeStyle = borderColor
-                ctx.lineWidth = 2
-                ctx.stroke()
-
-                ctx.textAlign = 'center'
-                ctx.fillStyle = titleColor
-                ctx.font = 'bold 11px system-ui, sans-serif'
-                ctx.fillText(title.toUpperCase(), x + w / 2, y + 25)
-                ctx.fillStyle = '#0f172a'
-                ctx.font = 'bold 32px system-ui, sans-serif'
-                ctx.fillText(String(count), x + w / 2, y + 62)
-                ctx.fillStyle = '#6b7280'
-                ctx.font = '11px system-ui, sans-serif'
-                ctx.fillText(unit, x + w / 2, y + 80)
-
-                ctx.font = 'bold 9px system-ui, sans-serif'
-                ctx.fillStyle = '#16a34a'
-                ctx.fillText('CASH', x + w / 4, y + 105)
-                ctx.fillStyle = '#2563eb'
-                ctx.fillText('DIGITAL', x + (w * 3) / 4, y + 105)
-
-                ctx.font = 'bold 14px system-ui, sans-serif'
-                ctx.fillStyle = '#15803d'
-                ctx.fillText(fmt(cash), x + w / 4, y + 122)
-                ctx.fillStyle = '#1d4ed8'
-                ctx.fillText(fmt(digital), x + (w * 3) / 4, y + 122)
-            }
-
-            drawCard(40, 145, 350, 140, 'Rooms', rooms.length, 'units sold', roomRev.cash, roomRev.digital, '#d1fae5', '#f0fdf4', '#059669')
-            drawCard(410, 145, 350, 140, 'Dorms', dorms.length, 'beds sold', dormRev.cash, dormRev.digital, '#dbeafe', '#eff6ff', '#2563eb')
-
-            // Grand Total card
-            ctx.fillStyle = '#f5f3ff'
-            ctx.beginPath()
-            ctx.roundRect(40, 310, 720, 150, 12)
-            ctx.fill()
-            ctx.strokeStyle = '#c4b5fd'
-            ctx.lineWidth = 3
-            ctx.stroke()
-
-            ctx.textAlign = 'center'
-            ctx.fillStyle = '#7c3aed'
-            ctx.font = 'bold 11px system-ui, sans-serif'
-            ctx.fillText('GRAND TOTAL', W / 2, 335)
-            ctx.fillStyle = '#5b21b6'
-            ctx.font = 'bold 38px system-ui, sans-serif'
-            ctx.fillText(fmt(grandTotal), W / 2, 380)
-
-            ctx.font = 'bold 10px system-ui, sans-serif'
-            ctx.fillStyle = '#16a34a'
-            ctx.fillText('TOTAL CASH', W / 2 - 120, 410)
-            ctx.fillStyle = '#2563eb'
-            ctx.fillText('TOTAL DIGITAL', W / 2 + 120, 410)
-
-            ctx.font = 'bold 18px system-ui, sans-serif'
-            ctx.fillStyle = '#15803d'
-            ctx.fillText(fmt(grandCash), W / 2 - 120, 435)
-            ctx.fillStyle = '#1d4ed8'
-            ctx.fillText(fmt(grandDigital), W / 2 + 120, 435)
-
-            // Footer
-            ctx.fillStyle = '#e2e8f0'
-            ctx.fillRect(40, 490, 720, 1)
-            ctx.fillStyle = '#94a3b8'
-            ctx.font = '11px system-ui, sans-serif'
-            ctx.textAlign = 'center'
-            ctx.fillText(`Generated: ${genAt} | FAJO ERP`, W / 2, 520)
-
-            // Download
-            const url = canvas.toDataURL('image/png')
-            const link = document.createElement('a')
-            link.download = `Financial-Report_${hotelName.replace(/\s+/g, '-')}_${dateFrom}_to_${dateTo}.png`
-            link.href = url
-            link.click()
-            toast.success('Financial report downloaded')
+            // Seed modal state
+            setRptRoomsSold(rooms.length)
+            setRptRoomsCash(roomRev.cash)
+            setRptRoomsDigital(roomRev.digital)
+            setRptDormsSold(dorms.length)
+            setRptDormsCash(dormRev.cash)
+            setRptDormsDigital(dormRev.digital)
+            setRptHotelName(hn)
+            setRptFromDisplay(fd)
+            setRptToDisplay(td)
+            setRptNotes('')
+            setReportModalOpen(true)
         } catch (err) {
             console.error('Report error:', err)
             toast.error(err instanceof Error ? `Report failed: ${err.message}` : 'Failed to generate report')
@@ -422,6 +329,92 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             setGeneratingReport(false)
         }
     }
+
+    // ── Step 2: Download from modal (EXACT same canvas layout, reads from rpt* state) ──
+    const handleDownloadFromModal = () => {
+        const fmt = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
+        const genAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
+        const grandCash = rptRoomsCash + rptDormsCash
+        const grandDigital = rptRoomsDigital + rptDormsDigital
+        const grandTotal = grandCash + grandDigital
+        const notesHeight = rptNotes ? 40 : 0
+
+        const canvas = document.createElement('canvas')
+        const W = 800, H = 600 + notesHeight
+        canvas.width = W * 2
+        canvas.height = H * 2
+        const ctx = canvas.getContext('2d')!
+        ctx.scale(2, 2)
+
+        ctx.fillStyle = '#ffffff'
+        ctx.fillRect(0, 0, W, H)
+
+        ctx.textAlign = 'center'
+        ctx.fillStyle = '#0f172a'
+        ctx.font = 'bold 22px system-ui, sans-serif'
+        ctx.fillText(rptHotelName.toUpperCase(), W / 2, 45)
+        ctx.fillStyle = '#475569'
+        ctx.font = '600 16px system-ui, sans-serif'
+        ctx.fillText('FINANCIAL REPORT', W / 2, 70)
+        ctx.fillStyle = '#64748b'
+        ctx.font = '13px system-ui, sans-serif'
+        ctx.fillText(`Period: ${rptFromDisplay}`, W / 2, 100)
+        ctx.fillText(`to ${rptToDisplay}`, W / 2, 118)
+
+        const drawCard = (x: number, y: number, w: number, h: number, title: string, count: number, unit: string, cash: number, digital: number, borderColor: string, bgColor: string, titleColor: string) => {
+            ctx.fillStyle = bgColor; ctx.beginPath(); ctx.roundRect(x, y, w, h, 12); ctx.fill()
+            ctx.strokeStyle = borderColor; ctx.lineWidth = 2; ctx.stroke()
+            ctx.textAlign = 'center'; ctx.fillStyle = titleColor; ctx.font = 'bold 11px system-ui, sans-serif'
+            ctx.fillText(title.toUpperCase(), x + w / 2, y + 25)
+            ctx.fillStyle = '#0f172a'; ctx.font = 'bold 32px system-ui, sans-serif'
+            ctx.fillText(String(count), x + w / 2, y + 62)
+            ctx.fillStyle = '#6b7280'; ctx.font = '11px system-ui, sans-serif'
+            ctx.fillText(unit, x + w / 2, y + 80)
+            ctx.font = 'bold 9px system-ui, sans-serif'
+            ctx.fillStyle = '#16a34a'; ctx.fillText('CASH', x + w / 4, y + 105)
+            ctx.fillStyle = '#2563eb'; ctx.fillText('DIGITAL', x + (w * 3) / 4, y + 105)
+            ctx.font = 'bold 14px system-ui, sans-serif'
+            ctx.fillStyle = '#15803d'; ctx.fillText(fmt(cash), x + w / 4, y + 122)
+            ctx.fillStyle = '#1d4ed8'; ctx.fillText(fmt(digital), x + (w * 3) / 4, y + 122)
+        }
+
+        drawCard(40, 145, 350, 140, 'Rooms', rptRoomsSold, 'units sold', rptRoomsCash, rptRoomsDigital, '#d1fae5', '#f0fdf4', '#059669')
+        drawCard(410, 145, 350, 140, 'Dorms', rptDormsSold, 'beds sold', rptDormsCash, rptDormsDigital, '#dbeafe', '#eff6ff', '#2563eb')
+
+        ctx.fillStyle = '#f5f3ff'; ctx.beginPath(); ctx.roundRect(40, 310, 720, 150, 12); ctx.fill()
+        ctx.strokeStyle = '#c4b5fd'; ctx.lineWidth = 3; ctx.stroke()
+        ctx.textAlign = 'center'; ctx.fillStyle = '#7c3aed'; ctx.font = 'bold 11px system-ui, sans-serif'
+        ctx.fillText('GRAND TOTAL', W / 2, 335)
+        ctx.fillStyle = '#5b21b6'; ctx.font = 'bold 38px system-ui, sans-serif'
+        ctx.fillText(fmt(grandTotal), W / 2, 380)
+        ctx.font = 'bold 10px system-ui, sans-serif'
+        ctx.fillStyle = '#16a34a'; ctx.fillText('TOTAL CASH', W / 2 - 120, 410)
+        ctx.fillStyle = '#2563eb'; ctx.fillText('TOTAL DIGITAL', W / 2 + 120, 410)
+        ctx.font = 'bold 18px system-ui, sans-serif'
+        ctx.fillStyle = '#15803d'; ctx.fillText(fmt(grandCash), W / 2 - 120, 435)
+        ctx.fillStyle = '#1d4ed8'; ctx.fillText(fmt(grandDigital), W / 2 + 120, 435)
+
+        let footerY = 490
+        if (rptNotes) {
+            ctx.fillStyle = '#64748b'; ctx.font = '11px system-ui, sans-serif'; ctx.textAlign = 'center'
+            ctx.fillText(rptNotes.substring(0, 80), W / 2, footerY + 5)
+            footerY += 30
+        }
+        ctx.fillStyle = '#e2e8f0'; ctx.fillRect(40, footerY, 720, 1)
+        ctx.fillStyle = '#94a3b8'; ctx.font = '11px system-ui, sans-serif'; ctx.textAlign = 'center'
+        ctx.fillText(`Generated: ${genAt} | FAJO ERP`, W / 2, footerY + 25)
+
+        const url = canvas.toDataURL('image/png')
+        const link = document.createElement('a')
+        link.download = `Financial-Report_${rptHotelName.replace(/\s+/g, '-')}_${dateFrom}_to_${dateTo}.png`
+        link.href = url
+        link.click()
+        toast.success('Financial report downloaded')
+        setReportModalOpen(false)
+    }
+
+    const rptGrandTotal = rptRoomsCash + rptRoomsDigital + rptDormsCash + rptDormsDigital
+    const rptFmt = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
 
     // ── Effects ──
     useEffect(() => {
@@ -450,12 +443,12 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                     <Button
                         variant="outline"
                         size="sm"
-                        onClick={handleDownloadReport}
+                        onClick={handleGenerateReport}
                         disabled={generatingReport || loading}
                         className="border-emerald-200"
                     >
                         {generatingReport ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Download className="h-4 w-4 mr-1" />}
-                        {generatingReport ? 'Generating...' : 'Download Report'}
+                        {generatingReport ? 'Generating...' : 'Generate Report'}
                     </Button>
                     <Button
                         variant="outline"
@@ -756,6 +749,57 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                     )}
                 </CardContent>
             </Card>
+            {/* Report Preview Modal */}
+            {reportModalOpen && (
+                <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={() => setReportModalOpen(false)}>
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto p-6 space-y-4" onClick={e => e.stopPropagation()}>
+                        <div className="text-center">
+                            <h3 className="text-lg font-bold text-slate-900">Financial Report Preview</h3>
+                            <p className="text-sm text-slate-500">{rptHotelName}</p>
+                            <p className="text-xs text-slate-400">{rptFromDisplay} — {rptToDisplay}</p>
+                        </div>
+
+                        <div className="border border-emerald-200 rounded-xl p-3 bg-emerald-50/30">
+                            <p className="text-xs font-bold text-emerald-700 mb-2">ROOMS</p>
+                            <div className="grid grid-cols-3 gap-2">
+                                <div><Label className="text-[10px]">Sold</Label><Input type="number" min={0} value={rptRoomsSold} onChange={e => setRptRoomsSold(Number(e.target.value) || 0)} className="h-8 text-sm" /></div>
+                                <div><Label className="text-[10px]">Cash (₹)</Label><Input type="number" min={0} value={rptRoomsCash} onChange={e => setRptRoomsCash(Number(e.target.value) || 0)} className="h-8 text-sm" /></div>
+                                <div><Label className="text-[10px]">Digital (₹)</Label><Input type="number" min={0} value={rptRoomsDigital} onChange={e => setRptRoomsDigital(Number(e.target.value) || 0)} className="h-8 text-sm" /></div>
+                            </div>
+                        </div>
+
+                        <div className="border border-blue-200 rounded-xl p-3 bg-blue-50/30">
+                            <p className="text-xs font-bold text-blue-700 mb-2">DORMS</p>
+                            <div className="grid grid-cols-3 gap-2">
+                                <div><Label className="text-[10px]">Sold</Label><Input type="number" min={0} value={rptDormsSold} onChange={e => setRptDormsSold(Number(e.target.value) || 0)} className="h-8 text-sm" /></div>
+                                <div><Label className="text-[10px]">Cash (₹)</Label><Input type="number" min={0} value={rptDormsCash} onChange={e => setRptDormsCash(Number(e.target.value) || 0)} className="h-8 text-sm" /></div>
+                                <div><Label className="text-[10px]">Digital (₹)</Label><Input type="number" min={0} value={rptDormsDigital} onChange={e => setRptDormsDigital(Number(e.target.value) || 0)} className="h-8 text-sm" /></div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <Label className="text-xs text-slate-600">Notes (optional)</Label>
+                            <textarea value={rptNotes} onChange={e => setRptNotes(e.target.value)} maxLength={80} placeholder="Add notes to the report..." rows={2} className="w-full mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-400/20 resize-none" />
+                        </div>
+
+                        <div className="border border-violet-200 rounded-xl p-3 bg-violet-50/30 text-center">
+                            <p className="text-xs font-bold text-violet-600 mb-1">GRAND TOTAL</p>
+                            <p className="text-2xl font-black text-violet-800">{rptFmt(rptGrandTotal)}</p>
+                            <div className="flex justify-center gap-4 mt-1 text-xs">
+                                <span className="text-green-700 font-semibold">Cash: {rptFmt(rptRoomsCash + rptDormsCash)}</span>
+                                <span className="text-blue-700 font-semibold">Digital: {rptFmt(rptRoomsDigital + rptDormsDigital)}</span>
+                            </div>
+                        </div>
+
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => setReportModalOpen(false)} className="flex-1">Cancel</Button>
+                            <Button onClick={handleDownloadFromModal} className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white">
+                                <Download className="h-4 w-4 mr-1" /> Download PNG
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     )
 }
