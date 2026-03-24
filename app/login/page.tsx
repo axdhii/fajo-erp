@@ -383,19 +383,25 @@ export default function LoginPage() {
             if (res.status === 409) {
                 // Already clocked in (e.g. browser crash re-login) — skip silently
                 toast.info('Already clocked in — resuming session')
+                stopCamera()
+                window.location.href = selectedRole ? ROLE_ROUTE[selectedRole] : '/'
             } else if (!res.ok) {
                 const json = await res.json()
-                toast.error(json.error || 'Clock-in failed')
+                toast.error(json.error || 'Clock-in failed — please try again')
+                setClockingIn(false)
+                // DON'T redirect — staff must clock in to proceed
+                return
             } else {
                 const json = await res.json()
                 toast.success(`Clocked in — ${json.shift} shift`)
+                stopCamera()
+                window.location.href = selectedRole ? ROLE_ROUTE[selectedRole] : '/'
             }
         } catch {
-            toast.error('Clock-in failed')
-        } finally {
+            toast.error('Clock-in failed — please try again')
             setClockingIn(false)
-            // Direct redirect to role-specific dashboard
-            window.location.href = selectedRole ? ROLE_ROUTE[selectedRole] : '/'
+            // DON'T redirect — staff must clock in to proceed
+            return
         }
     }
 

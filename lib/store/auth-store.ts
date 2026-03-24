@@ -69,8 +69,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                     set({ shiftReport: json.shiftReport })
                     return
                 }
-            } catch {
-                // Silently ignore clock-out errors — don't block sign-out
+                // Log report errors but don't block sign-out
+                if (json.reportError) console.warn('Shift report:', json.reportError)
+            } catch (err) {
+                console.warn('Clock-out error:', err)
+                // Don't block sign-out
             }
         }
 

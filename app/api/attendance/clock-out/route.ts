@@ -62,14 +62,18 @@ export async function PATCH(request: NextRequest) {
 
         if (staffProfile && ['FrontDesk', 'Housekeeping', 'HR'].includes(staffProfile.role)) {
             try {
-                const { data: report } = await generateShiftReport(
+                const result = await generateShiftReport(
                     supabase, existing.staff_id, existing.hotel_id,
                     existing.clock_in, getDevNow().toISOString(), existing.id
                 )
-                return NextResponse.json({ data, shiftReport: report })
+                if (result.error) {
+                    console.error('Shift report insert error:', result.error)
+                    return NextResponse.json({ data, shiftReport: null, reportError: 'Shift report could not be saved' })
+                }
+                return NextResponse.json({ data, shiftReport: result.data })
             } catch (err) {
                 console.error('Shift report generation failed:', err)
-                // Don't block clock-out if report fails
+                return NextResponse.json({ data, shiftReport: null, reportError: 'Shift report generation failed' })
             }
         }
 
