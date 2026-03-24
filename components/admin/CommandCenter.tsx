@@ -111,6 +111,7 @@ export function CommandCenter({ hotelId, hotels, staffId }: AdminTabProps) {
                 ticketsRes,
                 restockRes,
                 paymentsRes,
+                advanceRes,
             ] = await Promise.all([
                 // All units
                 supabase
@@ -154,6 +155,13 @@ export function CommandCenter({ hotelId, hotels, staffId }: AdminTabProps) {
                     .from('payments')
                     .select('total_paid, booking:booking_id!inner(status, unit:units!inner(hotel_id))')
                     .gte('created_at', today),
+
+                // Today's bookings with advance_amount (Rule #1)
+                supabase
+                    .from('bookings')
+                    .select('advance_amount, advance_type, unit:units!inner(hotel_id)')
+                    .gte('created_at', today)
+                    .gt('advance_amount', 0),
             ])
 
             const units = unitsRes.data || []
@@ -169,7 +177,13 @@ export function CommandCenter({ hotelId, hotels, staffId }: AdminTabProps) {
                 return booking?.unit?.hotel_id && targetHotelIds.includes(booking.unit.hotel_id)
             })
 
-            const totalRevenue = scopedPayments.reduce((sum, p) => sum + Number(p.total_paid || 0), 0)
+            const totalPaymentRevenue = scopedPayments.reduce((sum, p) => sum + Number(p.total_paid || 0), 0)
+
+            // Add advance_amount from today's bookings (Rule #1)
+            const advanceBookings = (advanceRes.data || []) as unknown as { advance_amount: number; advance_type: string | null; unit: { hotel_id: string } }[]
+            const scopedAdvances = advanceBookings.filter(b => b.unit?.hotel_id && targetHotelIds.includes(b.unit.hotel_id))
+            const totalAdvanceRevenue = scopedAdvances.reduce((sum, b) => sum + Number(b.advance_amount || 0), 0)
+            const totalRevenue = totalPaymentRevenue + totalAdvanceRevenue
 
             // ------ KPI ------
             const totalUnits = units.length
@@ -271,6 +285,13 @@ export function CommandCenter({ hotelId, hotels, staffId }: AdminTabProps) {
                 const hid = booking?.unit?.hotel_id
                 const card = hid ? cardMap.get(hid) : null
                 if (card) card.todayRevenue += Number(p.total_paid || 0)
+            }
+
+            // Aggregate advance revenue per hotel
+            for (const b of scopedAdvances) {
+                const hid = b.unit?.hotel_id
+                const card = hid ? cardMap.get(hid) : null
+                if (card) card.todayRevenue += Number(b.advance_amount || 0)
             }
 
             // Aggregate alert counts per hotel

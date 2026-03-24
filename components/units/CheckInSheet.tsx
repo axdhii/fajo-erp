@@ -69,6 +69,7 @@ function getDormBedLabel(unitNumber: string): string {
 
 function formatDateTime(d: Date): string {
     return d.toLocaleString('en-IN', {
+        timeZone: 'Asia/Kolkata',
         weekday: 'short',
         day: 'numeric',
         month: 'short',

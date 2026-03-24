@@ -688,7 +688,7 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
                     staff_id: sid,
                     name: editName,
                     phone: editPhone,
-                    base_salary: editSalary,
+                    base_salary: editSalary ? Number(editSalary) : 0,
                 }),
             })
             const json = await res.json()

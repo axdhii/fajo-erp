@@ -15,6 +15,7 @@ import {
     Play,
 } from 'lucide-react'
 import type { MaintenanceTicket, RestockRequest } from '@/lib/types'
+import { timeAgo } from '@/lib/utils/time'
 
 import type { AdminTabProps } from '@/app/(dashboard)/admin/client'
 
@@ -32,19 +33,6 @@ const PRIORITY_STYLES: Record<string, { bg: string; text: string }> = {
     HIGH: { bg: 'bg-amber-100', text: 'text-amber-700' },
     MEDIUM: { bg: 'bg-slate-100', text: 'text-slate-700' },
     LOW: { bg: 'bg-gray-100', text: 'text-gray-500' },
-}
-
-function timeAgo(dateStr: string): string {
-    const now = new Date()
-    const date = new Date(dateStr)
-    const diffMs = now.getTime() - date.getTime()
-    const diffMin = Math.floor(diffMs / 60000)
-    if (diffMin < 1) return 'just now'
-    if (diffMin < 60) return `${diffMin}m ago`
-    const diffHr = Math.floor(diffMin / 60)
-    if (diffHr < 24) return `${diffHr}h ago`
-    const diffDay = Math.floor(diffHr / 24)
-    return `${diffDay}d ago`
 }
 
 export function OpsOverview({ hotelId, hotels, staffId }: AdminTabProps) {

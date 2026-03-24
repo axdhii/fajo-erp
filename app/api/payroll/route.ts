@@ -83,13 +83,14 @@ export async function POST(request: NextRequest) {
 
             if (existing) continue // Skip already generated
 
-            // Count attendance days
+            // Count attendance days — use next-day boundary (Rule #21)
+            const nextMonthStart = `${new Date(parseInt(yearStr), parseInt(monthStr), 1).toISOString().split('T')[0]}T00:00:00+05:30`
             const { data: attendanceData } = await supabase
                 .from('attendance')
                 .select('id, clock_in')
                 .eq('staff_id', s.id)
                 .gte('clock_in', `${monthStart}T00:00:00+05:30`)
-                .lte('clock_in', `${monthEnd}T23:59:59+05:30`)
+                .lt('clock_in', nextMonthStart)
 
             const uniqueDays = new Set(
                 (attendanceData || []).map(a =>

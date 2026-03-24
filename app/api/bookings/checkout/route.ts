@@ -91,12 +91,20 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Handle both Array and Object returns from Supabase
-        const paymentRecord = Array.isArray(booking.payments) ? booking.payments[0] : booking.payments
+        // Handle both Array and Object returns from Supabase — sum ALL payment records (Rule #2, #3)
+        const paymentsArr = Array.isArray(booking.payments) ? booking.payments : booking.payments ? [booking.payments] : []
         const grandTotal = Number(booking.grand_total)
         const advanceAmount = Number(booking.advance_amount) || 0
-        const totalPaid = paymentRecord ? Number(paymentRecord.total_paid) : 0
+        const totalPaid = paymentsArr.reduce((sum: number, p: { total_paid?: number }) => sum + Number(p.total_paid || 0), 0)
+        const existingCash = paymentsArr.reduce((sum: number, p: { amount_cash?: number }) => sum + Number(p.amount_cash || 0), 0)
+        const existingDigital = paymentsArr.reduce((sum: number, p: { amount_digital?: number }) => sum + Number(p.amount_digital || 0), 0)
         const balanceDue = Math.max(0, grandTotal - advanceAmount - totalPaid)
+        // Find the most recent payment record for updates
+        const latestPayment = paymentsArr.length > 0 ? paymentsArr.reduce((latest: { id: string; created_at?: string }, p: { id: string; created_at?: string }) => {
+            if (!latest.created_at) return p
+            if (!p.created_at) return latest
+            return new Date(p.created_at) > new Date(latest.created_at) ? p : latest
+        }, paymentsArr[0]) : null
 
         const incomingCash = Number(amountCash)
         const incomingDigital = Number(amountDigital)
@@ -113,16 +121,16 @@ export async function POST(request: NextRequest) {
         }
 
         // Update payment record if payment was collected
-        if (incomingTotal > 0 && paymentRecord) {
+        if (incomingTotal > 0 && latestPayment) {
             await supabase
                 .from('payments')
                 .update({
-                    amount_cash: Number(paymentRecord.amount_cash) + incomingCash,
-                    amount_digital: Number(paymentRecord.amount_digital) + incomingDigital,
-                    total_paid: Number(paymentRecord.total_paid) + incomingTotal
+                    amount_cash: Number(latestPayment.amount_cash) + incomingCash,
+                    amount_digital: Number(latestPayment.amount_digital) + incomingDigital,
+                    total_paid: Number(latestPayment.total_paid) + incomingTotal
                 })
-                .eq('id', paymentRecord.id)
-        } else if (incomingTotal > 0 && !paymentRecord) {
+                .eq('id', latestPayment.id)
+        } else if (incomingTotal > 0 && !latestPayment) {
             // No existing payment record — insert a new one so money is not lost
             await supabase
                 .from('payments')

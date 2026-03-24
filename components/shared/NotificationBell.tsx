@@ -24,7 +24,7 @@ interface NotificationBellProps {
 }
 
 export function NotificationBell({ hotelId, role, staffId }: NotificationBellProps) {
-    const { notifications, unreadCount, isLoading, fetchNotifications, markAsRead, markAllAsRead, subscribe } = useNotificationStore()
+    const { notifications, unreadCount, isLoading, error, fetchNotifications, markAsRead, markAllAsRead, subscribe } = useNotificationStore()
     const [open, setOpen] = useState(false)
     const panelRef = useRef<HTMLDivElement>(null)
     const buttonRef = useRef<HTMLButtonElement>(null)
@@ -109,6 +109,16 @@ export function NotificationBell({ hotelId, role, staffId }: NotificationBellPro
                             <div className="flex flex-col items-center justify-center py-12 text-slate-400">
                                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-slate-600" />
                                 <p className="mt-2 text-xs">Loading...</p>
+                            </div>
+                        ) : error && notifications.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center py-6 text-slate-400">
+                                <p className="text-xs text-red-400">Failed to load notifications</p>
+                                <button
+                                    onClick={() => fetchNotifications(hotelId, role, staffId)}
+                                    className="text-xs text-emerald-600 hover:text-emerald-700 mt-1 font-medium"
+                                >
+                                    Retry
+                                </button>
                             </div>
                         ) : notifications.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-12 text-slate-400">

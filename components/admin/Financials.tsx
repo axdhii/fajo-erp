@@ -177,9 +177,39 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                 )
             }
 
-            setTodayRevenue(sumRevenue(todayPayments as unknown as PaymentWithBooking[]))
-            setMonthRevenue(sumRevenue(monthPayments as unknown as PaymentWithBooking[]))
-            setRangeRevenue(sumRevenue(rangePayments as unknown as PaymentWithBooking[]))
+            // Query advance_amount from bookings for each date range (Rule #1)
+            const advanceSelect = 'advance_amount, advance_type, unit:units(hotel_id)'
+            const [todayAdvRes, monthAdvRes, rangeAdvRes] = await Promise.all([
+                supabase.from('bookings').select(advanceSelect).gte('created_at', today + 'T00:00:00+05:30').gt('advance_amount', 0),
+                supabase.from('bookings').select(advanceSelect).gte('created_at', monthStart + 'T00:00:00+05:30').gt('advance_amount', 0),
+                supabase.from('bookings').select(advanceSelect).gte('created_at', `${dateFrom}T${timeFrom}:00+05:30`).lte('created_at', `${dateTo}T${timeTo}:59+05:30`).gt('advance_amount', 0),
+            ])
+
+            type AdvRow = { advance_amount: number; advance_type: string | null; unit: { hotel_id: string } }
+            const sumAdvances = (rows: AdvRow[] | null) => {
+                if (!rows) return { cash: 0, digital: 0, total: 0 }
+                const filtered = hotelId ? rows.filter(r => r.unit?.hotel_id === hotelId) : rows
+                let cash = 0, digital = 0
+                for (const b of filtered) {
+                    const adv = Number(b.advance_amount || 0)
+                    const type = String(b.advance_type || '').toUpperCase()
+                    if (type === 'DIGITAL' || type === 'UPI' || type === 'GPAY') digital += adv
+                    else cash += adv
+                }
+                return { cash, digital, total: cash + digital }
+            }
+
+            const todayAdv = sumAdvances(todayAdvRes.data as unknown as AdvRow[])
+            const monthAdv = sumAdvances(monthAdvRes.data as unknown as AdvRow[])
+            const rangeAdv = sumAdvances(rangeAdvRes.data as unknown as AdvRow[])
+
+            const todayPay = sumRevenue(todayPayments as unknown as PaymentWithBooking[])
+            const monthPay = sumRevenue(monthPayments as unknown as PaymentWithBooking[])
+            const rangePay = sumRevenue(rangePayments as unknown as PaymentWithBooking[])
+
+            setTodayRevenue({ cash: todayPay.cash + todayAdv.cash, digital: todayPay.digital + todayAdv.digital, total: todayPay.total + todayAdv.total })
+            setMonthRevenue({ cash: monthPay.cash + monthAdv.cash, digital: monthPay.digital + monthAdv.digital, total: monthPay.total + monthAdv.total })
+            setRangeRevenue({ cash: rangePay.cash + rangeAdv.cash, digital: rangePay.digital + rangeAdv.digital, total: rangePay.total + rangeAdv.total })
 
             // Per-hotel revenue breakdown (from range dates)
             const perHotel: Record<string, HotelRevenue> = {}
@@ -192,6 +222,20 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                     perHotel[hid].cash += Number(r.amount_cash)
                     perHotel[hid].digital += Number(r.amount_digital)
                     perHotel[hid].total += Number(r.total_paid)
+                }
+            }
+            // Add advances to per-hotel breakdown
+            for (const b of (rangeAdvRes.data || []) as unknown as AdvRow[]) {
+                const hid = b.unit?.hotel_id
+                if (hid && perHotel[hid]) {
+                    const adv = Number(b.advance_amount || 0)
+                    const type = String(b.advance_type || '').toUpperCase()
+                    if (type === 'DIGITAL' || type === 'UPI' || type === 'GPAY') {
+                        perHotel[hid].digital += adv
+                    } else {
+                        perHotel[hid].cash += adv
+                    }
+                    perHotel[hid].total += adv
                 }
             }
             setHotelRevenues(Object.values(perHotel))

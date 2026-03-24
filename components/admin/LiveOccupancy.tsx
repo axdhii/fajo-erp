@@ -433,11 +433,11 @@ export function LiveOccupancy({ hotelId, hotels }: AdminTabProps) {
                 : null
         const isOverdue = checkoutAlert?.level === 'critical'
 
-        // Payment
-        const paymentRecord = booking?.payments
-            ? (Array.isArray(booking.payments) ? booking.payments[0] : booking.payments)
-            : null
-        const totalPaid = paymentRecord ? Number(paymentRecord.total_paid) : 0
+        // Payment — sum ALL payment records (Rule #2, #3)
+        const paymentsArr = booking?.payments
+            ? (Array.isArray(booking.payments) ? booking.payments : [booking.payments])
+            : []
+        const totalPaid = paymentsArr.reduce((sum: number, p: { total_paid?: number }) => sum + Number(p.total_paid || 0), 0)
         const grandTotal = booking ? Number(booking.grand_total) : 0
         const advanceAmount = booking ? (Number(booking.advance_amount) || 0) : 0
         const balance = grandTotal - advanceAmount - totalPaid
@@ -550,11 +550,11 @@ export function LiveOccupancy({ hotelId, hotels }: AdminTabProps) {
                             <div className="grid grid-cols-2 gap-1 text-xs">
                                 <span className="text-slate-500">Cash:</span>
                                 <span className="font-medium text-slate-800">
-                                    {'\u20B9'}{(paymentRecord ? Number(paymentRecord.amount_cash) : 0).toLocaleString('en-IN')}
+                                    {'\u20B9'}{paymentsArr.reduce((sum: number, p: { amount_cash?: number }) => sum + Number(p.amount_cash || 0), 0).toLocaleString('en-IN')}
                                 </span>
                                 <span className="text-slate-500">Digital:</span>
                                 <span className="font-medium text-slate-800">
-                                    {'\u20B9'}{(paymentRecord ? Number(paymentRecord.amount_digital) : 0).toLocaleString('en-IN')}
+                                    {'\u20B9'}{paymentsArr.reduce((sum: number, p: { amount_digital?: number }) => sum + Number(p.amount_digital || 0), 0).toLocaleString('en-IN')}
                                 </span>
                                 <span className="text-slate-500">Total Paid:</span>
                                 <span className="font-semibold text-emerald-700">

@@ -36,6 +36,7 @@ import {
     Download,
 } from 'lucide-react'
 import type { RestockRequest, PropertyExpense, CustomerIssue, ShiftReport } from '@/lib/types'
+import { timeAgo } from '@/lib/utils/time'
 
 interface ZonalOpsClientProps {
     staffId: string
@@ -43,19 +44,6 @@ interface ZonalOpsClientProps {
 }
 
 type Tab = 'restock' | 'payments' | 'expenses' | 'issues' | 'shift-reports'
-
-function timeAgo(dateStr: string): string {
-    const now = Date.now()
-    const then = new Date(dateStr).getTime()
-    const diffMs = now - then
-    const diffMin = Math.floor(diffMs / 60000)
-    if (diffMin < 1) return 'just now'
-    if (diffMin < 60) return `${diffMin}m ago`
-    const diffHr = Math.floor(diffMin / 60)
-    if (diffHr < 24) return `${diffHr}h ago`
-    const diffDay = Math.floor(diffHr / 24)
-    return `${diffDay}d ago`
-}
 
 function formatCurrency(n: number): string {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)

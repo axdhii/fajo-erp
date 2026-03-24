@@ -57,7 +57,9 @@ export async function middleware(request: NextRequest) {
         return res
     }
 
-    const { data: { user } } = await supabase.auth.getUser()
+    // Use getSession() to read JWT locally — no network call (saves 100-300ms per navigation)
+    const { data: { session } } = await supabase.auth.getSession()
+    const user = session?.user
 
     const { pathname } = request.nextUrl
 

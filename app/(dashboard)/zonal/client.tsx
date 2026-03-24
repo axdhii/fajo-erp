@@ -90,6 +90,13 @@ export function ZonalClient({ staffId }: ZonalClientProps) {
                 paymentsData = data || []
             }
 
+            // 5b. Get advance_amount from today's bookings (Rule #1)
+            const { data: advanceBookings } = await supabase
+                .from('bookings')
+                .select('advance_amount, advance_type, unit_id')
+                .gte('check_in', todayMidnight)
+                .gt('advance_amount', 0)
+
             // 6. Build unit lookup
             const unitsByHotel = new Map<string, typeof allUnits>()
             const unitNumberLookup = new Map<string, string>()
@@ -116,8 +123,17 @@ export function ZonalClient({ staffId }: ZonalClientProps) {
                 // Revenue from payments for this hotel's bookings
                 const hotelBookingIds = (bookingsRes.data || []).filter(b => unitIds.has(b.unit_id)).map(b => b.id)
                 const hotelPayments = paymentsData.filter(p => hotelBookingIds.includes(p.booking_id))
-                const cashRevenue = hotelPayments.reduce((s, p) => s + Number(p.amount_cash || 0), 0)
-                const digitalRevenue = hotelPayments.reduce((s, p) => s + Number(p.amount_digital || 0), 0)
+                let cashRevenue = hotelPayments.reduce((s, p) => s + Number(p.amount_cash || 0), 0)
+                let digitalRevenue = hotelPayments.reduce((s, p) => s + Number(p.amount_digital || 0), 0)
+
+                // Add advance_amount from today's bookings for this hotel (Rule #1)
+                const hotelAdvances = (advanceBookings || []).filter(b => unitIds.has(b.unit_id))
+                for (const b of hotelAdvances) {
+                    const adv = Number(b.advance_amount || 0)
+                    const type = String(b.advance_type || '').toUpperCase()
+                    if (type === 'DIGITAL' || type === 'UPI' || type === 'GPAY') digitalRevenue += adv
+                    else cashRevenue += adv
+                }
 
                 const staffOnDuty = (attendanceRes.data || []).filter(a => a.hotel_id === hotel.id).length
                 const totalStaff = (staffRes.data || []).filter(s => s.hotel_id === hotel.id).length

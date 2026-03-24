@@ -47,6 +47,10 @@ export async function POST(request: NextRequest) {
 
         const previousStatus = unit.status
 
+        // Fetch staff ID early — needed for auto-resolve and ticket creation
+        const { data: callerStaff } = await supabase
+            .from('staff').select('id').eq('user_id', auth.userId).single()
+
         // If unit was OCCUPIED and we're force-releasing it, also close any active bookings
         if (previousStatus === 'OCCUPIED') {
             const { data: activeBookings } = await supabase
@@ -94,16 +98,13 @@ export async function POST(request: NextRequest) {
         // Auto-resolve all open tickets when a unit is cleared from MAINTENANCE
         if (previousStatus === 'MAINTENANCE' && newStatus !== 'MAINTENANCE') {
             await supabase.from('maintenance_tickets')
-                .update({ status: 'RESOLVED', resolved_at: getDevNow().toISOString(), resolution_notes: 'Auto-resolved: unit cleared from maintenance' })
+                .update({ status: 'RESOLVED', resolved_at: getDevNow().toISOString(), resolved_by: callerStaff?.id || null, resolution_notes: 'Auto-resolved: unit cleared from maintenance' })
                 .eq('unit_id', unitId)
                 .in('status', ['OPEN', 'IN_PROGRESS'])
         }
 
         // Auto-create a maintenance ticket when unit is set to MAINTENANCE
         if (newStatus === 'MAINTENANCE') {
-            const { data: callerStaff } = await supabase
-                .from('staff').select('id').eq('user_id', auth.userId).single()
-
             await supabase.from('maintenance_tickets').insert({
                 unit_id: unitId,
                 hotel_id: unit.hotel_id,
