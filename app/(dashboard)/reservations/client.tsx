@@ -171,7 +171,7 @@ export function ReservationsClient({ hotelId }: ReservationsClientProps) {
 
             const { data: allBookings } = await supabase
                 .from('bookings')
-                .select('*, guests(name, phone, aadhar_url_front, aadhar_url_back), unit:units(unit_number, type, hotel_id, base_price)')
+                .select('*, guests(id, name, phone, aadhar_number, aadhar_url_front, aadhar_url_back), unit:units(unit_number, type, hotel_id, base_price)')
                 .in('status', ['PENDING', 'CONFIRMED', 'CHECKED_IN'])
                 .lt('check_in', to.toISOString())
                 .gt('check_out', from.toISOString())
