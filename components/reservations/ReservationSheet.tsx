@@ -106,6 +106,8 @@ export function ReservationSheet({
     }, [isDormEligible])
 
     // Populate defaults when sheet opens
+    // Populate defaults ONCE when sheet opens — not on every clock tick
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
         if (open) {
             if (preSelectedUnit) setSelectedUnitId(preSelectedUnit.id)
@@ -115,11 +117,11 @@ export function ReservationSheet({
                     `${String(defaultCheckIn.getHours()).padStart(2, '0')}:${String(defaultCheckIn.getMinutes()).padStart(2, '0')}`
                 )
             } else {
-                const now = new Date(devNow)
+                const now = new Date()
                 setCheckInDate(formatLocalYYYYMMDD(now))
             }
         }
-    }, [open, preSelectedUnit, defaultCheckIn, devNow])
+    }, [open, preSelectedUnit, defaultCheckIn])
 
     const toggleDormBed = (id: string) => {
         setSelectedDormIds((prev) => {
