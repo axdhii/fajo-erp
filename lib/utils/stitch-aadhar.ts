@@ -40,7 +40,11 @@ function loadImage(src: Blob): Promise<HTMLImageElement> {
  * @param back  - The back-side image  (File or Blob)
  * @returns A JPEG Blob containing both images stacked vertically
  */
-export async function stitchAadhar(front: Blob, back: Blob): Promise<Blob> {
+export async function stitchAadhar(
+    front: Blob,
+    back: Blob,
+    meta?: { roomNumber?: string; guestName?: string; phone?: string; date?: string }
+): Promise<Blob> {
     const [imgFront, imgBack] = await Promise.all([
         loadImage(front),
         loadImage(back),
@@ -55,9 +59,12 @@ export async function stitchAadhar(front: Blob, back: Blob): Promise<Blob> {
     const wBack = Math.round(imgBack.width * scaleBack)
     const hBack = Math.round(imgBack.height * scaleBack)
 
-    // Canvas width = widest of the two; height = sum + divider
+    // Footer with metadata text
+    const FOOTER_HEIGHT = meta ? 40 : 0
+
+    // Canvas width = widest of the two; height = sum + divider + footer
     const canvasWidth = Math.max(wFront, wBack)
-    const canvasHeight = hFront + DIVIDER_HEIGHT + hBack
+    const canvasHeight = hFront + DIVIDER_HEIGHT + hBack + FOOTER_HEIGHT
 
     const canvas = document.createElement('canvas')
     canvas.width = canvasWidth
@@ -81,6 +88,18 @@ export async function stitchAadhar(front: Blob, back: Blob): Promise<Blob> {
     // Draw back (centered horizontally)
     const xBack = Math.round((canvasWidth - wBack) / 2)
     ctx.drawImage(imgBack, xBack, hFront + DIVIDER_HEIGHT, wBack, hBack)
+
+    // Draw metadata footer if provided
+    if (meta && FOOTER_HEIGHT > 0) {
+        const footerY = hFront + DIVIDER_HEIGHT + hBack
+        ctx.fillStyle = '#f1f5f9' // slate-100
+        ctx.fillRect(0, footerY, canvasWidth, FOOTER_HEIGHT)
+        ctx.fillStyle = '#334155' // slate-700
+        ctx.font = 'bold 14px system-ui, sans-serif'
+        ctx.textAlign = 'center'
+        const parts = [meta.roomNumber, meta.guestName, meta.phone, meta.date].filter(Boolean)
+        ctx.fillText(parts.join(' | '), canvasWidth / 2, footerY + 25)
+    }
 
     // Revoke object URLs to prevent memory leaks
     URL.revokeObjectURL(imgFront.src)

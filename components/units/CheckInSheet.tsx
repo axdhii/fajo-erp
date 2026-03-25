@@ -291,14 +291,19 @@ export function CheckInSheet({
                 setUploadingIndex(index)
                 try {
                     const { stitchAadhar } = await import('@/lib/utils/stitch-aadhar')
-                    const stitched = await stitchAadhar(updated.front, updated.back)
-
-                    // Generate storage path
                     const guestName = (guests[index].name || 'Guest').replace(/[^a-zA-Z0-9]/g, '_')
                     const phone = guests[index].phone || '0000000000'
-                    const dateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
-                    const monthStr = dateStr.slice(0, 7) // YYYY-MM
-                    const fileName = `${monthStr}/${guestName}_${phone}_${dateStr}_${Date.now()}_stitched.jpg`
+                    const dateStr = new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata' }).replace(/\//g, '-')
+                    const roomNum = unit?.unit_number || 'Unit'
+                    const guestLabel = guests.length > 1 ? `_Guest${index + 1}of${guests.length}` : ''
+                    const stitched = await stitchAadhar(updated.front, updated.back, {
+                        roomNumber: roomNum, guestName: guests[index].name || 'Guest', phone, date: dateStr,
+                    })
+
+                    // Generate storage path with room number + guest index
+                    const monthStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }).slice(0, 7)
+                    const timeStr = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '-')
+                    const fileName = `${monthStr}/${roomNum}_${guestName}_${phone}_${dateStr}_${timeStr}${guestLabel}.jpg`
 
                     const { error: uploadErr } = await supabase.storage
                         .from('aadhars')
