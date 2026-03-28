@@ -30,7 +30,7 @@ export function TestFactory({ }: AdminTabProps) {
     const [results, setResults] = useState<{ action: string; result: ActionResult; timestamp: string }[]>([])
     const [runningAction, setRunningAction] = useState<string | null>(null)
 
-    const isDev = process.env.NODE_ENV === 'development'
+    // Developer role has access in ALL environments (including production)
 
     // ── Generic action runner ──
     const runAction = async (
@@ -165,29 +165,6 @@ export function TestFactory({ }: AdminTabProps) {
             handler: () => runAction('Reset Time', '/api/dev/time', 'POST', { action: 'reset' }),
         },
     ]
-
-    if (!isDev) {
-        return (
-            <div className="space-y-6">
-                <div>
-                    <h2 className="text-2xl font-bold tracking-tight text-slate-900 flex items-center gap-2">
-                        <FlaskConical className="h-6 w-6 text-emerald-600" />
-                        Test Factory
-                    </h2>
-                    <p className="text-slate-500 text-sm mt-1">Development-only tools for testing</p>
-                </div>
-                <Card className="border-amber-200 bg-amber-50/50">
-                    <CardContent className="py-8 text-center">
-                        <XCircle className="h-10 w-10 mx-auto mb-3 text-amber-500" />
-                        <p className="text-lg font-semibold text-amber-800">Not Available in Production</p>
-                        <p className="text-sm text-amber-600 mt-1">
-                            Test Factory is only available in development mode (NODE_ENV=development).
-                        </p>
-                    </CardContent>
-                </Card>
-            </div>
-        )
-    }
 
     return (
         <div className="space-y-6">

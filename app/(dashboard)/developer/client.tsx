@@ -20,7 +20,7 @@ import {
     SelectValue,
 } from '@/components/ui/select'
 import { SystemHealth } from '@/components/developer/SystemHealth'
-import { TimeMachine } from '@/components/developer/TimeMachine'
+// TimeMachine removed per user request
 import { HotelsUnits } from '@/components/developer/HotelsUnits'
 import { BookingsGuests } from '@/components/developer/BookingsGuests'
 import { StaffAuth } from '@/components/developer/StaffAuth'
@@ -31,7 +31,7 @@ import { Building2, BookOpen, Users, Beaker, AlertTriangle } from 'lucide-react'
 // ============================================================
 // Tab definitions
 // ============================================================
-type TabKey = 'health' | 'hotels' | 'bookings' | 'staff' | 'test' | 'time' | 'danger'
+type TabKey = 'health' | 'hotels' | 'bookings' | 'staff' | 'test' | 'danger'
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
     { key: 'health',   label: 'System Health',     icon: <Activity className="h-4 w-4" /> },
@@ -39,7 +39,6 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
     { key: 'bookings', label: 'Bookings & Guests', icon: <BookOpen className="h-4 w-4" /> },
     { key: 'staff',    label: 'Staff & Auth',      icon: <Users className="h-4 w-4" /> },
     { key: 'test',     label: 'Test Factory',      icon: <Beaker className="h-4 w-4" /> },
-    { key: 'time',     label: 'Time Machine',      icon: <Clock className="h-4 w-4" /> },
     { key: 'danger',   label: 'Danger Zone',       icon: <AlertTriangle className="h-4 w-4" /> },
 ]
 
@@ -166,7 +165,6 @@ export function DevClient({ hotelId, staffId }: DevClientProps) {
                 {tab === 'bookings' && <BookingsGuests {...tabProps} />}
                 {tab === 'staff'    && <StaffAuth {...tabProps} />}
                 {tab === 'test'     && <TestFactory {...tabProps} />}
-                {tab === 'time'     && <TimeMachine {...tabProps} />}
                 {tab === 'danger'   && <DangerZone {...tabProps} />}
             </div>
         </div>
