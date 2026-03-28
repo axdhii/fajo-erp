@@ -6,7 +6,7 @@ import type { ShiftReport } from '@/lib/types'
 interface StaffProfile {
     id: string
     hotel_id: string
-    role: 'Admin' | 'FrontDesk' | 'Housekeeping' | 'HR' | 'ZonalManager' | 'ZonalOps' | 'ZonalHK'
+    role: 'Admin' | 'FrontDesk' | 'Housekeeping' | 'HR' | 'ZonalManager' | 'ZonalOps' | 'ZonalHK' | 'Developer'
     name: string | null
 }
 

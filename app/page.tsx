@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 
 const ROLE_ROUTE: Record<string, string> = {
+  Developer: '/developer',
   Admin: '/admin',
   HR: '/hr',
   ZonalManager: '/zonal',

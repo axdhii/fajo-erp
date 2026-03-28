@@ -25,6 +25,7 @@ import {
     RefreshCw,
     Camera,
     CheckCircle2,
+    Code2,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -47,6 +48,7 @@ type RoleKey =
     | 'ZonalManager'
     | 'ZonalOps'
     | 'ZonalHK'
+    | 'Developer'
 
 interface RoleInfo {
     label: string
@@ -94,6 +96,11 @@ const ROLE_META: Record<RoleKey, RoleInfo> = {
         description: 'Housekeeping Management',
         icon: Wrench,
     },
+    Developer: {
+        label: 'Developer',
+        description: 'System Developer',
+        icon: Code2,
+    },
 }
 
 /* ------------------------------------------------------------------ */
@@ -107,6 +114,7 @@ const AUTO_CLOCK_ROLES: RoleKey[] = ['FrontDesk', 'Housekeeping', 'HR']
 /* ------------------------------------------------------------------ */
 
 const ROLE_ROUTE: Record<RoleKey, string> = {
+    Developer: '/developer',
     Admin: '/admin',
     HR: '/hr',
     ZonalManager: '/zonal',

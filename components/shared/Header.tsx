@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect } from 'react'
-import { BookOpen, Calendar, Clock, ClipboardList, Globe, LayoutDashboard, LogOut, Menu, Sparkles, Users, X } from 'lucide-react'
+import { BookOpen, Calendar, Clock, ClipboardList, Globe, LayoutDashboard, LogOut, Menu, Sparkles, Users, Wrench, X } from 'lucide-react'
 import Link from 'next/link'
 import { useAuthStore } from '@/lib/store/auth-store'
 import { usePathname } from 'next/navigation'
@@ -35,13 +35,15 @@ export function Header() {
 
     if (!profile) return null
 
-    const canSeeFrontDesk = profile.role === 'Admin' || profile.role === 'FrontDesk'
-    const canSeeHousekeeping = profile.role === 'Admin' || profile.role === 'Housekeeping'
-    const canSeeAdmin = profile.role === 'Admin'
-    const canSeeHR = profile.role === 'Admin' || profile.role === 'HR'
-    const canSeeZonalOps = profile.role === 'Admin' || profile.role === 'ZonalManager' || profile.role === 'ZonalOps'
-    const canSeeZonalHK = profile.role === 'Admin' || profile.role === 'ZonalManager' || profile.role === 'ZonalHK'
-    const canSeeZonal = profile.role === 'Admin' || profile.role === 'ZonalManager' || profile.role === 'ZonalOps' || profile.role === 'ZonalHK'
+    const isAdminOrDev = profile.role === 'Admin' || profile.role === 'Developer'
+    const canSeeFrontDesk = isAdminOrDev || profile.role === 'FrontDesk'
+    const canSeeHousekeeping = isAdminOrDev || profile.role === 'Housekeeping'
+    const canSeeAdmin = isAdminOrDev
+    const canSeeHR = isAdminOrDev || profile.role === 'HR'
+    const canSeeZonalOps = isAdminOrDev || profile.role === 'ZonalManager' || profile.role === 'ZonalOps'
+    const canSeeZonalHK = isAdminOrDev || profile.role === 'ZonalManager' || profile.role === 'ZonalHK'
+    const canSeeZonal = isAdminOrDev || profile.role === 'ZonalManager' || profile.role === 'ZonalOps' || profile.role === 'ZonalHK'
+    const canSeeDev = profile.role === 'Developer'
 
     // Build nav links array to avoid duplication between desktop and mobile
     const navLinks = [
@@ -53,6 +55,7 @@ export function Header() {
         canSeeZonalHK && { href: '/zonal-hk', label: 'Zonal HK', icon: <Sparkles className="h-4 w-4" />, activeClass: 'bg-teal-50 text-teal-700' },
         canSeeZonal && { href: '/zonal', label: 'Zonal', icon: <Globe className="h-4 w-4" />, activeClass: 'bg-amber-50 text-amber-700' },
         canSeeAdmin && { href: '/admin', label: 'Admin', icon: <LayoutDashboard className="h-4 w-4" />, activeClass: 'bg-emerald-50 text-emerald-700' },
+        canSeeDev && { href: '/developer', label: 'Dev Tools', icon: <Wrench className="h-4 w-4" />, activeClass: 'bg-red-50 text-red-700' },
     ].filter(Boolean) as { href: string; label: string; icon: React.ReactNode; activeClass: string }[]
 
     return (
