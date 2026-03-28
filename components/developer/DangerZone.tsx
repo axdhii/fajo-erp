@@ -39,7 +39,7 @@ import {
     Shirt,
 } from 'lucide-react'
 
-import type { AdminTabProps } from '@/app/(dashboard)/admin/client'
+import type { DevTabProps as AdminTabProps } from '@/app/(dashboard)/developer/client'
 
 // ============================================================
 // Table counts for display

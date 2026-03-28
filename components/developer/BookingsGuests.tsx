@@ -49,7 +49,7 @@ import {
 } from 'lucide-react'
 import { toast } from 'sonner'
 
-import type { AdminTabProps } from '@/app/(dashboard)/admin/client'
+import type { DevTabProps as AdminTabProps } from '@/app/(dashboard)/developer/client'
 
 // ============================================================
 // Types

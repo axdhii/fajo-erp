@@ -21,15 +21,26 @@ import {
 } from '@/components/ui/select'
 import { SystemHealth } from '@/components/developer/SystemHealth'
 import { TimeMachine } from '@/components/developer/TimeMachine'
+import { HotelsUnits } from '@/components/developer/HotelsUnits'
+import { BookingsGuests } from '@/components/developer/BookingsGuests'
+import { StaffAuth } from '@/components/developer/StaffAuth'
+import { TestFactory } from '@/components/developer/TestFactory'
+import { DangerZone } from '@/components/developer/DangerZone'
+import { Building2, BookOpen, Users, Beaker, AlertTriangle } from 'lucide-react'
 
 // ============================================================
 // Tab definitions
 // ============================================================
-type TabKey = 'health' | 'time'
+type TabKey = 'health' | 'hotels' | 'bookings' | 'staff' | 'test' | 'time' | 'danger'
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
-    { key: 'health', label: 'System Health', icon: <Activity className="h-4 w-4" /> },
-    { key: 'time',   label: 'Time Machine',  icon: <Clock className="h-4 w-4" /> },
+    { key: 'health',   label: 'System Health',     icon: <Activity className="h-4 w-4" /> },
+    { key: 'hotels',   label: 'Hotels & Units',    icon: <Building2 className="h-4 w-4" /> },
+    { key: 'bookings', label: 'Bookings & Guests', icon: <BookOpen className="h-4 w-4" /> },
+    { key: 'staff',    label: 'Staff & Auth',      icon: <Users className="h-4 w-4" /> },
+    { key: 'test',     label: 'Test Factory',      icon: <Beaker className="h-4 w-4" /> },
+    { key: 'time',     label: 'Time Machine',      icon: <Clock className="h-4 w-4" /> },
+    { key: 'danger',   label: 'Danger Zone',       icon: <AlertTriangle className="h-4 w-4" /> },
 ]
 
 // ============================================================
@@ -150,8 +161,13 @@ export function DevClient({ hotelId, staffId }: DevClientProps) {
 
             {/* ==================== Active Tab Content ==================== */}
             <div>
-                {tab === 'health' && <SystemHealth {...tabProps} />}
-                {tab === 'time'   && <TimeMachine {...tabProps} />}
+                {tab === 'health'   && <SystemHealth {...tabProps} />}
+                {tab === 'hotels'   && <HotelsUnits {...tabProps} />}
+                {tab === 'bookings' && <BookingsGuests {...tabProps} />}
+                {tab === 'staff'    && <StaffAuth {...tabProps} />}
+                {tab === 'test'     && <TestFactory {...tabProps} />}
+                {tab === 'time'     && <TimeMachine {...tabProps} />}
+                {tab === 'danger'   && <DangerZone {...tabProps} />}
             </div>
         </div>
     )
