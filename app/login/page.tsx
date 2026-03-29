@@ -293,7 +293,22 @@ export default function LoginPage() {
             })
 
             if (error) {
-                toast.error('Invalid phone number or password')
+                // Distinguish between wrong phone and wrong password
+                if (error.message?.includes('Invalid login credentials')) {
+                    // Check if the phone number exists as a staff member
+                    const { data: staffCheck } = await supabase
+                        .from('staff')
+                        .select('id')
+                        .eq('phone', digits)
+                        .maybeSingle()
+                    if (!staffCheck) {
+                        toast.error('Invalid phone number — no staff found with this number')
+                    } else {
+                        toast.error('Wrong password — please try again')
+                    }
+                } else {
+                    toast.error(error.message || 'Login failed')
+                }
                 return
             }
 
