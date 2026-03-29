@@ -104,12 +104,12 @@ export function DangerZone({ hotels }: AdminTabProps) {
                 supabase.from('attendance').select('id', { count: 'exact', head: true }),
                 supabase.from('staff_incidents').select('id', { count: 'exact', head: true }),
                 supabase.from('payroll').select('id', { count: 'exact', head: true }),
-                supabase.from('maintenance').select('id', { count: 'exact', head: true }),
+                supabase.from('maintenance_tickets').select('id', { count: 'exact', head: true }),
                 supabase.from('restock_requests').select('id', { count: 'exact', head: true }),
                 supabase.from('customer_issues').select('id', { count: 'exact', head: true }),
-                supabase.from('expenses').select('id', { count: 'exact', head: true }),
+                supabase.from('property_expenses').select('id', { count: 'exact', head: true }),
                 supabase.from('shift_reports').select('id', { count: 'exact', head: true }),
-                supabase.from('laundry').select('id', { count: 'exact', head: true }),
+                supabase.from('laundry_orders').select('id', { count: 'exact', head: true }),
             ]
 
             const results = await Promise.all(queries)
@@ -161,12 +161,12 @@ export function DangerZone({ hotels }: AdminTabProps) {
                 attendance: 'attendance',
                 staff_incidents: 'staff_incidents',
                 payroll: 'payroll',
-                maintenance: 'maintenance',
+                maintenance: 'maintenance_tickets',
                 restock: 'restock_requests',
                 customer_issues: 'customer_issues',
-                expenses: 'expenses',
+                expenses: 'property_expenses',
                 shift_reports: 'shift_reports',
-                laundry: 'laundry',
+                laundry: 'laundry_orders',
             }
 
             const actualTable = tableMap[purgeTable]
@@ -180,7 +180,7 @@ export function DangerZone({ hotels }: AdminTabProps) {
             // Filter by hotel if selected
             if (purgeHotel !== 'ALL') {
                 // Tables that have hotel_id directly
-                const tablesWithHotelId = ['attendance', 'staff_incidents', 'payroll', 'maintenance', 'restock_requests', 'customer_issues', 'expenses', 'shift_reports', 'laundry']
+                const tablesWithHotelId = ['attendance', 'staff_incidents', 'payroll', 'maintenance_tickets', 'restock_requests', 'customer_issues', 'property_expenses', 'shift_reports', 'laundry_orders']
                 if (tablesWithHotelId.includes(actualTable)) {
                     query = query.eq('hotel_id', purgeHotel)
                 }
@@ -223,14 +223,15 @@ export function DangerZone({ hotels }: AdminTabProps) {
         try {
             // Delete in dependency order
             const tables = [
+                'notifications',
                 'payments',
                 'guests',
                 'shift_reports',
-                'expenses',
+                'property_expenses',
                 'customer_issues',
                 'restock_requests',
-                'maintenance',
-                'laundry',
+                'maintenance_tickets',
+                'laundry_orders',
                 'payroll',
                 'staff_incidents',
                 'attendance',
