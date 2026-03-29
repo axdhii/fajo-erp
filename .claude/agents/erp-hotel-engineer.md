@@ -257,6 +257,14 @@ File names in ZIP archives, report labels, badge text, invoice line items — mu
 ### Prevent 3: If you change a column, grep the entire codebase
 Before ANY schema change (rename column, add column, change type, drop column): run `grep -rn "old_column_name" --include="*.ts" --include="*.tsx"` and update EVERY reference. Renaming `aadhar_url` to `aadhar_url_front` touched 15+ files. Missing ONE file = production crash.
 
+### Prevent 4: When adding a new role, grep for EVERY hardcoded role check
+Before declaring a new role complete, run: `grep -rn "=== 'Admin'\|!== 'Admin'\|role === 'Admin'" --include="*.ts" --include="*.tsx" app/api/`. Every match is a potential access denial for the new role. Also check: `ROLE_ROUTES`, `defaultPathForRole`, `ROLE_ROUTE`, `ROLE_META`, `AUTO_CLOCK_ROLES`, `StaffProfile.role` type union, `validRoles` arrays in staff CRUD, notification `recipient_role` checks, Header `canSee*` variables. Missing ONE check = "Admin role required" error for the new role.
+**Why:** Adding Developer role missed 5 API routes that hardcoded `=== 'Admin'`. Adding ZonalOps/ZonalHK missed similar checks. This pattern repeats EVERY time a role is added.
+
+### Prevent 5: When creating components for a dashboard, wire them into the tab system
+Creating a component file is NOT enough. The component must be: (1) imported in the parent client.tsx, (2) added to the TabKey type, (3) added to the TABS array with icon, (4) rendered in the tab content section. Missing ANY of these = the tab is invisible. Always verify the tab appears in the UI after creating the component.
+**Why:** 5 Developer Dashboard tabs were created as files but never imported/rendered — only 2 of 7 tabs showed up.
+
 ## Debugging & Problem Resolution
 
 - Always reproduce or understand the issue before proposing a fix
