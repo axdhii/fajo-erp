@@ -2,6 +2,7 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/shared/Header'
+import { ShiftReportModal } from '@/components/shared/ShiftReportModal'
 import { Toaster } from '@/components/ui/sonner'
 import { useAuthStore } from '@/lib/store/auth-store'
 
@@ -30,6 +31,7 @@ export default function DashboardLayout({
             <main className="container mx-auto px-4 py-8">
                 {children}
             </main>
+            <ShiftReportModal />
             <Toaster position="bottom-center" richColors />
         </div>
     )
