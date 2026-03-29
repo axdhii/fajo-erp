@@ -26,6 +26,7 @@ import {
     Camera,
     CheckCircle2,
     Code2,
+    Upload,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -155,7 +156,9 @@ export default function LoginPage() {
     const [clockInPhoto, setClockInPhoto] = useState<string | null>(null)
     const [cameraActive, setCameraActive] = useState(false)
     const [clockingIn, setClockingIn] = useState(false)
+    const [cameraFailed, setCameraFailed] = useState(false)
     const videoRef = useRef<HTMLVideoElement>(null)
+    const fileInputRef = useRef<HTMLInputElement>(null)
 
     /* -------------------------------------------------------------- */
     /*  Already authenticated? Redirect.                               */
@@ -344,9 +347,37 @@ export default function LoginPage() {
                 videoRef.current.play()
             }
             setCameraActive(true)
+            setCameraFailed(false)
         } catch {
-            toast.error('Camera access denied')
+            setCameraFailed(true)
+            toast.error('Camera unavailable — use the upload option instead')
         }
+    }
+
+    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        if (!file.type.startsWith('image/')) {
+            toast.error('Please select an image file')
+            return
+        }
+        const reader = new FileReader()
+        reader.onload = () => {
+            // Resize to 320x240 to match camera output
+            const img = new window.Image()
+            img.onload = () => {
+                const canvas = document.createElement('canvas')
+                canvas.width = 320
+                canvas.height = 240
+                const ctx = canvas.getContext('2d')
+                if (ctx) {
+                    ctx.drawImage(img, 0, 0, 320, 240)
+                    setClockInPhoto(canvas.toDataURL('image/jpeg', 0.6))
+                }
+            }
+            img.src = reader.result as string
+        }
+        reader.readAsDataURL(file)
     }
 
     const capturePhoto = () => {
@@ -790,31 +821,71 @@ export default function LoginPage() {
 
                             <div className="rounded-2xl border-2 border-slate-200 bg-white p-6 shadow-sm">
                                 <div className="flex flex-col items-center gap-5">
-                                    {/* Camera preview — video always mounted so ref is available */}
+                                    {/* Camera preview or file upload fallback */}
                                     {!clockInPhoto && (
                                         <>
-                                            <div className="rounded-2xl border-2 border-slate-200 overflow-hidden bg-black">
-                                                <video
-                                                    ref={videoRef}
-                                                    autoPlay
-                                                    playsInline
-                                                    muted
-                                                    width={320}
-                                                    height={240}
-                                                    className="block"
-                                                />
-                                            </div>
-                                            {cameraActive ? (
-                                                <Button
-                                                    type="button"
-                                                    onClick={capturePhoto}
-                                                    className="h-12 px-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-base shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98] gap-2"
-                                                >
-                                                    <Camera className="h-5 w-5" />
-                                                    Capture Photo
-                                                </Button>
+                                            {!cameraFailed ? (
+                                                <>
+                                                    <div className="rounded-2xl border-2 border-slate-200 overflow-hidden bg-black">
+                                                        <video
+                                                            ref={videoRef}
+                                                            autoPlay
+                                                            playsInline
+                                                            muted
+                                                            width={320}
+                                                            height={240}
+                                                            className="block"
+                                                        />
+                                                    </div>
+                                                    {cameraActive ? (
+                                                        <Button
+                                                            type="button"
+                                                            onClick={capturePhoto}
+                                                            className="h-12 px-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-base shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98] gap-2"
+                                                        >
+                                                            <Camera className="h-5 w-5" />
+                                                            Capture Photo
+                                                        </Button>
+                                                    ) : (
+                                                        <p className="text-sm text-slate-400 animate-pulse">Starting camera...</p>
+                                                    )}
+                                                </>
                                             ) : (
-                                                <p className="text-sm text-slate-400 animate-pulse">Starting camera...</p>
+                                                <>
+                                                    <div className="rounded-2xl border-2 border-dashed border-amber-300 bg-amber-50 p-6 text-center w-full">
+                                                        <AlertTriangle className="h-8 w-8 mx-auto mb-2 text-amber-500" />
+                                                        <p className="text-sm font-medium text-amber-800 mb-1">Camera unavailable</p>
+                                                        <p className="text-xs text-amber-600 mb-4">Take a selfie and upload it instead</p>
+                                                        <input
+                                                            ref={fileInputRef}
+                                                            type="file"
+                                                            accept="image/*"
+                                                            capture="user"
+                                                            onChange={handleFileUpload}
+                                                            className="hidden"
+                                                        />
+                                                        <Button
+                                                            type="button"
+                                                            onClick={() => fileInputRef.current?.click()}
+                                                            className="h-12 px-8 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold text-base shadow-lg shadow-emerald-600/20 transition-all active:scale-[0.98] gap-2"
+                                                        >
+                                                            <Upload className="h-5 w-5" />
+                                                            Upload Photo
+                                                        </Button>
+                                                    </div>
+                                                    <Button
+                                                        type="button"
+                                                        variant="ghost"
+                                                        onClick={() => {
+                                                            setCameraFailed(false)
+                                                            startCamera()
+                                                        }}
+                                                        className="text-sm text-slate-500 gap-2"
+                                                    >
+                                                        <RefreshCw className="h-4 w-4" />
+                                                        Retry Camera
+                                                    </Button>
+                                                </>
                                             )}
                                         </>
                                     )}

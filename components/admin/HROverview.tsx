@@ -84,7 +84,7 @@ export function HROverview({ hotelId, hotels, staffId }: AdminTabProps) {
 
         let query = supabase
             .from('attendance')
-            .select('*, staff:staff_id(name, role, hotel_id), hotel:hotel_id(name)')
+            .select('*, staff:staff!staff_id(name, role, hotel_id), hotel:hotels!hotel_id(name)')
             .gte('clock_in', attendanceDate + 'T00:00:00+05:30')
             .lt('clock_in', nextDay)
             .order('clock_in', { ascending: false })
@@ -104,7 +104,7 @@ export function HROverview({ hotelId, hotels, staffId }: AdminTabProps) {
 
         let query = supabase
             .from('staff_incidents')
-            .select('*, staff:staff_id(name, role), hotel:hotel_id(name)')
+            .select('*, staff:staff!staff_id(name, role), hotel:hotels!hotel_id(name)')
             .gte('incident_date', thirtyDaysAgoStr)
             .order('incident_date', { ascending: false })
 
@@ -121,7 +121,7 @@ export function HROverview({ hotelId, hotels, staffId }: AdminTabProps) {
 
         let query = supabase
             .from('payroll')
-            .select('*, staff:staff_id(name, role, base_salary), hotel:hotel_id(name)')
+            .select('*, staff:staff!staff_id(name, role, base_salary), hotel:hotels!hotel_id(name)')
             .eq('month', monthStart)
             .order('created_at', { ascending: false })
 
