@@ -184,7 +184,7 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
     const [statusFilter, setStatusFilter] = useState('ALL')
     const [expandedId, setExpandedId] = useState<string | null>(null)
     const [signedUrls, setSignedUrls] = useState<Record<string, string>>({})
-    const [enlargedPhoto, setEnlargedPhoto] = useState<{ front: string | null; back: string | null } | null>(null)
+    const [enlargedPhoto, setEnlargedPhoto] = useState<{ front: string | null; back: string | null; isStitched?: boolean } | null>(null)
 
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -573,6 +573,8 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
                                                         const frontArchived = !!frontPath?.startsWith('ARCHIVED:')
                                                         const backArchived = !!backPath?.startsWith('ARCHIVED:')
                                                         const allArchived = (frontArchived || !frontPath) && (backArchived || !backPath) && (frontArchived || backArchived)
+                                                        // Stitched = front+back combined into single image (front exists, back is null)
+                                                        const isStitched = frontAvailable && !backPath
 
                                                         return (
                                                             <div
@@ -596,82 +598,118 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
 
                                                                     {/* Aadhar photo buttons */}
                                                                     <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-                                                                        {/* Front */}
-                                                                        {frontAvailable ? (
+                                                                        {isStitched ? (
+                                                                            /* Stitched: single combined image — show one "Aadhar" button */
                                                                             <div className="flex items-center gap-0.5">
                                                                                 <button
                                                                                     onClick={async (e) => {
                                                                                         e.stopPropagation()
                                                                                         const fUrl = await getSignedUrl(frontPath!)
-                                                                                        const bUrl = backAvailable ? await getSignedUrl(backPath!) : null
-                                                                                        if (fUrl) setEnlargedPhoto({ front: fUrl, back: bUrl })
+                                                                                        if (fUrl) setEnlargedPhoto({ front: fUrl, back: null, isStitched: true })
                                                                                     }}
                                                                                     className="flex items-center gap-1 text-[10px] text-violet-600 hover:text-violet-800 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded-md transition-colors cursor-pointer"
-                                                                                    title="View Aadhar front"
+                                                                                    title="View Aadhar"
                                                                                 >
                                                                                     {signedUrls[frontPath!] ? (
                                                                                         <img
                                                                                             src={signedUrls[frontPath!]}
-                                                                                            alt="Front"
+                                                                                            alt="Aadhar"
                                                                                             className="w-5 h-4 object-cover rounded"
                                                                                             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
                                                                                         />
                                                                                     ) : (
                                                                                         <ImageIcon className="h-3 w-3" />
                                                                                     )}
-                                                                                    Front
+                                                                                    Aadhar
                                                                                 </button>
                                                                                 <button
                                                                                     onClick={(e) => { e.stopPropagation(); handleCopyLink(frontPath!) }}
                                                                                     className="text-[10px] text-slate-400 hover:text-slate-600 p-1 rounded cursor-pointer"
-                                                                                    title="Copy 24hr link (front)"
+                                                                                    title="Copy 24hr link"
                                                                                 >
                                                                                     <Copy className="h-3 w-3" />
                                                                                 </button>
                                                                             </div>
-                                                                        ) : frontArchived ? (
-                                                                            <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Front: Archived</span>
                                                                         ) : (
-                                                                            <span className="text-[10px] text-slate-400">Front: Not captured</span>
-                                                                        )}
+                                                                            <>
+                                                                                {/* Front */}
+                                                                                {frontAvailable ? (
+                                                                                    <div className="flex items-center gap-0.5">
+                                                                                        <button
+                                                                                            onClick={async (e) => {
+                                                                                                e.stopPropagation()
+                                                                                                const fUrl = await getSignedUrl(frontPath!)
+                                                                                                const bUrl = backAvailable ? await getSignedUrl(backPath!) : null
+                                                                                                if (fUrl) setEnlargedPhoto({ front: fUrl, back: bUrl })
+                                                                                            }}
+                                                                                            className="flex items-center gap-1 text-[10px] text-violet-600 hover:text-violet-800 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded-md transition-colors cursor-pointer"
+                                                                                            title="View Aadhar front"
+                                                                                        >
+                                                                                            {signedUrls[frontPath!] ? (
+                                                                                                <img
+                                                                                                    src={signedUrls[frontPath!]}
+                                                                                                    alt="Front"
+                                                                                                    className="w-5 h-4 object-cover rounded"
+                                                                                                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                                                                                                />
+                                                                                            ) : (
+                                                                                                <ImageIcon className="h-3 w-3" />
+                                                                                            )}
+                                                                                            Front
+                                                                                        </button>
+                                                                                        <button
+                                                                                            onClick={(e) => { e.stopPropagation(); handleCopyLink(frontPath!) }}
+                                                                                            className="text-[10px] text-slate-400 hover:text-slate-600 p-1 rounded cursor-pointer"
+                                                                                            title="Copy 24hr link (front)"
+                                                                                        >
+                                                                                            <Copy className="h-3 w-3" />
+                                                                                        </button>
+                                                                                    </div>
+                                                                                ) : frontArchived ? (
+                                                                                    <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Front: Archived</span>
+                                                                                ) : (
+                                                                                    <span className="text-[10px] text-slate-400">Front: Not captured</span>
+                                                                                )}
 
-                                                                        {/* Back */}
-                                                                        {backAvailable ? (
-                                                                            <div className="flex items-center gap-0.5">
-                                                                                <button
-                                                                                    onClick={async (e) => {
-                                                                                        e.stopPropagation()
-                                                                                        const bUrl = await getSignedUrl(backPath!)
-                                                                                        const fUrl = frontAvailable ? await getSignedUrl(frontPath!) : null
-                                                                                        if (bUrl) setEnlargedPhoto({ front: fUrl, back: bUrl })
-                                                                                    }}
-                                                                                    className="flex items-center gap-1 text-[10px] text-violet-600 hover:text-violet-800 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded-md transition-colors cursor-pointer"
-                                                                                    title="View Aadhar back"
-                                                                                >
-                                                                                    {signedUrls[backPath!] ? (
-                                                                                        <img
-                                                                                            src={signedUrls[backPath!]}
-                                                                                            alt="Back"
-                                                                                            className="w-5 h-4 object-cover rounded"
-                                                                                            onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
-                                                                                        />
-                                                                                    ) : (
-                                                                                        <ImageIcon className="h-3 w-3" />
-                                                                                    )}
-                                                                                    Back
-                                                                                </button>
-                                                                                <button
-                                                                                    onClick={(e) => { e.stopPropagation(); handleCopyLink(backPath!) }}
-                                                                                    className="text-[10px] text-slate-400 hover:text-slate-600 p-1 rounded cursor-pointer"
-                                                                                    title="Copy 24hr link (back)"
-                                                                                >
-                                                                                    <Copy className="h-3 w-3" />
-                                                                                </button>
-                                                                            </div>
-                                                                        ) : backArchived ? (
-                                                                            <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Back: Archived</span>
-                                                                        ) : (
-                                                                            <span className="text-[10px] text-slate-400">Back: Not captured</span>
+                                                                                {/* Back */}
+                                                                                {backAvailable ? (
+                                                                                    <div className="flex items-center gap-0.5">
+                                                                                        <button
+                                                                                            onClick={async (e) => {
+                                                                                                e.stopPropagation()
+                                                                                                const bUrl = await getSignedUrl(backPath!)
+                                                                                                const fUrl = frontAvailable ? await getSignedUrl(frontPath!) : null
+                                                                                                if (bUrl) setEnlargedPhoto({ front: fUrl, back: bUrl })
+                                                                                            }}
+                                                                                            className="flex items-center gap-1 text-[10px] text-violet-600 hover:text-violet-800 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded-md transition-colors cursor-pointer"
+                                                                                            title="View Aadhar back"
+                                                                                        >
+                                                                                            {signedUrls[backPath!] ? (
+                                                                                                <img
+                                                                                                    src={signedUrls[backPath!]}
+                                                                                                    alt="Back"
+                                                                                                    className="w-5 h-4 object-cover rounded"
+                                                                                                    onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
+                                                                                                />
+                                                                                            ) : (
+                                                                                                <ImageIcon className="h-3 w-3" />
+                                                                                            )}
+                                                                                            Back
+                                                                                        </button>
+                                                                                        <button
+                                                                                            onClick={(e) => { e.stopPropagation(); handleCopyLink(backPath!) }}
+                                                                                            className="text-[10px] text-slate-400 hover:text-slate-600 p-1 rounded cursor-pointer"
+                                                                                            title="Copy 24hr link (back)"
+                                                                                        >
+                                                                                            <Copy className="h-3 w-3" />
+                                                                                        </button>
+                                                                                    </div>
+                                                                                ) : backArchived ? (
+                                                                                    <span className="text-[10px] text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">Back: Archived</span>
+                                                                                ) : (
+                                                                                    <span className="text-[10px] text-slate-400">Back: Not captured</span>
+                                                                                )}
+                                                                            </>
                                                                         )}
 
                                                                         {allArchived && (
@@ -824,36 +862,48 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
                                 <X className="h-5 w-5" />
                             </button>
                         </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            {enlargedPhoto.front ? (
-                                <div>
-                                    <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider mb-1">Front</p>
-                                    <img
-                                        src={enlargedPhoto.front}
-                                        alt="Aadhar Front"
-                                        className="rounded-xl w-full object-contain max-h-[60vh]"
-                                    />
-                                </div>
-                            ) : (
-                                <div className="flex items-center justify-center bg-slate-50 rounded-xl min-h-[200px]">
-                                    <p className="text-xs text-slate-400">Front not available</p>
-                                </div>
-                            )}
-                            {enlargedPhoto.back ? (
-                                <div>
-                                    <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider mb-1">Back</p>
-                                    <img
-                                        src={enlargedPhoto.back}
-                                        alt="Aadhar Back"
-                                        className="rounded-xl w-full object-contain max-h-[60vh]"
-                                    />
-                                </div>
-                            ) : (
-                                <div className="flex items-center justify-center bg-slate-50 rounded-xl min-h-[200px]">
-                                    <p className="text-xs text-slate-400">Back not available</p>
-                                </div>
-                            )}
-                        </div>
+                        {enlargedPhoto.isStitched ? (
+                            /* Stitched: single full-width image */
+                            <div>
+                                <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider mb-1">Aadhar Card</p>
+                                <img
+                                    src={enlargedPhoto.front!}
+                                    alt="Aadhar Card"
+                                    className="rounded-xl w-full object-contain max-h-[75vh]"
+                                />
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                {enlargedPhoto.front ? (
+                                    <div>
+                                        <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider mb-1">Front</p>
+                                        <img
+                                            src={enlargedPhoto.front}
+                                            alt="Aadhar Front"
+                                            className="rounded-xl w-full object-contain max-h-[60vh]"
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center justify-center bg-slate-50 rounded-xl min-h-[200px]">
+                                        <p className="text-xs text-slate-400">Front not available</p>
+                                    </div>
+                                )}
+                                {enlargedPhoto.back ? (
+                                    <div>
+                                        <p className="text-[11px] text-slate-400 font-semibold uppercase tracking-wider mb-1">Back</p>
+                                        <img
+                                            src={enlargedPhoto.back}
+                                            alt="Aadhar Back"
+                                            className="rounded-xl w-full object-contain max-h-[60vh]"
+                                        />
+                                    </div>
+                                ) : (
+                                    <div className="flex items-center justify-center bg-slate-50 rounded-xl min-h-[200px]">
+                                        <p className="text-xs text-slate-400">Back not available</p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </div>
                 </div>
             )}
