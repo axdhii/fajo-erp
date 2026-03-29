@@ -273,7 +273,7 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
                     </div>
                     <div>
                         <p className="text-lg font-bold text-emerald-800 leading-none">{formatCurrency(shiftCash)}</p>
-                        <p className="text-[10px] font-medium text-emerald-500 uppercase tracking-wider mt-0.5">Cash Today</p>
+                        <p className="text-[10px] font-medium text-emerald-500 uppercase tracking-wider mt-0.5">My Check-ins Cash</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-2xl bg-blue-50 border border-blue-200 px-4 py-3">
@@ -282,7 +282,7 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
                     </div>
                     <div>
                         <p className="text-lg font-bold text-blue-800 leading-none">{formatCurrency(shiftDigital)}</p>
-                        <p className="text-[10px] font-medium text-blue-500 uppercase tracking-wider mt-0.5">Digital Today</p>
+                        <p className="text-[10px] font-medium text-blue-500 uppercase tracking-wider mt-0.5">My Check-ins Digital</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-2xl bg-violet-50 border border-violet-200 px-4 py-3">
@@ -291,7 +291,7 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
                     </div>
                     <div>
                         <p className="text-lg font-bold text-violet-800 leading-none">{formatCurrency(shiftCash + shiftDigital)}</p>
-                        <p className="text-[10px] font-medium text-violet-500 uppercase tracking-wider mt-0.5">Total Today</p>
+                        <p className="text-[10px] font-medium text-violet-500 uppercase tracking-wider mt-0.5">My Check-ins Total</p>
                     </div>
                 </div>
             </div>

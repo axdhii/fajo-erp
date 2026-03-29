@@ -1,6 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
-import { getDevNow } from '@/lib/dev-time'
 import { requireAuth } from '@/lib/auth'
 
 // POST /api/overrides/emergency-vacate
@@ -43,8 +42,11 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        const now = getDevNow()
         const vacateReason = reason || 'Emergency vacate by CRE'
+
+        // Look up caller staff ID for audit trail
+        const { data: callerStaff } = await supabase
+            .from('staff').select('id').eq('user_id', auth.userId).single()
 
         // Close all active bookings on this unit (preserve existing notes)
         const { data: activeBookings } = await supabase
@@ -59,7 +61,7 @@ export async function POST(request: NextRequest) {
                     .from('bookings')
                     .update({
                         status: 'CHECKED_OUT',
-                        check_out: now.toISOString(),
+                        checked_out_by: callerStaff?.id || null,
                         notes: (b.notes ? b.notes + ' | ' : '') + `[EMERGENCY VACATE] ${vacateReason}`,
                     })
                     .eq('id', b.id)
@@ -84,17 +86,17 @@ export async function POST(request: NextRequest) {
         }
 
         // Create a maintenance ticket for the emergency vacate
-        const { data: callerStaff } = await supabase
-            .from('staff').select('id').eq('user_id', auth.userId).single()
-
-        await supabase.from('maintenance_tickets').insert({
+        const { data: ticket } = await supabase.from('maintenance_tickets').insert({
             unit_id: unitId,
             hotel_id: unit.hotel_id,
             description: `Emergency vacate: ${vacateReason}`,
             priority: 'HIGH',
             reported_by: callerStaff?.id || null,
             status: 'OPEN',
-        })
+        }).select('id').single()
+
+        // Notify ZonalHK about the emergency maintenance
+        try { await supabase.from('notifications').insert({ hotel_id: unit.hotel_id, recipient_role: 'ZonalHK', type: 'URGENT_MAINTENANCE', title: 'Emergency Vacate — Maintenance Required', message: `${unit.unit_number} — ${vacateReason || 'Emergency vacate'}`, link: '/zonal-hk', source_table: 'maintenance_tickets', source_id: ticket?.id || null }) } catch { /* never block */ }
 
         return NextResponse.json({
             success: true,

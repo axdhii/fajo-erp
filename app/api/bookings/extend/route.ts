@@ -104,11 +104,13 @@ export async function PATCH(request: Request) {
         // 4. Update the payments record if there is a fee
         if (fee > 0 && paymentType) {
             // Fetch existing payment
-            const { data: paymentRecord } = await supabase
+            const { data: paymentRecords } = await supabase
                 .from('payments')
                 .select('*')
                 .eq('booking_id', booking.id)
-                .single()
+                .order('created_at', { ascending: false })
+
+            const paymentRecord = paymentRecords?.[0] || null
 
             if (paymentRecord) {
                 const updatePayload: Record<string, number> = {

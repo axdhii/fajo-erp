@@ -151,7 +151,7 @@ export function ExtendSheet({ unit, open, onOpenChange, onSuccess }: ExtendSheet
                                 type="button"
                                 onClick={() => setAmount((n) => Math.max(1, n - 1))}
                                 disabled={amount <= 1}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 transition-colors"
+                                className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-30 transition-colors"
                             >
                                 <Minus className="h-4 w-4 text-slate-600" />
                             </button>
@@ -161,7 +161,7 @@ export function ExtendSheet({ unit, open, onOpenChange, onSuccess }: ExtendSheet
                             <button
                                 type="button"
                                 onClick={() => setAmount((n) => n + 1)}
-                                className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors"
+                                className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors"
                             >
                                 <Plus className="h-4 w-4 text-slate-600" />
                             </button>

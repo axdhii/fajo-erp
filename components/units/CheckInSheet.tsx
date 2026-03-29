@@ -552,7 +552,7 @@ export function CheckInSheet({
                                     type="button"
                                     onClick={() => setNumberOfDays((n) => Math.max(1, n - 1))}
                                     disabled={numberOfDays <= 1}
-                                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                    className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                                 >
                                     <Minus className="h-3.5 w-3.5" />
                                 </button>
@@ -562,7 +562,7 @@ export function CheckInSheet({
                                 <button
                                     type="button"
                                     onClick={() => setNumberOfDays((n) => n + 1)}
-                                    className="flex h-8 w-8 items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
+                                    className="flex h-11 w-11 items-center justify-center rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors"
                                 >
                                     <Plus className="h-3.5 w-3.5" />
                                 </button>
