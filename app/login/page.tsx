@@ -294,7 +294,7 @@ export default function LoginPage() {
 
             if (error) {
                 // Distinguish between wrong phone and wrong password
-                if ((error as Record<string, unknown>).code === 'invalid_credentials' || error.message?.includes('Invalid login credentials') || error.message?.includes('credentials')) {
+                if ((error as unknown as { code?: string }).code === 'invalid_credentials' || error.message?.includes('Invalid login credentials') || error.message?.includes('credentials')) {
                     // Check if the phone number exists as a staff member
                     const { data: staffCheck } = await supabase
                         .from('staff')
