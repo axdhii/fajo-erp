@@ -28,7 +28,7 @@ async function requireAdmin(supabase: Awaited<ReturnType<typeof createClient>>, 
         .eq('user_id', userId)
         .single()
 
-    if (!profile || profile.role !== 'Admin') {
+    if (!profile || !['Admin', 'Developer'].includes(profile.role)) {
         return { error: NextResponse.json({ error: 'Forbidden — Admin role required' }, { status: 403 }) }
     }
     return { profile }
@@ -99,7 +99,7 @@ export async function POST(request: NextRequest) {
         const email = `${phone}@fajo.local`
         const password = (customPassword && typeof customPassword === 'string' && customPassword.trim().length >= 6)
             ? customPassword.trim()
-            : (role === 'Admin' ? 'password123' : 'fajo123')
+            : (['Admin', 'Developer'].includes(role) ? 'password123' : 'fajo123')
 
         let adminClient
         try {
@@ -249,7 +249,7 @@ export async function PATCH(request: NextRequest) {
                 return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 })
             } else if (role !== undefined && role !== existing.role) {
                 // Only set default password on role change when no explicit password was given
-                authUpdates.password = role === 'Admin' ? 'password123' : 'fajo123'
+                authUpdates.password = ['Admin', 'Developer'].includes(role) ? 'password123' : 'fajo123'
             }
 
             if (Object.keys(authUpdates).length > 0) {

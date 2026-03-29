@@ -23,7 +23,7 @@ export async function POST() {
             .eq('user_id', user.id)
             .single()
 
-        if (!staff || staff.role !== 'Admin') {
+        if (!staff || !['Admin', 'Developer'].includes(staff.role)) {
             return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
         }
 

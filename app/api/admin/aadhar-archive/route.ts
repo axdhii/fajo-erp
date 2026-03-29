@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
             .eq('user_id', auth.userId)
             .single()
 
-        if (!profile || profile.role !== 'Admin') {
+        if (!profile || !['Admin', 'Developer'].includes(profile.role)) {
             return NextResponse.json({ error: 'Admin access required' }, { status: 403 })
         }
 
