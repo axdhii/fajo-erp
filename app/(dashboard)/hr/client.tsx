@@ -411,7 +411,7 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
         const from = `${shiftReportDate}T${shiftReportFromTime}:00+05:30`
         const to = `${shiftReportDate}T${shiftReportToTime}:59+05:30`
         try {
-            const res = await fetch(`/api/shift-reports?hotel_id=${hotelId}&from=${from}&to=${to}`)
+            const res = await fetch(`/api/shift-reports?hotel_id=${hotelId}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
             const json = await res.json()
             if (json.data) setShiftReports(json.data)
         } catch {

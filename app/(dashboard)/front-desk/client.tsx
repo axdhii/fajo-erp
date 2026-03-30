@@ -73,14 +73,24 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
     const [shiftDigital, setShiftDigital] = useState(0)
 
     const fetchShiftRevenue = useCallback(async () => {
+        // Use current clock-in session start (not midnight) to scope revenue to THIS session only
+        const { data: activeSession } = await supabase
+            .from('attendance')
+            .select('clock_in')
+            .eq('staff_id', staffId)
+            .eq('status', 'CLOCKED_IN')
+            .order('clock_in', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
         const todayIST = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
-        const todayStart = `${todayIST}T00:00:00+05:30`
+        const sessionStart = activeSession?.clock_in || `${todayIST}T00:00:00+05:30`
 
         const { data: myBookings } = await supabase
             .from('bookings')
             .select('id, advance_amount, advance_type')
             .eq('created_by', staffId)
-            .gte('created_at', todayStart)
+            .gte('created_at', sessionStart)
 
         if (!myBookings?.length) { setShiftCash(0); setShiftDigital(0); return }
 
@@ -273,7 +283,7 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
                     </div>
                     <div>
                         <p className="text-lg font-bold text-emerald-800 leading-none">{formatCurrency(shiftCash)}</p>
-                        <p className="text-[10px] font-medium text-emerald-500 uppercase tracking-wider mt-0.5">My Check-ins Cash</p>
+                        <p className="text-[10px] font-medium text-emerald-500 uppercase tracking-wider mt-0.5">Session Cash</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-2xl bg-blue-50 border border-blue-200 px-4 py-3">
@@ -282,7 +292,7 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
                     </div>
                     <div>
                         <p className="text-lg font-bold text-blue-800 leading-none">{formatCurrency(shiftDigital)}</p>
-                        <p className="text-[10px] font-medium text-blue-500 uppercase tracking-wider mt-0.5">My Check-ins Digital</p>
+                        <p className="text-[10px] font-medium text-blue-500 uppercase tracking-wider mt-0.5">Session Digital</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-3 rounded-2xl bg-violet-50 border border-violet-200 px-4 py-3">
@@ -291,7 +301,7 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
                     </div>
                     <div>
                         <p className="text-lg font-bold text-violet-800 leading-none">{formatCurrency(shiftCash + shiftDigital)}</p>
-                        <p className="text-[10px] font-medium text-violet-500 uppercase tracking-wider mt-0.5">My Check-ins Total</p>
+                        <p className="text-[10px] font-medium text-violet-500 uppercase tracking-wider mt-0.5">Session Total</p>
                     </div>
                 </div>
             </div>
