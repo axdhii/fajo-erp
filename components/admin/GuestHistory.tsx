@@ -573,8 +573,8 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
                                                         const frontArchived = !!frontPath?.startsWith('ARCHIVED:')
                                                         const backArchived = !!backPath?.startsWith('ARCHIVED:')
                                                         const allArchived = (frontArchived || !frontPath) && (backArchived || !backPath) && (frontArchived || backArchived)
-                                                        // Stitched = front+back combined into single image (front exists, back is null)
-                                                        const isStitched = frontAvailable && !backPath
+                                                        // Stitched = front+back combined into single image (same path in both columns, or back is null)
+                                                        const isStitched = frontAvailable && (!backPath || frontPath === backPath)
 
                                                         return (
                                                             <div
