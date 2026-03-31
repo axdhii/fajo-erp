@@ -62,7 +62,7 @@ export function Header() {
         <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/80 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/80">
             <div className="container mx-auto flex h-16 items-center justify-between px-4">
                 <div className="flex items-center gap-4 md:gap-6">
-                    <Link href={`/${profile.role === 'Admin' ? 'admin' : profile.role === 'ZonalManager' ? 'zonal' : profile.role === 'ZonalOps' ? 'zonal-ops' : profile.role === 'ZonalHK' ? 'zonal-hk' : profile.role === 'HR' ? 'hr' : profile.role === 'Housekeeping' ? 'housekeeping' : 'front-desk'}`} className="flex items-center gap-2">
+                    <Link href={`/${profile.role === 'Developer' ? 'developer' : profile.role === 'Admin' ? 'admin' : profile.role === 'ZonalManager' ? 'zonal' : profile.role === 'ZonalOps' ? 'zonal-ops' : profile.role === 'ZonalHK' ? 'zonal-hk' : profile.role === 'HR' ? 'hr' : profile.role === 'Housekeeping' ? 'housekeeping' : 'front-desk'}`} className="flex items-center gap-2">
                         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
                             <span className="font-bold text-lg leading-none">F</span>
                         </div>

@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
             .from('staff')
             .select('id, name, role, base_salary')
             .eq('hotel_id', hotel_id)
-            .neq('role', 'Admin')
+            .not('role', 'in', '("Admin","Developer")')
 
         if (staffErr || !staffList) {
             return NextResponse.json({ error: 'Failed to fetch staff' }, { status: 500 })

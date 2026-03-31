@@ -14,7 +14,7 @@ export async function GET() {
         // Role authorization: only ZonalManager and Admin
         const { data: callerProfile } = await supabase
             .from('staff').select('role').eq('user_id', auth.userId).single()
-        if (!callerProfile || !['ZonalManager', 'Admin', 'ZonalOps', 'ZonalHK'].includes(callerProfile.role)) {
+        if (!callerProfile || !['ZonalManager', 'Admin', 'Developer', 'ZonalOps', 'ZonalHK'].includes(callerProfile.role)) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
         }
 

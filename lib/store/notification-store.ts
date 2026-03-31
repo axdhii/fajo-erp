@@ -48,7 +48,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
             .order('created_at', { ascending: false })
             .limit(50)
 
-        if (role !== 'Admin') {
+        if (role !== 'Admin' && role !== 'Developer') {
             query = query.or(`recipient_role.eq.${role},recipient_staff_id.eq.${staffId}`)
         }
 
@@ -93,7 +93,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
         }))
 
         let query = supabase.from('notifications').update({ read: true }).eq('hotel_id', hotelId).eq('read', false)
-        if (role !== 'Admin') {
+        if (role !== 'Admin' && role !== 'Developer') {
             query = query.or(`recipient_role.eq.${role},recipient_staff_id.eq.${staffId}`)
         }
 
@@ -117,7 +117,7 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
                 filter: `hotel_id=eq.${hotelId}`,
             }, (payload) => {
                 const n = payload.new as Notification
-                const isForMe = role === 'Admin' || n.recipient_role === role || n.recipient_staff_id === staffId
+                const isForMe = role === 'Admin' || role === 'Developer' || n.recipient_role === role || n.recipient_staff_id === staffId
                 if (isForMe) {
                     set(state => ({
                         notifications: [n, ...state.notifications].slice(0, 50),

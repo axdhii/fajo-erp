@@ -113,7 +113,7 @@ export async function PATCH(request: NextRequest) {
         }
 
         // Only ZonalOps, ZonalManager, and Admin can approve/reject
-        if (!['Admin', 'ZonalManager', 'ZonalOps'].includes(callerStaff.role)) {
+        if (!['Admin', 'Developer', 'ZonalManager', 'ZonalOps'].includes(callerStaff.role)) {
             return NextResponse.json({ error: 'Forbidden — insufficient role' }, { status: 403 })
         }
 
