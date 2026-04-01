@@ -719,6 +719,30 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
         return () => { supabase.removeChannel(channel) }
     }, [tab, selectedHotelId, fetchOpenIssues, fetchResolvedIssues])
 
+    // Realtime: payments
+    useEffect(() => {
+        if (tab !== 'payments' || !selectedHotelId) return
+        const channel = supabase
+            .channel(`payments_zonalops_${selectedHotelId.slice(0, 8)}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'payments' }, () => {
+                fetchPayments()
+            })
+            .subscribe()
+        return () => { supabase.removeChannel(channel) }
+    }, [tab, selectedHotelId, fetchPayments])
+
+    // Realtime: shift reports
+    useEffect(() => {
+        if (tab !== 'shift-reports' || !selectedHotelId) return
+        const channel = supabase
+            .channel(`shiftreports_zonalops_${selectedHotelId.slice(0, 8)}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'shift_reports' }, () => {
+                fetchShiftReports()
+            })
+            .subscribe()
+        return () => { supabase.removeChannel(channel) }
+    }, [tab, selectedHotelId, fetchShiftReports])
+
     // ============ ACTION HANDLERS ============
 
     // Mark restock as done
