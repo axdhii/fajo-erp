@@ -6,7 +6,7 @@ import type { ShiftReport } from '@/lib/types'
 interface StaffProfile {
     id: string
     hotel_id: string
-    role: 'Admin' | 'FrontDesk' | 'Housekeeping' | 'HR' | 'ZonalManager' | 'ZonalOps' | 'ZonalHK' | 'Developer'
+    role: 'Admin' | 'FrontDesk' | 'HR' | 'ZonalOps' | 'ZonalHK' | 'Developer'
     name: string | null
 }
 
@@ -56,7 +56,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         const profile = state.profile
 
         // Auto clock-out for property-level roles
-        if (profile && ['FrontDesk', 'Housekeeping', 'HR'].includes(profile.role)) {
+        if (profile && ['FrontDesk', 'HR', 'ZonalOps', 'ZonalHK'].includes(profile.role)) {
             try {
                 const res = await fetch('/api/attendance/clock-out', {
                     method: 'PATCH',

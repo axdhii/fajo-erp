@@ -112,8 +112,8 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'Staff record not found' }, { status: 403 })
         }
 
-        // Only ZonalOps, ZonalManager, and Admin can approve/reject
-        if (!['Admin', 'Developer', 'ZonalManager', 'ZonalOps'].includes(callerStaff.role)) {
+        // Only ZonalOps and Admin can approve/reject
+        if (!['Admin', 'Developer', 'ZonalOps'].includes(callerStaff.role)) {
             return NextResponse.json({ error: 'Forbidden — insufficient role' }, { status: 403 })
         }
 

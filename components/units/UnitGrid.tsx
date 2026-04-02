@@ -18,6 +18,7 @@ interface UnitGridProps {
     typeFilter?: UnitType | 'ALL'
     statusFilter?: UnitStatus | 'ALL'
     now?: Date
+    role?: string
 }
 
 export function UnitGrid({
@@ -25,6 +26,7 @@ export function UnitGrid({
     typeFilter = 'ALL',
     statusFilter = 'ALL',
     now,
+    role,
 }: UnitGridProps) {
     const { units, fetchUnitsWithBookings, subscribeToUnits, isLoading } =
         useUnitStore()
@@ -174,6 +176,7 @@ export function UnitGrid({
                 open={checkInOpen}
                 onOpenChange={setCheckInOpen}
                 onSuccess={handleDone}
+                role={role}
             />
 
             <CheckoutSheet

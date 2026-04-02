@@ -6,14 +6,12 @@ const publicRoutes = ['/login', '/']
 
 // Role -> allowed path prefixes
 const ROLE_ROUTES: Record<string, string[]> = {
-    Developer: ['/developer', '/admin', '/front-desk', '/reservations', '/housekeeping', '/hr', '/zonal', '/zonal-ops', '/zonal-hk'],
-    Admin: ['/admin', '/front-desk', '/reservations', '/housekeeping', '/hr', '/zonal', '/zonal-ops', '/zonal-hk'],
-    FrontDesk: ['/front-desk', '/reservations'],
-    Housekeeping: ['/housekeeping'],
+    Developer: ['/developer', '/admin', '/front-desk', '/reservations', '/housekeeping', '/hr', '/zonal-ops', '/zonal-hk'],
+    Admin: ['/admin', '/front-desk', '/reservations', '/housekeeping', '/hr', '/zonal-ops', '/zonal-hk'],
+    FrontDesk: ['/front-desk', '/reservations', '/housekeeping'],
     HR: ['/hr'],
-    ZonalManager: ['/zonal', '/zonal-ops', '/zonal-hk'],
-    ZonalOps: ['/zonal', '/zonal-ops'],
-    ZonalHK: ['/zonal', '/zonal-hk'],
+    ZonalOps: ['/zonal-ops'],
+    ZonalHK: ['/zonal-hk'],
 }
 
 // Where to redirect a user who tries to access a route they can't
@@ -22,8 +20,6 @@ function defaultPathForRole(role: string): string {
         case 'Developer': return '/developer'
         case 'Admin': return '/admin'
         case 'HR': return '/hr'
-        case 'Housekeeping': return '/housekeeping'
-        case 'ZonalManager': return '/zonal'
         case 'ZonalOps': return '/zonal-ops'
         case 'ZonalHK': return '/zonal-hk'
         default: return '/front-desk'

@@ -5,10 +5,8 @@ const ROLE_ROUTE: Record<string, string> = {
   Developer: '/developer',
   Admin: '/admin',
   HR: '/hr',
-  ZonalManager: '/zonal',
   ZonalOps: '/zonal-ops',
   ZonalHK: '/zonal-hk',
-  Housekeeping: '/housekeeping',
   FrontDesk: '/front-desk',
 }
 

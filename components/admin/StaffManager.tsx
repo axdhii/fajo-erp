@@ -52,9 +52,7 @@ interface StaffRow {
 const ALL_ROLES = [
     { value: 'Admin', label: 'Admin' },
     { value: 'FrontDesk', label: 'CRE' },
-    { value: 'Housekeeping', label: 'Housekeeping' },
     { value: 'HR', label: 'HR' },
-    { value: 'ZonalManager', label: 'Zonal Manager' },
     { value: 'ZonalOps', label: 'Zonal Ops' },
     { value: 'ZonalHK', label: 'Zonal HK' },
 ]
@@ -62,9 +60,7 @@ const ALL_ROLES = [
 const ROLE_COLORS: Record<string, string> = {
     Admin: 'bg-red-100 text-red-700 border-red-200',
     FrontDesk: 'bg-blue-100 text-blue-700 border-blue-200',
-    Housekeeping: 'bg-amber-100 text-amber-700 border-amber-200',
     HR: 'bg-violet-100 text-violet-700 border-violet-200',
-    ZonalManager: 'bg-indigo-100 text-indigo-700 border-indigo-200',
     ZonalOps: 'bg-orange-100 text-orange-700 border-orange-200',
     ZonalHK: 'bg-teal-100 text-teal-700 border-teal-200',
 }

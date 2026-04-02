@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        const validRoles = ['Admin', 'Developer', 'FrontDesk', 'Housekeeping', 'HR', 'ZonalManager', 'ZonalOps', 'ZonalHK']
+        const validRoles = ['Admin', 'Developer', 'FrontDesk', 'HR', 'ZonalOps', 'ZonalHK']
         if (!validRoles.includes(role)) {
             return NextResponse.json(
                 { error: `Invalid role. Must be one of: ${validRoles.join(', ')}` },
@@ -184,7 +184,7 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'Phone must be exactly 10 digits' }, { status: 400 })
         }
 
-        const validRoles = ['Admin', 'Developer', 'FrontDesk', 'Housekeeping', 'HR', 'ZonalManager', 'ZonalOps', 'ZonalHK']
+        const validRoles = ['Admin', 'Developer', 'FrontDesk', 'HR', 'ZonalOps', 'ZonalHK']
 
         if (role !== undefined && !validRoles.includes(role)) {
             return NextResponse.json(

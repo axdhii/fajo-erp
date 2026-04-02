@@ -13,6 +13,7 @@ export interface Unit {
     type: UnitType
     status: UnitStatus
     base_price: number
+    max_guests: number
     maintenance_reason: string | null
     created_at: string
     updated_at: string
@@ -266,6 +267,28 @@ export interface ShiftReport {
     revenue_total: number
     created_at: string
     staff?: { name: string | null; role: string }
+}
+
+// ============================================================
+// Laundry Module Types
+// ============================================================
+
+// ============================================================
+// Freshup Module Types
+// ============================================================
+
+export interface FreshupRecord {
+    id: string
+    hotel_id: string
+    guest_name: string
+    guest_phone: string
+    guest_count: number
+    amount: number
+    payment_method: 'CASH' | 'DIGITAL'
+    aadhar_url: string | null
+    created_by: string | null
+    created_at: string
+    staff?: { name: string | null }
 }
 
 // ============================================================

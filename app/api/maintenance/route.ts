@@ -87,8 +87,8 @@ export async function POST(request: NextRequest) {
 
         // Notify ZonalHK
         try { await supabase.from('notifications').insert({ hotel_id, recipient_role: 'ZonalHK', type: 'NEW_MAINTENANCE', title: 'New Maintenance Ticket', message: `${data.unit?.unit_number ? data.unit.unit_number + ' — ' : ''}${description}`, link: '/zonal-hk', source_table: 'maintenance_tickets', source_id: data.id }) } catch { /* never block */ }
-        // If URGENT, also notify ZonalManager
-        if (priority === 'URGENT') { try { await supabase.from('notifications').insert({ hotel_id, recipient_role: 'ZonalManager', type: 'URGENT_MAINTENANCE', title: 'URGENT Maintenance', message: `${data.unit?.unit_number ? data.unit.unit_number + ' — ' : ''}${description}`, link: '/zonal', source_table: 'maintenance_tickets', source_id: data.id }) } catch { /* never block */ } }
+        // If URGENT, also notify Admin and ZonalOps
+        if (priority === 'URGENT') { try { await supabase.from('notifications').insert({ hotel_id, recipient_role: 'Admin', type: 'URGENT_MAINTENANCE', title: 'URGENT Maintenance', message: `${data.unit?.unit_number ? data.unit.unit_number + ' — ' : ''}${description}`, link: '/admin', source_table: 'maintenance_tickets', source_id: data.id }) } catch { /* never block */ } }
 
         return NextResponse.json({ data })
     } catch (err) {

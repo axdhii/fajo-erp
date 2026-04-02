@@ -43,10 +43,8 @@ interface Hotel {
 
 type RoleKey =
     | 'FrontDesk'
-    | 'Housekeeping'
     | 'HR'
     | 'Admin'
-    | 'ZonalManager'
     | 'ZonalOps'
     | 'ZonalHK'
     | 'Developer'
@@ -67,11 +65,6 @@ const ROLE_META: Record<RoleKey, RoleInfo> = {
         description: 'Reception & Check-ins',
         icon: BedDouble,
     },
-    Housekeeping: {
-        label: 'Housekeeping',
-        description: 'Room Cleaning',
-        icon: Sparkles,
-    },
     HR: {
         label: 'HR',
         description: 'Staff & Payroll',
@@ -81,11 +74,6 @@ const ROLE_META: Record<RoleKey, RoleInfo> = {
         label: 'Admin',
         description: 'System Management',
         icon: Shield,
-    },
-    ZonalManager: {
-        label: 'Zonal Manager',
-        description: 'Multi-Property Overview',
-        icon: Globe,
     },
     ZonalOps: {
         label: 'Zonal Ops',
@@ -108,7 +96,7 @@ const ROLE_META: Record<RoleKey, RoleInfo> = {
 /*  Roles that require photo clock-in after login                      */
 /* ------------------------------------------------------------------ */
 
-const AUTO_CLOCK_ROLES: RoleKey[] = ['FrontDesk', 'Housekeeping', 'HR']
+const AUTO_CLOCK_ROLES: RoleKey[] = ['FrontDesk', 'HR', 'ZonalOps', 'ZonalHK']
 
 /* ------------------------------------------------------------------ */
 /*  Role → dashboard route mapping                                     */
@@ -118,10 +106,8 @@ const ROLE_ROUTE: Record<RoleKey, string> = {
     Developer: '/developer',
     Admin: '/admin',
     HR: '/hr',
-    ZonalManager: '/zonal',
     ZonalOps: '/zonal-ops',
     ZonalHK: '/zonal-hk',
-    Housekeeping: '/housekeeping',
     FrontDesk: '/front-desk',
 }
 
@@ -231,10 +217,8 @@ export default function LoginPage() {
             // Sort roles in display order
             const order: RoleKey[] = [
                 'FrontDesk',
-                'Housekeeping',
                 'HR',
                 'Admin',
-                'ZonalManager',
                 'ZonalOps',
                 'ZonalHK',
             ]

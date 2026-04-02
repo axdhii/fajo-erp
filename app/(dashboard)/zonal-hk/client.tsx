@@ -17,9 +17,10 @@ import {
     Send,
     ArrowDownLeft,
     IndianRupee,
+    Package,
 } from 'lucide-react'
 
-import type { MaintenanceTicket, LaundryOrder } from '@/lib/types'
+import type { MaintenanceTicket, LaundryOrder, RestockRequest } from '@/lib/types'
 import { timeAgo } from '@/lib/utils/time'
 
 // ============================================================
@@ -31,7 +32,7 @@ interface ZonalHKClientProps {
     staffId: string
 }
 
-type Tab = 'maintenance' | 'laundry'
+type Tab = 'maintenance' | 'laundry' | 'restock'
 
 // ============================================================
 // Helpers
@@ -95,6 +96,12 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
     const [showPaid, setShowPaid] = useState(false)
     const [updatingOrder, setUpdatingOrder] = useState<string | null>(null)
     const [paymentAmounts, setPaymentAmounts] = useState<Record<string, string>>({})
+
+    // ---- Restock state ----
+    const [pendingRestocks, setPendingRestocks] = useState<RestockRequest[]>([])
+    const [doneRestocks, setDoneRestocks] = useState<RestockRequest[]>([])
+    const [showDoneRestocks, setShowDoneRestocks] = useState(false)
+    const [completingRestock, setCompletingRestock] = useState<string | null>(null)
 
     // Send laundry form
     const [sendItems, setSendItems] = useState('')
@@ -170,6 +177,31 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
     }, [hotelId])
 
     // ============================================================
+    // Restock fetchers
+    // ============================================================
+
+    const fetchPendingRestocks = useCallback(async () => {
+        const { data } = await supabase
+            .from('restock_requests')
+            .select('*, unit:units(unit_number), staff:requested_by(name)')
+            .eq('hotel_id', hotelId)
+            .eq('status', 'PENDING')
+            .order('created_at', { ascending: false })
+        if (data) setPendingRestocks(data)
+    }, [hotelId])
+
+    const fetchDoneRestocks = useCallback(async () => {
+        const { data } = await supabase
+            .from('restock_requests')
+            .select('*, unit:units(unit_number), staff:requested_by(name)')
+            .eq('hotel_id', hotelId)
+            .eq('status', 'DONE')
+            .order('completed_at', { ascending: false })
+            .limit(10)
+        if (data) setDoneRestocks(data)
+    }, [hotelId])
+
+    // ============================================================
     // Initial data load on tab change
     // ============================================================
 
@@ -181,7 +213,10 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
         if (tab === 'laundry') {
             Promise.all([fetchOutOrders(), fetchReturnedOrders(), fetchPaidOrders()]).finally(() => setLoading(false))
         }
-    }, [tab, fetchActiveTickets, fetchResolvedTickets, fetchOutOrders, fetchReturnedOrders, fetchPaidOrders])
+        if (tab === 'restock') {
+            Promise.all([fetchPendingRestocks(), fetchDoneRestocks()]).finally(() => setLoading(false))
+        }
+    }, [tab, fetchActiveTickets, fetchResolvedTickets, fetchOutOrders, fetchReturnedOrders, fetchPaidOrders, fetchPendingRestocks, fetchDoneRestocks])
 
     // ============================================================
     // Realtime subscriptions
@@ -225,6 +260,25 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
 
         return () => { supabase.removeChannel(channel) }
     }, [tab, hotelId, fetchOutOrders, fetchReturnedOrders, fetchPaidOrders])
+
+    // Restock realtime
+    useEffect(() => {
+        if (tab !== 'restock') return
+        const channel = supabase
+            .channel(`restock_zonalhk_${hotelId.slice(0, 8)}`)
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'restock_requests',
+                filter: `hotel_id=eq.${hotelId}`,
+            }, () => {
+                fetchPendingRestocks()
+                fetchDoneRestocks()
+            })
+            .subscribe()
+
+        return () => { supabase.removeChannel(channel) }
+    }, [tab, hotelId, fetchPendingRestocks, fetchDoneRestocks])
 
     // ============================================================
     // Maintenance actions
@@ -341,15 +395,39 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
     }
 
     // ============================================================
+    // Restock actions
+    // ============================================================
+
+    const handleCompleteRestock = async (requestId: string) => {
+        setCompletingRestock(requestId)
+        try {
+            const res = await fetch('/api/restock', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ request_id: requestId }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error)
+            toast.success('Restock completed')
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to complete restock')
+        } finally {
+            setCompletingRestock(null)
+        }
+    }
+
+    // ============================================================
     // Badge counts
     // ============================================================
 
     const openCount = activeTickets.length
     const outCount = outOrders.length + returnedOrders.length
+    const restockCount = pendingRestocks.length
 
     const tabs: { key: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
         { key: 'maintenance', label: 'Maintenance', icon: <Wrench className="h-4 w-4" />, badge: openCount },
         { key: 'laundry', label: 'Laundry', icon: <Shirt className="h-4 w-4" />, badge: outCount },
+        { key: 'restock', label: 'Restock', icon: <Package className="h-4 w-4" />, badge: restockCount },
     ]
 
     // ============================================================
@@ -371,10 +449,13 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
                         if (tab === 'maintenance') {
                             fetchActiveTickets()
                             fetchResolvedTickets()
-                        } else {
+                        } else if (tab === 'laundry') {
                             fetchOutOrders()
                             fetchReturnedOrders()
                             fetchPaidOrders()
+                        } else if (tab === 'restock') {
+                            fetchPendingRestocks()
+                            fetchDoneRestocks()
                         }
                         toast.success('Refreshed')
                     }}
@@ -799,6 +880,110 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
                                                     <div className="flex items-center gap-1 text-sm font-bold text-green-700 shrink-0">
                                                         <IndianRupee className="h-3.5 w-3.5" />
                                                         {Number(order.amount || 0).toLocaleString('en-IN')}
+                                                    </div>
+                                                </div>
+                                            </CardContent>
+                                        </Card>
+                                    ))
+                                )}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {/* ======================== RESTOCK TAB ======================== */}
+            {tab === 'restock' && !loading && (
+                <div className="space-y-4">
+                    {/* Pending Restocks */}
+                    {pendingRestocks.length === 0 ? (
+                        <Card className="rounded-2xl">
+                            <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                                <CheckCircle2 className="h-12 w-12 text-slate-300 mb-4" />
+                                <p className="text-slate-500 font-medium">No pending restock requests</p>
+                                <p className="text-slate-400 text-sm mt-1">All supplies are restocked.</p>
+                            </CardContent>
+                        </Card>
+                    ) : (
+                        <div className="grid gap-3">
+                            {pendingRestocks.map(req => (
+                                <Card key={req.id} className="rounded-2xl border-l-4 border-l-orange-400">
+                                    <CardContent className="py-4 px-5">
+                                        <div className="flex items-start justify-between gap-4">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                                    <span className="font-bold text-slate-900">
+                                                        {req.unit?.unit_number || 'Hotel Supplies'}
+                                                    </span>
+                                                    <span className="text-xs text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full font-medium">
+                                                        PENDING
+                                                    </span>
+                                                </div>
+                                                <p className="text-sm text-slate-700 mb-2">{req.items}</p>
+                                                <div className="flex items-center gap-3 text-xs text-slate-400">
+                                                    {req.staff?.name && (
+                                                        <span>Requested by {req.staff.name}</span>
+                                                    )}
+                                                    <span className="flex items-center gap-1">
+                                                        <Clock className="h-3 w-3" />
+                                                        {timeAgo(req.created_at)}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <Button
+                                                size="sm"
+                                                onClick={() => handleCompleteRestock(req.id)}
+                                                disabled={completingRestock === req.id}
+                                                className="bg-amber-500 hover:bg-amber-600 text-white shrink-0"
+                                            >
+                                                {completingRestock === req.id ? (
+                                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                                ) : (
+                                                    <>
+                                                        <CheckCircle2 className="h-4 w-4 mr-1" />
+                                                        Mark Done
+                                                    </>
+                                                )}
+                                            </Button>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Done Restocks — Collapsible */}
+                    <div className="mt-6">
+                        <button
+                            onClick={() => setShowDoneRestocks(!showDoneRestocks)}
+                            className="flex items-center gap-2 text-sm font-semibold text-slate-500 hover:text-slate-700 transition-colors cursor-pointer"
+                        >
+                            {showDoneRestocks ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                            Completed ({doneRestocks.length})
+                        </button>
+                        {showDoneRestocks && (
+                            <div className="grid gap-2 mt-3">
+                                {doneRestocks.length === 0 ? (
+                                    <p className="text-sm text-slate-400 pl-6">No completed restocks yet.</p>
+                                ) : (
+                                    doneRestocks.map(req => (
+                                        <Card key={req.id} className="rounded-2xl opacity-70">
+                                            <CardContent className="py-3 px-5">
+                                                <div className="flex items-start justify-between gap-3">
+                                                    <div className="min-w-0">
+                                                        <div className="flex items-center gap-2 mb-0.5">
+                                                            <span className="font-semibold text-slate-700 text-sm">
+                                                                {req.unit?.unit_number || 'Hotel Supplies'}
+                                                            </span>
+                                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-green-100 text-green-700">
+                                                                DONE
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-xs text-slate-500 truncate">{req.items}</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-2 text-xs text-slate-400 shrink-0">
+                                                        <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                                                        {req.completed_at ? timeAgo(req.completed_at) : timeAgo(req.created_at)}
                                                     </div>
                                                 </div>
                                             </CardContent>

@@ -136,12 +136,14 @@ export function ReservationSheet({
 
     const selectedUnit = roomUnits.find((r) => r.id === selectedUnitId)
 
+    const roomMaxGuests = selectedUnit ? (selectedUnit.max_guests || 3) : 3
+
     // Pricing for room mode
     const roomPricing = useMemo(() => {
         if (bookingMode !== 'ROOM' || !selectedUnit) return null
         const perDayBase = Number(selectedUnit.base_price) * numberOfDays
-        return calculateBookingPrice(selectedUnit.type, perDayBase, guests.length)
-    }, [bookingMode, selectedUnit, guests.length, numberOfDays])
+        return calculateBookingPrice(selectedUnit.type, perDayBase, guests.length, roomMaxGuests)
+    }, [bookingMode, selectedUnit, guests.length, numberOfDays, roomMaxGuests])
 
     // Pricing for dorm mode
     const dormPricing = useMemo(() => {
@@ -594,7 +596,7 @@ export function ReservationSheet({
                             <div className="flex items-center gap-2">
                                 <Users className="h-4 w-4 text-slate-500" />
                                 <Label className="text-sm font-semibold text-slate-700">
-                                    Guests ({guests.length})
+                                    Guests ({guests.length}{bookingMode === 'ROOM' ? `/${roomMaxGuests} max` : ''})
                                 </Label>
                             </div>
                             <Button
@@ -602,6 +604,7 @@ export function ReservationSheet({
                                 variant="outline"
                                 size="sm"
                                 onClick={addGuest}
+                                disabled={bookingMode === 'ROOM' && guests.length >= roomMaxGuests}
                                 className="h-7 text-xs gap-1 border-dashed"
                             >
                                 <Plus className="h-3 w-3" />

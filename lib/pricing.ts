@@ -22,23 +22,27 @@ export interface PricingBreakdown {
 
 /**
  * Calculate booking price based on unit type, base price, and guest count.
- * 
+ *
  * Rules:
- * - ROOM: If guests > 2, add ₹300 per extra head
+ * - ROOM: If guests > max_guests (default 2), add ₹300 per extra head
  * - DORM: No surcharge (1 bed = 1 guest). Lower ₹400, Upper ₹450.
+ *
+ * @param maxGuests — per-unit guest limit from DB (overrides EXTRA_HEAD_THRESHOLD)
  */
 export function calculateBookingPrice(
     unitType: UnitType,
     basePrice: number,
-    guestCount: number
+    guestCount: number,
+    maxGuests?: number
 ): PricingBreakdown {
     const baseAmount = basePrice
 
     let extraHeads = 0
     let surcharge = 0
 
-    if (unitType === 'ROOM' && guestCount > PRICING.EXTRA_HEAD_THRESHOLD) {
-        extraHeads = guestCount - PRICING.EXTRA_HEAD_THRESHOLD
+    const threshold = maxGuests ?? PRICING.EXTRA_HEAD_THRESHOLD
+    if (unitType === 'ROOM' && guestCount > threshold) {
+        extraHeads = guestCount - threshold
         surcharge = extraHeads * PRICING.EXTRA_HEAD_SURCHARGE
     }
 

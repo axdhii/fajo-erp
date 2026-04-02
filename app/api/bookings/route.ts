@@ -67,6 +67,15 @@ export async function POST(request: NextRequest) {
             )
         }
 
+        // Validate guest count against per-unit max_guests
+        const unitMaxGuests = unit.max_guests || 3
+        if (guests.length > unitMaxGuests) {
+            return NextResponse.json(
+                { error: `Maximum ${unitMaxGuests} guests allowed for ${unit.unit_number}` },
+                { status: 400 }
+            )
+        }
+
         // Calculate check-out time based on number of days
         const checkInDate = getDevNow()
         let checkOutDate: Date
@@ -130,7 +139,8 @@ export async function POST(request: NextRequest) {
         const pricing = calculateBookingPrice(
             unit.type as UnitType,
             totalBase,
-            guests.length
+            guests.length,
+            unitMaxGuests
         )
 
         const finalGrandTotal = grandTotalOverride != null

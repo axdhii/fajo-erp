@@ -6,5 +6,5 @@ export default async function ReservationsPage() {
     const staff = await getStaffFromHeaders()
     if (!staff) redirect('/login')
 
-    return <ReservationsClient hotelId={staff.hotelId} />
+    return <ReservationsClient hotelId={staff.hotelId} role={staff.role} />
 }

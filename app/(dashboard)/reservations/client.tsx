@@ -26,6 +26,7 @@ import {
 
 interface ReservationsClientProps {
     hotelId: string
+    role?: string
 }
 
 function formatDate(d: Date): string {
@@ -117,7 +118,7 @@ const BOOKING_STATUS_STYLES: Record<string, { bg: string; border: string; accent
     },
 }
 
-export function ReservationsClient({ hotelId }: ReservationsClientProps) {
+export function ReservationsClient({ hotelId, role }: ReservationsClientProps) {
     const { units, fetchUnitsWithBookings } = useUnitStore()
     const devNow = useCurrentTime()
     const [bookings, setBookings] = useState<Booking[]>([])
@@ -560,6 +561,7 @@ export function ReservationsClient({ hotelId }: ReservationsClientProps) {
                 open={detailOpen}
                 onOpenChange={setDetailOpen}
                 onSuccess={handleSuccess}
+                role={role}
             />
         </div>
     )

@@ -35,18 +35,22 @@ import {
     Banknote,
     Smartphone,
     IndianRupee,
+    Droplets,
+    Plus,
+    Minus,
 } from 'lucide-react'
 import { RestockSheet as RestockForm } from '@/components/units/RestockSheet'
 
 interface FrontDeskClientProps {
     hotelId: string
     staffId: string
+    role?: string
 }
 
 type TypeFilter = UnitType | 'ALL'
 type StatusFilter = UnitStatus | 'ALL'
 
-export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
+export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps) {
     const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL')
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
     const { units } = useUnitStore()
@@ -67,6 +71,14 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
     const [expenseAmount, setExpenseAmount] = useState('')
     const [expenseCategory, setExpenseCategory] = useState('')
     const [expenseSubmitting, setExpenseSubmitting] = useState(false)
+
+    // Freshup state
+    const [freshupOpen, setFreshupOpen] = useState(false)
+    const [freshupName, setFreshupName] = useState('')
+    const [freshupPhone, setFreshupPhone] = useState('')
+    const [freshupCount, setFreshupCount] = useState(1)
+    const [freshupPayment, setFreshupPayment] = useState<'CASH' | 'DIGITAL'>('CASH')
+    const [freshupSubmitting, setFreshupSubmitting] = useState(false)
 
     // CRE Payment counter state
     const [shiftCash, setShiftCash] = useState(0)
@@ -194,6 +206,40 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
             toast.error(err instanceof Error ? err.message : 'Failed to submit expense')
         } finally {
             setExpenseSubmitting(false)
+        }
+    }
+
+    // Submit freshup
+    const handleSubmitFreshup = async () => {
+        if (!freshupName.trim()) { toast.error('Please enter guest name'); return }
+        const digits = freshupPhone.replace(/\D/g, '')
+        if (digits.length !== 10) { toast.error('Phone must be 10 digits'); return }
+
+        setFreshupSubmitting(true)
+        try {
+            const res = await fetch('/api/freshup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    guest_name: freshupName.trim(),
+                    guest_phone: digits,
+                    guest_count: freshupCount,
+                    payment_method: freshupPayment,
+                }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error)
+            toast.success(`Freshup recorded — ${formatCurrency(freshupCount * 100)} ${freshupPayment}`)
+            setFreshupName('')
+            setFreshupPhone('')
+            setFreshupCount(1)
+            setFreshupPayment('CASH')
+            setFreshupOpen(false)
+            fetchShiftRevenue() // Update revenue counter
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to record freshup')
+        } finally {
+            setFreshupSubmitting(false)
         }
     }
 
@@ -387,6 +433,131 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
                 {restockOpen && (
                     <div className="px-5 pb-5 border-t border-orange-200 pt-4">
                         <RestockForm open={restockOpen} onClose={() => setRestockOpen(false)} hotelId={hotelId} staffId={staffId} />
+                    </div>
+                )}
+            </div>
+
+            {/* Freshup Service Section */}
+            <div className="rounded-2xl border border-cyan-200 bg-cyan-50/50 overflow-hidden">
+                <button
+                    onClick={() => setFreshupOpen(!freshupOpen)}
+                    className="w-full flex items-center justify-between px-5 py-3.5 cursor-pointer hover:bg-cyan-50 transition-colors"
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-cyan-100 text-cyan-600">
+                            <Droplets className="h-4 w-4" />
+                        </div>
+                        <div className="text-left">
+                            <span className="text-sm font-bold text-cyan-900">Freshup Service</span>
+                            <span className="ml-3 text-xs text-cyan-500">Record walk-in freshup guests</span>
+                        </div>
+                    </div>
+                    {freshupOpen ? <ChevronUp className="h-4 w-4 text-cyan-400" /> : <ChevronDown className="h-4 w-4 text-cyan-400" />}
+                </button>
+
+                {freshupOpen && (
+                    <div className="px-5 pb-5 border-t border-cyan-200 pt-4">
+                        <div className="bg-white rounded-xl border border-cyan-100 p-4 space-y-3">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs text-slate-600">Guest Name *</Label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. John Doe"
+                                        value={freshupName}
+                                        onChange={(e) => setFreshupName(e.target.value)}
+                                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 placeholder:text-slate-400"
+                                    />
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs text-slate-600">Guest Phone *</Label>
+                                    <input
+                                        type="text"
+                                        placeholder="e.g. 9876543210"
+                                        inputMode="numeric"
+                                        maxLength={10}
+                                        value={freshupPhone}
+                                        onChange={(e) => setFreshupPhone(e.target.value.replace(/\D/g, ''))}
+                                        className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 placeholder:text-slate-400"
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Guest count stepper */}
+                            <div className="flex items-center gap-4">
+                                <Label className="text-xs text-slate-600">Guest Count</Label>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setFreshupCount(Math.max(1, freshupCount - 1))}
+                                        className="h-8 w-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
+                                    >
+                                        <Minus className="h-3 w-3" />
+                                    </button>
+                                    <span className="text-sm font-bold text-slate-800 w-8 text-center">{freshupCount}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFreshupCount(freshupCount + 1)}
+                                        className="h-8 w-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
+                                    >
+                                        <Plus className="h-3 w-3" />
+                                    </button>
+                                </div>
+                                <span className="text-sm font-bold text-cyan-700 ml-auto">
+                                    {formatCurrency(freshupCount * 100)}
+                                </span>
+                            </div>
+
+                            {/* Payment method */}
+                            <div className="flex items-center gap-3">
+                                <Label className="text-xs text-slate-600">Payment</Label>
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => setFreshupPayment('CASH')}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                                            freshupPayment === 'CASH'
+                                                ? 'bg-emerald-100 border-emerald-300 text-emerald-700'
+                                                : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <Banknote className="h-3 w-3" />
+                                        Cash
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFreshupPayment('DIGITAL')}
+                                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                                            freshupPayment === 'DIGITAL'
+                                                ? 'bg-blue-100 border-blue-300 text-blue-700'
+                                                : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                                        }`}
+                                    >
+                                        <Smartphone className="h-3 w-3" />
+                                        Digital
+                                    </button>
+                                </div>
+                            </div>
+
+                            <Button
+                                onClick={handleSubmitFreshup}
+                                disabled={freshupSubmitting || !freshupName.trim() || freshupPhone.replace(/\D/g, '').length !== 10}
+                                size="sm"
+                                className="bg-cyan-600 hover:bg-cyan-700 h-8 text-xs"
+                            >
+                                {freshupSubmitting ? (
+                                    <span className="flex items-center gap-2">
+                                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                        Recording...
+                                    </span>
+                                ) : (
+                                    <span className="flex items-center gap-2">
+                                        <Droplets className="h-3.5 w-3.5" />
+                                        Record Freshup ({formatCurrency(freshupCount * 100)})
+                                    </span>
+                                )}
+                            </Button>
+                        </div>
                     </div>
                 )}
             </div>
@@ -650,6 +821,7 @@ export function FrontDeskClient({ hotelId, staffId }: FrontDeskClientProps) {
                 typeFilter={typeFilter}
                 statusFilter={statusFilter}
                 now={now}
+                role={role}
             />
         </div>
     )

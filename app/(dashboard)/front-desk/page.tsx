@@ -6,5 +6,5 @@ export default async function FrontDeskPage() {
     const staff = await getStaffFromHeaders()
     if (!staff) redirect('/login')
 
-    return <FrontDeskClient hotelId={staff.hotelId} staffId={staff.staffId} />
+    return <FrontDeskClient hotelId={staff.hotelId} staffId={staff.staffId} role={staff.role} />
 }

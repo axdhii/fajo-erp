@@ -51,6 +51,7 @@ interface CheckInSheetProps {
     open: boolean
     onOpenChange: (open: boolean) => void
     onSuccess: () => void
+    role?: string
 }
 
 const emptyGuest = (): GuestInput => ({
@@ -84,6 +85,7 @@ export function CheckInSheet({
     open,
     onOpenChange,
     onSuccess,
+    role,
 }: CheckInSheetProps) {
     const [guests, setGuests] = useState<GuestInput[]>([emptyGuest()])
     const [numberOfDays, setNumberOfDays] = useState(1)
@@ -148,6 +150,8 @@ export function CheckInSheet({
         return new Date(`${dateStr}T${isDorm ? '10' : '11'}:00:00+05:30`)
     }, [checkInDate, numberOfDays, manualCheckout, unit])
 
+    const maxGuests = unit ? (unit.max_guests || 3) : 3
+
     // Calculate pricing — multi-day: base price × days for both rooms and dorms
     const pricing = useMemo(() => {
         if (!unit) return null
@@ -156,10 +160,11 @@ export function CheckInSheet({
         const result = calculateBookingPrice(
             unit.type,
             perDayBase,
-            guests.length
+            guests.length,
+            maxGuests
         )
         return result
-    }, [unit, guests.length, numberOfDays])
+    }, [unit, guests.length, numberOfDays, maxGuests])
 
     const finalTotal = useMemo(() => {
         if (!pricing) return 0
@@ -610,18 +615,20 @@ export function CheckInSheet({
                         </div>
                     </div>
 
-                    {/* Aadhar Bypass Toggle */}
-                    <div className="flex items-center gap-3 px-1 py-2">
-                        <label className="flex items-center gap-2 cursor-pointer text-sm">
-                            <input
-                                type="checkbox"
-                                checked={aadharBypass}
-                                onChange={(e) => setAadharBypass(e.target.checked)}
-                                className="rounded border-slate-300"
-                            />
-                            <span className="text-slate-600">Skip Aadhar Upload</span>
-                        </label>
-                    </div>
+                    {/* Aadhar Bypass Toggle — Admin/Developer only */}
+                    {(role === 'Admin' || role === 'Developer') && (
+                        <div className="flex items-center gap-3 px-1 py-2">
+                            <label className="flex items-center gap-2 cursor-pointer text-sm">
+                                <input
+                                    type="checkbox"
+                                    checked={aadharBypass}
+                                    onChange={(e) => setAadharBypass(e.target.checked)}
+                                    className="rounded border-slate-300"
+                                />
+                                <span className="text-slate-600">Skip Aadhar Upload</span>
+                            </label>
+                        </div>
+                    )}
 
                     {/* Guest List */}
                     <div className="space-y-4">
@@ -629,7 +636,7 @@ export function CheckInSheet({
                             <div className="flex items-center gap-2">
                                 <Users className="h-4 w-4 text-slate-500" />
                                 <Label className="text-sm font-semibold text-slate-700">
-                                    Guests ({guests.length})
+                                    Guests ({guests.length}/{maxGuests} max)
                                 </Label>
                             </div>
                             {!isDorm && (
@@ -638,6 +645,7 @@ export function CheckInSheet({
                                     variant="outline"
                                     size="sm"
                                     onClick={addGuest}
+                                    disabled={guests.length >= maxGuests}
                                     className="h-8 text-xs gap-1.5 border-dashed"
                                 >
                                     <Plus className="h-3 w-3" />

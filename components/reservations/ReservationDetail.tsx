@@ -40,6 +40,7 @@ interface ReservationDetailProps {
     open: boolean
     onOpenChange: (open: boolean) => void
     onSuccess: () => void
+    role?: string
 }
 
 interface GuestDataItem {
@@ -58,6 +59,7 @@ export function ReservationDetail({
     open,
     onOpenChange,
     onSuccess,
+    role,
 }: ReservationDetailProps) {
     const [isConverting, setIsConverting] = useState(false)
     const [isCancelling, setIsCancelling] = useState(false)
@@ -790,18 +792,20 @@ export function ReservationDetail({
                                 </>
                             ) : (
                                 <>
-                                    {/* Aadhar Bypass Toggle */}
-                                    <div className="flex items-center gap-3 px-1 py-2">
-                                        <label className="flex items-center gap-2 cursor-pointer text-sm">
-                                            <input
-                                                type="checkbox"
-                                                checked={aadharBypass}
-                                                onChange={(e) => setAadharBypass(e.target.checked)}
-                                                className="rounded border-slate-300"
-                                            />
-                                            <span className="text-slate-600">Skip Aadhar Upload</span>
-                                        </label>
-                                    </div>
+                                    {/* Aadhar Bypass Toggle — Admin/Developer only */}
+                                    {(role === 'Admin' || role === 'Developer') && (
+                                        <div className="flex items-center gap-3 px-1 py-2">
+                                            <label className="flex items-center gap-2 cursor-pointer text-sm">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={aadharBypass}
+                                                    onChange={(e) => setAadharBypass(e.target.checked)}
+                                                    className="rounded border-slate-300"
+                                                />
+                                                <span className="text-slate-600">Skip Aadhar Upload</span>
+                                            </label>
+                                        </div>
+                                    )}
 
                                     {/* Payment Collection */}
                                     <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-4 space-y-3">

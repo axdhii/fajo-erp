@@ -11,10 +11,10 @@ export async function GET() {
 
         const supabase = await createClient()
 
-        // Role authorization: only ZonalManager and Admin
+        // Role authorization: Admin, Developer, ZonalOps, ZonalHK
         const { data: callerProfile } = await supabase
             .from('staff').select('role').eq('user_id', auth.userId).single()
-        if (!callerProfile || !['ZonalManager', 'Admin', 'Developer', 'ZonalOps', 'ZonalHK'].includes(callerProfile.role)) {
+        if (!callerProfile || !['Admin', 'Developer', 'ZonalOps', 'ZonalHK'].includes(callerProfile.role)) {
             return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
         }
 
