@@ -67,14 +67,8 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        // Validate guest count against per-unit max_guests
+        // max_guests is the surcharge-free threshold (not a hard cap)
         const unitMaxGuests = unit.max_guests || 3
-        if (guests.length > unitMaxGuests) {
-            return NextResponse.json(
-                { error: `Maximum ${unitMaxGuests} guests allowed for ${unit.unit_number}` },
-                { status: 400 }
-            )
-        }
 
         // Calculate check-out time based on number of days
         const checkInDate = getDevNow()

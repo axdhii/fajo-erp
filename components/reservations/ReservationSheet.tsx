@@ -596,7 +596,7 @@ export function ReservationSheet({
                             <div className="flex items-center gap-2">
                                 <Users className="h-4 w-4 text-slate-500" />
                                 <Label className="text-sm font-semibold text-slate-700">
-                                    Guests ({guests.length}{bookingMode === 'ROOM' ? `/${roomMaxGuests} max` : ''})
+                                    Guests ({guests.length}{bookingMode === 'ROOM' ? ` (${roomMaxGuests} included)` : ''})
                                 </Label>
                             </div>
                             <Button
@@ -604,7 +604,7 @@ export function ReservationSheet({
                                 variant="outline"
                                 size="sm"
                                 onClick={addGuest}
-                                disabled={bookingMode === 'ROOM' && guests.length >= roomMaxGuests}
+                                disabled={false}
                                 className="h-7 text-xs gap-1 border-dashed"
                             >
                                 <Plus className="h-3 w-3" />

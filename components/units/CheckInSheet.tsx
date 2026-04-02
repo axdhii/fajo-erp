@@ -636,7 +636,7 @@ export function CheckInSheet({
                             <div className="flex items-center gap-2">
                                 <Users className="h-4 w-4 text-slate-500" />
                                 <Label className="text-sm font-semibold text-slate-700">
-                                    Guests ({guests.length}/{maxGuests} max)
+                                    Guests ({guests.length}){guests.length > maxGuests ? ` — ${guests.length - maxGuests} extra` : ` (${maxGuests} included)`}
                                 </Label>
                             </div>
                             {!isDorm && (
@@ -645,7 +645,7 @@ export function CheckInSheet({
                                     variant="outline"
                                     size="sm"
                                     onClick={addGuest}
-                                    disabled={guests.length >= maxGuests}
+                                    disabled={false}
                                     className="h-8 text-xs gap-1.5 border-dashed"
                                 >
                                     <Plus className="h-3 w-3" />
