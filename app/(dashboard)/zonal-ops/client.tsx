@@ -34,8 +34,10 @@ import {
     DollarSign,
     Smartphone,
     Download,
+    Camera,
+    FileText,
 } from 'lucide-react'
-import type { RestockRequest, PropertyExpense, CustomerIssue, ShiftReport } from '@/lib/types'
+import type { RestockRequest, PropertyExpense, CustomerIssue, ShiftReport, PropertyReport } from '@/lib/types'
 import { timeAgo } from '@/lib/utils/time'
 
 interface ZonalOpsClientProps {
@@ -43,7 +45,7 @@ interface ZonalOpsClientProps {
     hotels: { id: string; name: string }[]
 }
 
-type Tab = 'restock' | 'payments' | 'expenses' | 'issues' | 'shift-reports'
+type Tab = 'restock' | 'payments' | 'expenses' | 'issues' | 'shift-reports' | 'reports'
 
 function formatCurrency(n: number): string {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
@@ -102,6 +104,15 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
     const [shiftReportToTime, setShiftReportToTime] = useState('23:59')
     const [expandedReport, setExpandedReport] = useState<string | null>(null)
     const [downloadingReport, setDownloadingReport] = useState<string | null>(null)
+
+    // ============ PROPERTY REPORTS STATE ============
+    const [reports, setReports] = useState<PropertyReport[]>([])
+    const [reportDescription, setReportDescription] = useState('')
+    const [reportCategory, setReportCategory] = useState('OTHER')
+    const [reportType, setReportType] = useState<'REPORT' | 'ISSUE'>('REPORT')
+    const [reportPhotoUrl, setReportPhotoUrl] = useState('')
+    const [reportSubmitting, setReportSubmitting] = useState(false)
+    const [reportUploading, setReportUploading] = useState(false)
 
     const selectedHotelName = hotels.find(h => h.id === selectedHotelId)?.name || 'Unknown'
 
@@ -641,6 +652,71 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
         }
     }, [selectedHotelId, shiftReportDate, shiftReportFromTime, shiftReportToTime])
 
+    // ============ PROPERTY REPORTS FETCH & HANDLERS ============
+
+    const fetchReports = useCallback(async () => {
+        if (!selectedHotelId) return
+        try {
+            const res = await fetch(`/api/property-reports?hotel_id=${selectedHotelId}&limit=30`)
+            if (res.ok) {
+                const json = await res.json()
+                setReports(json.data || [])
+            }
+        } catch {}
+    }, [selectedHotelId])
+
+    const handleSubmitReport = async () => {
+        if (!reportDescription.trim()) { toast.error('Please describe the report'); return }
+        setReportSubmitting(true)
+        try {
+            const res = await fetch('/api/property-reports', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: reportType,
+                    category: reportCategory,
+                    description: reportDescription.trim(),
+                    photo_url: reportPhotoUrl || null,
+                }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error)
+            toast.success(reportType === 'ISSUE' ? 'Issue reported to Admin' : 'Report submitted to Admin')
+            setReportDescription('')
+            setReportCategory('OTHER')
+            setReportType('REPORT')
+            setReportPhotoUrl('')
+            fetchReports()
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to submit report')
+        } finally {
+            setReportSubmitting(false)
+        }
+    }
+
+    const handleReportPhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        setReportUploading(true)
+        try {
+            const { compressImage } = await import('@/lib/utils/compress-image')
+            const compressed = await compressImage(file)
+            const dateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+            const timeStr = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '-')
+            const fileName = `${dateStr.slice(0, 7)}/report_${dateStr}_${timeStr}_${Date.now()}.jpg`
+            const { error: uploadErr } = await supabase.storage
+                .from('reports')
+                .upload(fileName, compressed, { contentType: 'image/jpeg', upsert: true })
+            if (uploadErr) { toast.error('Failed to upload photo'); return }
+            setReportPhotoUrl(fileName)
+            toast.success('Photo uploaded')
+        } catch {
+            toast.error('Failed to process photo')
+        } finally {
+            setReportUploading(false)
+        }
+    }
+
     // ============ DATA LOADING ============
 
     useEffect(() => {
@@ -657,11 +733,13 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
                 await Promise.all([fetchOpenIssues(), fetchResolvedIssues()])
             } else if (tab === 'shift-reports') {
                 await fetchShiftReports()
+            } else if (tab === 'reports') {
+                await fetchReports()
             }
             setLoading(false)
         }
         load()
-    }, [tab, selectedHotelId, fetchPendingRestocks, fetchDoneRestocks, fetchPayments, fetchPendingExpenses, fetchReviewedExpenses, fetchOpenIssues, fetchResolvedIssues, fetchShiftReports])
+    }, [tab, selectedHotelId, fetchPendingRestocks, fetchDoneRestocks, fetchPayments, fetchPendingExpenses, fetchReviewedExpenses, fetchOpenIssues, fetchResolvedIssues, fetchShiftReports, fetchReports])
 
     // ============ REALTIME SUBSCRIPTIONS ============
 
@@ -742,6 +820,16 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
             .subscribe()
         return () => { supabase.removeChannel(channel) }
     }, [tab, selectedHotelId, fetchShiftReports])
+
+    // Property reports realtime
+    useEffect(() => {
+        if (tab !== 'reports' || !selectedHotelId) return
+        const channel = supabase
+            .channel(`reports_zonalops_${selectedHotelId.slice(0, 8)}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'property_reports', filter: `hotel_id=eq.${selectedHotelId}` }, () => { fetchReports() })
+            .subscribe()
+        return () => { supabase.removeChannel(channel) }
+    }, [tab, selectedHotelId, fetchReports])
 
     // ============ ACTION HANDLERS ============
 
@@ -842,6 +930,7 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
         else if (tab === 'expenses') { fetchPendingExpenses(); fetchReviewedExpenses() }
         else if (tab === 'issues') { fetchOpenIssues(); fetchResolvedIssues() }
         else if (tab === 'shift-reports') { fetchShiftReports() }
+        else if (tab === 'reports') { fetchReports() }
         toast.success('Refreshed')
     }
 
@@ -868,6 +957,7 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
         { key: 'expenses', label: 'Expenses', icon: <Receipt className="h-4 w-4" />, badge: pendingExpenseCount },
         { key: 'issues', label: 'Issues', icon: <AlertTriangle className="h-4 w-4" />, badge: openIssueCount },
         { key: 'shift-reports', label: 'Shift Reports', icon: <ClipboardList className="h-4 w-4" /> },
+        { key: 'reports', label: 'Reports', icon: <FileText className="h-4 w-4" />, badge: reports.filter(r => r.status === 'OPEN').length || undefined },
     ]
 
     const STATUS_STYLES: Record<string, string> = {
@@ -1706,6 +1796,175 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
                             })}
                         </div>
                     )}
+                </div>
+            )}
+
+            {/* ======================== REPORTS TAB ======================== */}
+            {tab === 'reports' && !loading && (
+                <div className="space-y-4">
+                    {/* Submit Report/Issue Form */}
+                    <Card className="rounded-2xl border-orange-200 bg-orange-50/40">
+                        <CardContent className="py-5 px-5 space-y-4">
+                            <h3 className="text-sm font-bold text-orange-800 flex items-center gap-2">
+                                <FileText className="h-4 w-4" />
+                                Submit Report / Issue
+                            </h3>
+
+                            {/* Type toggle */}
+                            <div className="flex gap-2">
+                                <button
+                                    onClick={() => setReportType('REPORT')}
+                                    className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                                        reportType === 'REPORT'
+                                            ? 'bg-orange-600 text-white'
+                                            : 'bg-white border border-orange-200 text-orange-700 hover:bg-orange-50'
+                                    }`}
+                                >
+                                    Report
+                                </button>
+                                <button
+                                    onClick={() => setReportType('ISSUE')}
+                                    className={`flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
+                                        reportType === 'ISSUE'
+                                            ? 'bg-red-600 text-white'
+                                            : 'bg-white border border-red-200 text-red-700 hover:bg-red-50'
+                                    }`}
+                                >
+                                    Issue
+                                </button>
+                            </div>
+
+                            {/* Category */}
+                            <Select value={reportCategory} onValueChange={setReportCategory}>
+                                <SelectTrigger className="w-full bg-white border-orange-200">
+                                    <SelectValue placeholder="Category" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="OBSERVATION">Observation</SelectItem>
+                                    <SelectItem value="DAMAGE">Damage</SelectItem>
+                                    <SelectItem value="SAFETY">Safety</SelectItem>
+                                    <SelectItem value="MAINTENANCE">Maintenance</SelectItem>
+                                    <SelectItem value="GUEST_COMPLAINT">Guest Complaint</SelectItem>
+                                    <SelectItem value="OTHER">Other</SelectItem>
+                                </SelectContent>
+                            </Select>
+
+                            {/* Description */}
+                            <textarea
+                                placeholder="Describe the report or issue in detail..."
+                                value={reportDescription}
+                                onChange={e => setReportDescription(e.target.value)}
+                                className="w-full text-sm border border-orange-200 rounded-lg p-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-orange-300 bg-white"
+                                rows={3}
+                            />
+
+                            {/* Photo capture */}
+                            <div className="flex items-center gap-3">
+                                <label className={`flex items-center gap-2 px-3 py-2 text-sm font-medium rounded-lg cursor-pointer transition-colors ${
+                                    reportUploading ? 'bg-slate-100 text-slate-400' : 'bg-white border border-orange-200 text-orange-700 hover:bg-orange-50'
+                                }`}>
+                                    {reportUploading ? (
+                                        <Loader2 className="h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <Camera className="h-4 w-4" />
+                                    )}
+                                    {reportUploading ? 'Uploading...' : 'Attach Photo'}
+                                    <input
+                                        type="file"
+                                        accept="image/*"
+                                        capture="environment"
+                                        onChange={handleReportPhotoCapture}
+                                        disabled={reportUploading}
+                                        className="hidden"
+                                    />
+                                </label>
+                                {reportPhotoUrl && (
+                                    <span className="text-xs text-green-600 font-medium flex items-center gap-1">
+                                        <CheckCircle2 className="h-3.5 w-3.5" />
+                                        Photo attached
+                                    </span>
+                                )}
+                            </div>
+
+                            {/* Submit */}
+                            <Button
+                                onClick={handleSubmitReport}
+                                disabled={reportSubmitting || !reportDescription.trim()}
+                                className="w-full bg-orange-600 hover:bg-orange-700 text-white"
+                            >
+                                {reportSubmitting ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <>
+                                        <FileText className="h-4 w-4 mr-2" />
+                                        Submit {reportType === 'ISSUE' ? 'Issue' : 'Report'}
+                                    </>
+                                )}
+                            </Button>
+                        </CardContent>
+                    </Card>
+
+                    {/* My Reports List */}
+                    <div>
+                        <h3 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3">
+                            Recent Reports ({reports.length})
+                        </h3>
+                        {reports.length === 0 ? (
+                            <Card className="rounded-2xl">
+                                <CardContent className="flex flex-col items-center justify-center py-16 text-center">
+                                    <FileText className="h-12 w-12 text-slate-300 mb-4" />
+                                    <p className="text-slate-500 font-medium">No reports submitted yet</p>
+                                    <p className="text-slate-400 text-sm mt-1">Use the form above to submit a report or issue.</p>
+                                </CardContent>
+                            </Card>
+                        ) : (
+                            <div className="grid gap-3">
+                                {reports.map(r => (
+                                    <Card key={r.id} className={`rounded-2xl border-l-4 ${
+                                        r.type === 'ISSUE' ? 'border-l-red-400' : 'border-l-orange-400'
+                                    }`}>
+                                        <CardContent className="py-4 px-5">
+                                            <div className="flex items-start justify-between gap-4">
+                                                <div className="flex-1 min-w-0">
+                                                    <div className="flex items-center gap-2 mb-1 flex-wrap">
+                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                                                            r.type === 'ISSUE' ? 'bg-red-100 text-red-700' : 'bg-orange-100 text-orange-700'
+                                                        }`}>
+                                                            {r.type}
+                                                        </span>
+                                                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full uppercase bg-slate-100 text-slate-600">
+                                                            {r.category.replace('_', ' ')}
+                                                        </span>
+                                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase ${
+                                                            r.status === 'OPEN' ? 'bg-amber-100 text-amber-700'
+                                                            : r.status === 'ACKNOWLEDGED' ? 'bg-blue-100 text-blue-700'
+                                                            : r.status === 'RESOLVED' ? 'bg-green-100 text-green-700'
+                                                            : 'bg-slate-100 text-slate-600'
+                                                        }`}>
+                                                            {r.status}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-sm text-slate-700">{r.description}</p>
+                                                    <div className="flex items-center gap-3 text-xs text-slate-400 mt-1 flex-wrap">
+                                                        {r.reporter?.name && (
+                                                            <span>By {r.reporter.name}</span>
+                                                        )}
+                                                        <span className="flex items-center gap-1">
+                                                            <Clock className="h-3 w-3" />
+                                                            {timeAgo(r.created_at)}
+                                                        </span>
+                                                    </div>
+                                                    {r.review_notes && (
+                                                        <p className="text-xs text-blue-600 mt-1 italic">Admin: {r.review_notes}</p>
+                                                    )}
+                                                </div>
+                                            </div>
+                                        </CardContent>
+                                    </Card>
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
 

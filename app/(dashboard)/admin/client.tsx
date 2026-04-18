@@ -35,6 +35,7 @@ import { OpsOverview } from '@/components/admin/OpsOverview'
 import { HROverview } from '@/components/admin/HROverview'
 import { ReservationsOverview } from '@/components/admin/ReservationsOverview'
 import { AadharArchive } from '@/components/admin/AadharArchive'
+import { ReportsOverview } from '@/components/admin/ReportsOverview'
 
 // ============================================================
 // Shared props interface for all admin tab components
@@ -48,7 +49,7 @@ export interface AdminTabProps {
 // ============================================================
 // Tab definitions
 // ============================================================
-type TabKey = 'command' | 'guests' | 'live' | 'staff' | 'financials' | 'ops' | 'hr' | 'reservations'
+type TabKey = 'command' | 'guests' | 'live' | 'staff' | 'financials' | 'ops' | 'hr' | 'reservations' | 'reports'
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
     { key: 'command',         label: 'Command Center',   icon: <LayoutDashboard className="h-4 w-4" /> },
@@ -59,6 +60,7 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
     { key: 'ops',             label: 'Operations',       icon: <Wrench className="h-4 w-4" /> },
     { key: 'hr',              label: 'HR & Payroll',     icon: <Briefcase className="h-4 w-4" /> },
     { key: 'reservations',    label: 'Reservations',     icon: <Calendar className="h-4 w-4" /> },
+    { key: 'reports',          label: 'Reports',          icon: <ClipboardList className="h-4 w-4" /> },
 ]
 
 // ============================================================
@@ -189,6 +191,7 @@ export function AdminClient({ hotelId, staffId }: AdminClientProps) {
                 {tab === 'ops'          && <OpsOverview {...tabProps} />}
                 {tab === 'hr'           && <HROverview {...tabProps} />}
                 {tab === 'reservations'    && <ReservationsOverview {...tabProps} />}
+                {tab === 'reports'         && <ReportsOverview {...tabProps} />}
             </div>
 
             {/* Aadhar Archive Modal */}

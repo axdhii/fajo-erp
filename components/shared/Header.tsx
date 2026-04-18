@@ -1,15 +1,20 @@
 "use client"
-import { useState, useEffect } from 'react'
-import { BookOpen, Calendar, Clock, ClipboardList, LayoutDashboard, LogOut, Menu, Sparkles, Users, Wrench, X } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { BookOpen, Calendar, Clock, ClipboardList, LayoutDashboard, LogOut, Menu, MessageSquare, Sparkles, StickyNote, Users, Wrench, X } from 'lucide-react'
 import Link from 'next/link'
 import { useAuthStore } from '@/lib/store/auth-store'
 import { usePathname } from 'next/navigation'
 import { NotificationBell } from './NotificationBell'
+import { MessagingDrawer } from './MessagingDrawer'
+import { NotepadDrawer } from './NotepadDrawer'
 
 export function Header() {
     const { profile, signOut } = useAuthStore()
     const pathname = usePathname()
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+    const [messagingOpen, setMessagingOpen] = useState(false)
+    const [notepadOpen, setNotepadOpen] = useState(false)
+    const [unreadMessages, setUnreadMessages] = useState(0)
 
     // Live IST clock
     const [currentTime, setCurrentTime] = useState<Date | null>(null)
@@ -19,6 +24,19 @@ export function Header() {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000)
         return () => clearInterval(timer)
     }, [])
+
+    const fetchUnreadMessages = useCallback(async () => {
+        try {
+            const res = await fetch('/api/messages')
+            if (res.ok) {
+                const json = await res.json()
+                const total = (json.data || []).reduce((sum: number, c: { unread_count: number }) => sum + c.unread_count, 0)
+                setUnreadMessages(total)
+            }
+        } catch {}
+    }, [])
+
+    useEffect(() => { fetchUnreadMessages() }, [fetchUnreadMessages])
 
     const timeStr = currentTime
         ? currentTime.toLocaleString('en-IN', {
@@ -106,6 +124,27 @@ export function Header() {
                     {/* Show role badge on mobile only */}
                     <span className="sm:hidden text-xs font-medium text-slate-500">{profile.role}</span>
                     <NotificationBell hotelId={profile.hotel_id} role={profile.role} staffId={profile.id} />
+                    {/* Messaging */}
+                    <button
+                        onClick={() => setMessagingOpen(true)}
+                        className="relative p-2 rounded-lg hover:bg-slate-100 transition-colors"
+                        title="Messages"
+                    >
+                        <MessageSquare className="h-5 w-5 text-slate-600" />
+                        {unreadMessages > 0 && (
+                            <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-cyan-500 px-1 text-[10px] font-bold text-white">
+                                {unreadMessages > 99 ? '99+' : unreadMessages}
+                            </span>
+                        )}
+                    </button>
+                    {/* Notepad */}
+                    <button
+                        onClick={() => setNotepadOpen(true)}
+                        className="p-2 rounded-lg hover:bg-slate-100 transition-colors"
+                        title="Notepad"
+                    >
+                        <StickyNote className="h-5 w-5 text-slate-600" />
+                    </button>
                     <button onClick={signOut} title="Sign Out" className="flex items-center gap-2 rounded-full border border-slate-200 p-2.5 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
                         <LogOut className="h-5 w-5" />
                     </button>
@@ -129,6 +168,23 @@ export function Header() {
                         </Link>
                     ))}
                 </div>
+            )}
+
+            {profile && (
+                <>
+                    <MessagingDrawer
+                        open={messagingOpen}
+                        onClose={() => { setMessagingOpen(false); fetchUnreadMessages() }}
+                        staffId={profile.id}
+                        hotelId={profile.hotel_id}
+                    />
+                    <NotepadDrawer
+                        open={notepadOpen}
+                        onClose={() => setNotepadOpen(false)}
+                        staffId={profile.id}
+                        hotelId={profile.hotel_id}
+                    />
+                </>
             )}
         </header>
     )

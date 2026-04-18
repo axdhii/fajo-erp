@@ -294,6 +294,69 @@ export interface FreshupRecord {
 }
 
 // ============================================================
+// Messaging Module Types
+// ============================================================
+
+export interface Message {
+    id: string
+    hotel_id: string
+    sender_id: string
+    recipient_id: string
+    body: string
+    read: boolean
+    created_at: string
+    sender?: { name: string | null; role: string | null }
+    recipient?: { name: string | null; role: string | null }
+}
+
+export interface Conversation {
+    staff_id: string
+    staff_name: string
+    staff_role: string
+    last_message: string
+    last_message_at: string
+    unread_count: number
+}
+
+// ============================================================
+// Staff Notepad Types
+// ============================================================
+
+export interface StaffNote {
+    id: string
+    staff_id: string
+    hotel_id: string
+    content: string
+    updated_at: string
+    created_at: string
+}
+
+// ============================================================
+// Property Reports Types
+// ============================================================
+
+export type ReportType = 'REPORT' | 'ISSUE'
+export type ReportCategory = 'OBSERVATION' | 'DAMAGE' | 'SAFETY' | 'MAINTENANCE' | 'GUEST_COMPLAINT' | 'OTHER'
+export type ReportStatus = 'OPEN' | 'ACKNOWLEDGED' | 'RESOLVED'
+
+export interface PropertyReport {
+    id: string
+    hotel_id: string
+    reported_by: string
+    type: ReportType
+    category: ReportCategory
+    description: string
+    photo_url: string | null
+    status: ReportStatus
+    reviewed_by: string | null
+    review_notes: string | null
+    created_at: string
+    resolved_at: string | null
+    reporter?: { name: string | null; role: string | null }
+    reviewer?: { name: string | null }
+}
+
+// ============================================================
 // Laundry Module Types
 // ============================================================
 
