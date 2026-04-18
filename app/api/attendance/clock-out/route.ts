@@ -60,7 +60,7 @@ export async function PATCH(request: NextRequest) {
         const { data: staffProfile } = await supabase
             .from('staff').select('role, hotel_id').eq('id', existing.staff_id).single()
 
-        if (staffProfile && ['FrontDesk', 'HR', 'ZonalOps', 'ZonalHK'].includes(staffProfile.role)) {
+        if (staffProfile && ['FrontDesk', 'HR'].includes(staffProfile.role)) {
             try {
                 const result = await generateShiftReport(
                     supabase, existing.staff_id, existing.hotel_id,
