@@ -30,8 +30,7 @@ export function Header() {
             const res = await fetch('/api/messages')
             if (res.ok) {
                 const json = await res.json()
-                const total = (json.data || []).reduce((sum: number, c: { unread_count: number }) => sum + c.unread_count, 0)
-                setUnreadMessages(total)
+                setUnreadMessages(json.unread_count || 0)
             }
         } catch {}
     }, [])
@@ -174,7 +173,7 @@ export function Header() {
                 <>
                     <MessagingDrawer
                         open={messagingOpen}
-                        onClose={() => { setMessagingOpen(false); fetchUnreadMessages() }}
+                        onClose={() => { setMessagingOpen(false); fetch('/api/messages', { method: 'PATCH' }).finally(() => fetchUnreadMessages()) }}
                         staffId={profile.id}
                         hotelId={profile.hotel_id}
                     />

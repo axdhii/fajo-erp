@@ -301,21 +301,11 @@ export interface Message {
     id: string
     hotel_id: string
     sender_id: string
-    recipient_id: string
+    recipient_id: string | null
     body: string
     read: boolean
     created_at: string
     sender?: { name: string | null; role: string | null }
-    recipient?: { name: string | null; role: string | null }
-}
-
-export interface Conversation {
-    staff_id: string
-    staff_name: string
-    staff_role: string
-    last_message: string
-    last_message_at: string
-    unread_count: number
 }
 
 // ============================================================
