@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
         const supabase = await createClient()
         const body = await request.json()
 
-        const { guest_name, guest_phone, guest_count, payment_method, aadhar_url } = body
+        const { guest_name, guest_phone, guest_count, payment_method, aadhar_url, aadhar_url_front, aadhar_url_back } = body
 
         if (!guest_name || !guest_phone) {
             return NextResponse.json({ error: 'Guest name and phone are required' }, { status: 400 })
@@ -92,6 +92,8 @@ export async function POST(request: NextRequest) {
                 amount,
                 payment_method,
                 aadhar_url: aadhar_url || null,
+                aadhar_url_front: aadhar_url_front || null,
+                aadhar_url_back: aadhar_url_back || null,
                 created_by: staffProfile.id,
             })
             .select()

@@ -286,6 +286,8 @@ export interface FreshupRecord {
     amount: number
     payment_method: 'CASH' | 'DIGITAL'
     aadhar_url: string | null
+    aadhar_url_front: string | null
+    aadhar_url_back: string | null
     created_by: string | null
     created_at: string
     staff?: { name: string | null }

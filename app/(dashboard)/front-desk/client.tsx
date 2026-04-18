@@ -38,7 +38,9 @@ import {
     Droplets,
     Plus,
     Minus,
+    Camera,
 } from 'lucide-react'
+import type { AadharMatch } from '@/lib/utils/merge-aadhar'
 import { RestockSheet as RestockForm } from '@/components/units/RestockSheet'
 
 interface FrontDeskClientProps {
@@ -79,6 +81,17 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
     const [freshupCount, setFreshupCount] = useState(1)
     const [freshupPayment, setFreshupPayment] = useState<'CASH' | 'DIGITAL'>('CASH')
     const [freshupSubmitting, setFreshupSubmitting] = useState(false)
+
+    // Freshup Aadhar state
+    const [freshupAadharFront, setFreshupAadharFront] = useState<Blob | null>(null)
+    const [freshupAadharBack, setFreshupAadharBack] = useState<Blob | null>(null)
+    const [freshupAadharPreviews, setFreshupAadharPreviews] = useState<Record<string, string>>({})
+    const [freshupAadharUrlFront, setFreshupAadharUrlFront] = useState('')
+    const [freshupAadharUrlBack, setFreshupAadharUrlBack] = useState('')
+    const [freshupUploading, setFreshupUploading] = useState(false)
+    const [freshupAadharMatch, setFreshupAadharMatch] = useState<AadharMatch | null>(null)
+    const [freshupLookingUp, setFreshupLookingUp] = useState(false)
+    const [freshupAadharBypass, setFreshupAadharBypass] = useState(false)
 
     // CRE Payment counter state
     const [shiftCash, setShiftCash] = useState(0)
@@ -214,6 +227,10 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
         if (!freshupName.trim()) { toast.error('Please enter guest name'); return }
         const digits = freshupPhone.replace(/\D/g, '')
         if (digits.length !== 10) { toast.error('Phone must be 10 digits'); return }
+        if (!freshupAadharBypass && (!freshupAadharUrlFront || !freshupAadharUrlBack)) {
+            toast.error('Aadhar front and back photos are mandatory')
+            return
+        }
 
         setFreshupSubmitting(true)
         try {
@@ -225,6 +242,8 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                     guest_phone: digits,
                     guest_count: freshupCount,
                     payment_method: freshupPayment,
+                    aadhar_url_front: freshupAadharUrlFront || null,
+                    aadhar_url_back: freshupAadharUrlBack || null,
                 }),
             })
             const json = await res.json()
@@ -234,12 +253,114 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
             setFreshupPhone('')
             setFreshupCount(1)
             setFreshupPayment('CASH')
+            setFreshupAadharFront(null)
+            setFreshupAadharBack(null)
+            setFreshupAadharPreviews({})
+            setFreshupAadharUrlFront('')
+            setFreshupAadharUrlBack('')
+            setFreshupAadharMatch(null)
+            setFreshupAadharBypass(false)
             setFreshupOpen(false)
             fetchShiftRevenue() // Update revenue counter
         } catch (err: unknown) {
             toast.error(err instanceof Error ? err.message : 'Failed to record freshup')
         } finally {
             setFreshupSubmitting(false)
+        }
+    }
+
+    // Freshup: phone lookup for returning guest Aadhar
+    const handleFreshupPhoneLookup = async (phone: string) => {
+        const digits = phone.replace(/\D/g, '')
+        if (digits.length !== 10) return
+        if (freshupAadharUrlFront && freshupAadharUrlBack) return
+        setFreshupLookingUp(true)
+        try {
+            const { lookupAadhar } = await import('@/lib/utils/merge-aadhar')
+            const match = await lookupAadhar(digits)
+            if (match) setFreshupAadharMatch(match)
+        } catch {} finally {
+            setFreshupLookingUp(false)
+        }
+    }
+
+    // Freshup: apply matched Aadhar from previous visit
+    const applyFreshupAadharMatch = async () => {
+        if (!freshupAadharMatch) return
+        setFreshupAadharUrlFront(freshupAadharMatch.aadhar_url_front)
+        setFreshupAadharUrlBack(freshupAadharMatch.aadhar_url_back)
+        try {
+            const { getAadharPublicUrl } = await import('@/lib/utils/merge-aadhar')
+            if (freshupAadharMatch.stitched) {
+                setFreshupAadharPreviews({ stitched: getAadharPublicUrl(freshupAadharMatch.aadhar_url_front) })
+            } else {
+                setFreshupAadharPreviews({
+                    front: getAadharPublicUrl(freshupAadharMatch.aadhar_url_front),
+                    back: getAadharPublicUrl(freshupAadharMatch.aadhar_url_back),
+                })
+            }
+        } catch {}
+        setFreshupAadharMatch(null)
+        toast.success('Aadhar photos linked from previous visit')
+    }
+
+    // Freshup: capture Aadhar photo (front or back)
+    const handleFreshupAadharCapture = async (side: 'front' | 'back', e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        try {
+            const { compressImage } = await import('@/lib/utils/compress-image')
+            const compressed = await compressImage(file)
+            const previewUrl = URL.createObjectURL(compressed)
+            setFreshupAadharPreviews(prev => ({ ...prev, [side]: previewUrl }))
+
+            const newFront = side === 'front' ? compressed : freshupAadharFront
+            const newBack = side === 'back' ? compressed : freshupAadharBack
+            if (side === 'front') setFreshupAadharFront(compressed)
+            if (side === 'back') setFreshupAadharBack(compressed)
+
+            // If both sides captured, stitch + upload
+            if (newFront && newBack) {
+                setFreshupUploading(true)
+                try {
+                    const { stitchAadhar } = await import('@/lib/utils/stitch-aadhar')
+                    const guestName = (freshupName || 'Guest').replace(/[^a-zA-Z0-9]/g, '_')
+                    const phone = freshupPhone.replace(/\D/g, '') || '0000000000'
+                    const dateStr = new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata' }).replace(/\//g, '-')
+                    const stitched = await stitchAadhar(newFront, newBack, {
+                        guestName: freshupName || 'Guest', phone, date: dateStr,
+                    })
+                    const monthStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }).slice(0, 7)
+                    const timeStr = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '-')
+                    const fileName = `${monthStr}/freshup_${guestName}_${phone}_${dateStr}_${timeStr}.jpg`
+
+                    const { error: uploadErr } = await supabase.storage
+                        .from('aadhars')
+                        .upload(fileName, stitched, { contentType: 'image/jpeg', upsert: true })
+
+                    if (uploadErr) {
+                        toast.error('Failed to upload stitched Aadhar')
+                        console.error('Upload error:', uploadErr)
+                        return
+                    }
+
+                    setFreshupAadharUrlFront(fileName)
+                    setFreshupAadharUrlBack(fileName)
+                    const stitchedPreview = URL.createObjectURL(stitched)
+                    setFreshupAadharPreviews({ stitched: stitchedPreview })
+                    toast.success('Aadhar photos stitched & uploaded')
+                } catch (err) {
+                    console.error('Stitch/upload error:', err)
+                    toast.error('Failed to stitch Aadhar photos')
+                } finally {
+                    setFreshupUploading(false)
+                }
+            } else {
+                toast.info(`Aadhar ${side} captured — now capture the ${side === 'front' ? 'back' : 'front'} side`)
+            }
+        } catch (err) {
+            console.error('Aadhar capture error:', err)
+            toast.error('Failed to process Aadhar photo')
         }
     }
 
@@ -478,10 +599,124 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                                         maxLength={10}
                                         value={freshupPhone}
                                         onChange={(e) => setFreshupPhone(e.target.value.replace(/\D/g, ''))}
+                                        onBlur={() => handleFreshupPhoneLookup(freshupPhone)}
                                         className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 placeholder:text-slate-400"
                                     />
                                 </div>
                             </div>
+
+                            {/* Returning guest Aadhar lookup */}
+                            {freshupLookingUp && (
+                                <div className="flex items-center gap-2 text-xs text-slate-500 px-1">
+                                    <div className="h-3 w-3 animate-spin rounded-full border-2 border-slate-400 border-t-transparent" />
+                                    Checking for returning guest...
+                                </div>
+                            )}
+                            {freshupAadharMatch && (
+                                <div className="rounded-lg bg-blue-50 border border-blue-200 px-3 py-2.5">
+                                    <p className="text-xs text-blue-700 font-medium mb-2">
+                                        Returning guest: <span className="font-bold">{freshupAadharMatch.name}</span> ({freshupAadharMatch.phone})
+                                    </p>
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={applyFreshupAadharMatch}
+                                            className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-semibold hover:bg-blue-700 transition-colors"
+                                        >
+                                            Use Previous Aadhar
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setFreshupAadharMatch(null)}
+                                            className="px-3 py-1.5 rounded-lg bg-white border border-blue-200 text-blue-600 text-xs font-semibold hover:bg-blue-50 transition-colors"
+                                        >
+                                            Upload New
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Aadhar Photo Capture */}
+                            {!freshupAadharBypass && (
+                                <div className="space-y-2">
+                                    <Label className="text-xs text-slate-600">Aadhar ID Photos *</Label>
+                                    {freshupAadharPreviews.stitched ? (
+                                        <div className="space-y-2">
+                                            <div className="relative rounded-lg overflow-hidden border border-emerald-200">
+                                                <img
+                                                    src={freshupAadharPreviews.stitched}
+                                                    alt="Stitched Aadhar"
+                                                    className="w-full h-auto max-h-48 object-contain bg-slate-50"
+                                                />
+                                                <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-emerald-500 text-white text-[10px] font-bold">
+                                                    Front + Back
+                                                </div>
+                                            </div>
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    setFreshupAadharFront(null)
+                                                    setFreshupAadharBack(null)
+                                                    setFreshupAadharPreviews({})
+                                                    setFreshupAadharUrlFront('')
+                                                    setFreshupAadharUrlBack('')
+                                                }}
+                                                className="text-xs text-cyan-600 hover:text-cyan-700 font-medium"
+                                            >
+                                                Re-capture
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <div className="grid grid-cols-2 gap-3">
+                                            {(['front', 'back'] as const).map((side) => (
+                                                <div key={side}>
+                                                    {freshupAadharPreviews[side] ? (
+                                                        <div className="relative rounded-lg overflow-hidden border border-emerald-200">
+                                                            <img
+                                                                src={freshupAadharPreviews[side]}
+                                                                alt={`Aadhar ${side}`}
+                                                                className="w-full h-24 object-cover"
+                                                            />
+                                                            <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded-full bg-emerald-500 text-white text-[9px] font-bold capitalize">
+                                                                {side}
+                                                            </div>
+                                                            <div className="absolute top-1 right-1">
+                                                                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                                            </div>
+                                                        </div>
+                                                    ) : (
+                                                        <label className={`flex flex-col items-center justify-center h-24 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${
+                                                            freshupUploading
+                                                                ? 'border-slate-200 bg-slate-50 cursor-wait'
+                                                                : 'border-cyan-300 bg-cyan-50/50 hover:bg-cyan-50 hover:border-cyan-400'
+                                                        }`}>
+                                                            <input
+                                                                type="file"
+                                                                accept="image/*"
+                                                                capture="environment"
+                                                                className="hidden"
+                                                                disabled={freshupUploading}
+                                                                onChange={(e) => handleFreshupAadharCapture(side, e)}
+                                                            />
+                                                            {freshupUploading ? (
+                                                                <div className="text-center">
+                                                                    <div className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent mx-auto mb-1" />
+                                                                    <span className="text-[10px] text-slate-400">Stitching...</span>
+                                                                </div>
+                                                            ) : (
+                                                                <div className="text-center">
+                                                                    <Camera className="h-5 w-5 text-cyan-500 mx-auto mb-1" />
+                                                                    <span className="text-[10px] font-semibold text-cyan-600 capitalize">{side}</span>
+                                                                </div>
+                                                            )}
+                                                        </label>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
 
                             {/* Guest count stepper */}
                             <div className="flex items-center gap-4">
@@ -539,9 +774,24 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                                 </div>
                             </div>
 
+                            {/* Admin/Developer: Skip Aadhar bypass */}
+                            {(role === 'Admin' || role === 'Developer') && (
+                                <div className="flex items-center gap-3 px-1 py-2">
+                                    <label className="flex items-center gap-2 cursor-pointer text-sm">
+                                        <input
+                                            type="checkbox"
+                                            checked={freshupAadharBypass}
+                                            onChange={(e) => setFreshupAadharBypass(e.target.checked)}
+                                            className="rounded border-slate-300"
+                                        />
+                                        <span className="text-slate-600">Skip Aadhar Upload</span>
+                                    </label>
+                                </div>
+                            )}
+
                             <Button
                                 onClick={handleSubmitFreshup}
-                                disabled={freshupSubmitting || !freshupName.trim() || freshupPhone.replace(/\D/g, '').length !== 10}
+                                disabled={freshupSubmitting || !freshupName.trim() || freshupPhone.replace(/\D/g, '').length !== 10 || (!freshupAadharBypass && (!freshupAadharUrlFront || !freshupAadharUrlBack))}
                                 size="sm"
                                 className="bg-cyan-600 hover:bg-cyan-700 h-8 text-xs"
                             >

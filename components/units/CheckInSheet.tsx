@@ -401,7 +401,7 @@ export function CheckInSheet({
                             : (g.aadhar_url_back || null),
                     })),
                     numberOfDays,
-                    checkOutOverride: manualCheckout || null,
+                    checkOutOverride: manualCheckout ? manualCheckout + ':00+05:30' : null,
                     grandTotalOverride: isBypass
                         ? 0
                         : (grandTotalOverride && !isNaN(Number(grandTotalOverride))
