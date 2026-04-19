@@ -113,10 +113,14 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Failed to create selfie request' }, { status: 500 })
         }
 
-        // Notify target staff
+        // Notify target staff — recipient_role is NOT NULL so we must provide it
         try {
+            // Look up target staff's role
+            const { data: targetStaff } = await supabase
+                .from('staff').select('role').eq('id', target_staff_id).single()
             await supabase.from('notifications').insert({
                 hotel_id: callerStaff.hotel_id,
+                recipient_role: targetStaff?.role || 'FrontDesk',
                 recipient_staff_id: target_staff_id,
                 type: 'SELFIE_REQUEST',
                 title: 'Selfie Requested',
@@ -194,6 +198,7 @@ export async function PATCH(request: NextRequest) {
         try {
             await supabase.from('notifications').insert({
                 hotel_id: callerStaff.hotel_id,
+                recipient_role: 'Admin',
                 recipient_staff_id: current.requested_by,
                 type: 'SELFIE_COMPLETED',
                 title: 'Selfie Submitted',
