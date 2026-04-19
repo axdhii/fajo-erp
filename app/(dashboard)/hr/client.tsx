@@ -824,11 +824,6 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
                                                     <div className="flex items-center gap-2 flex-wrap">
                                                         <span className="font-bold text-slate-800">{a.staff?.name || 'Unknown'}</span>
                                                         <span className="text-xs text-slate-400">{a.staff?.role}</span>
-                                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                                                            a.shift === 'DAY' ? 'bg-amber-100 text-amber-700' : 'bg-indigo-100 text-indigo-700'
-                                                        }`}>
-                                                            {a.shift}
-                                                        </span>
                                                     </div>
                                                     <div className="flex items-center gap-3 mt-1.5 text-xs text-slate-500">
                                                         <span>

@@ -103,11 +103,23 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Failed to create property report' }, { status: 500 })
         }
 
-        // Notify Admin
+        // Notify ZonalOps
         try {
             await supabase.from('notifications').insert({
                 hotel_id: callerStaff.hotel_id,
-                recipient_role: 'Admin',
+                recipient_role: 'ZonalOps',
+                type: type === 'ISSUE' ? 'NEW_OPERATIONAL_ISSUE' : 'NEW_PROPERTY_REPORT',
+                title: type === 'ISSUE' ? 'New Issue Reported' : 'New Property Report',
+                message: description.trim().substring(0, 100),
+                source_table: 'property_reports',
+                source_id: data.id,
+            })
+        } catch { /* never block */ }
+        // Notify ZonalHK
+        try {
+            await supabase.from('notifications').insert({
+                hotel_id: callerStaff.hotel_id,
+                recipient_role: 'ZonalHK',
                 type: type === 'ISSUE' ? 'NEW_OPERATIONAL_ISSUE' : 'NEW_PROPERTY_REPORT',
                 title: type === 'ISSUE' ? 'New Issue Reported' : 'New Property Report',
                 message: description.trim().substring(0, 100),

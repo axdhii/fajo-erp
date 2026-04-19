@@ -15,6 +15,10 @@
         {
             "path": "/api/cron/message-cleanup",
             "schedule": "0 3 * * *"
+        },
+        {
+            "path": "/api/cron/selfie-cleanup",
+            "schedule": "0 */4 * * *"
         }
     ]
 }

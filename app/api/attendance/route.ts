@@ -82,21 +82,6 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Staff is already clocked in. Clock out first.' }, { status: 409 })
         }
 
-        // Check if already clocked in today for this shift
-        const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }) // YYYY-MM-DD
-        const { data: existing } = await supabase
-            .from('attendance')
-            .select('id')
-            .eq('staff_id', staff_id)
-            .eq('shift', shift)
-            .gte('clock_in', `${todayStr}T00:00:00+05:30`)
-            .lt('clock_in', new Date(new Date(todayStr + 'T00:00:00+05:30').getTime() + 86400000).toISOString())
-            .maybeSingle()
-
-        if (existing) {
-            return NextResponse.json({ error: `Already clocked in for ${shift} shift today` }, { status: 409 })
-        }
-
         const { data, error } = await supabase
             .from('attendance')
             .insert({

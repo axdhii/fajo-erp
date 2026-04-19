@@ -67,6 +67,14 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
     const [issueGuestPhone, setIssueGuestPhone] = useState('')
     const [issueSubmitting, setIssueSubmitting] = useState(false)
 
+    // Hotel issue report state
+    const [hotelIssueOpen, setHotelIssueOpen] = useState(false)
+    const [hotelIssueDescription, setHotelIssueDescription] = useState('')
+    const [hotelIssueCategory, setHotelIssueCategory] = useState('')
+    const [hotelIssuePhoto, setHotelIssuePhoto] = useState('')
+    const [hotelIssueUploading, setHotelIssueUploading] = useState(false)
+    const [hotelIssueSubmitting, setHotelIssueSubmitting] = useState(false)
+
     // Expense request state
     const [expenseOpen, setExpenseOpen] = useState(false)
     const [expenseDescription, setExpenseDescription] = useState('')
@@ -190,6 +198,59 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
             toast.error(err instanceof Error ? err.message : 'Failed to report issue')
         } finally {
             setIssueSubmitting(false)
+        }
+    }
+
+    // Submit hotel issue report
+    const handleSubmitHotelIssue = async () => {
+        if (!hotelIssueDescription.trim()) { toast.error('Please describe the issue'); return }
+        if (!hotelIssueCategory) { toast.error('Please select a category'); return }
+        setHotelIssueSubmitting(true)
+        try {
+            const res = await fetch('/api/property-reports', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'ISSUE',
+                    category: hotelIssueCategory,
+                    description: hotelIssueDescription.trim(),
+                    photo_url: hotelIssuePhoto || null,
+                }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error)
+            toast.success('Hotel issue reported to Zonal Ops & HK')
+            setHotelIssueDescription('')
+            setHotelIssueCategory('')
+            setHotelIssuePhoto('')
+            setHotelIssueOpen(false)
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to report issue')
+        } finally {
+            setHotelIssueSubmitting(false)
+        }
+    }
+
+    const handleHotelIssuePhotoCapture = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        setHotelIssueUploading(true)
+        try {
+            const { compressImage } = await import('@/lib/utils/compress-image')
+            const compressed = await compressImage(file)
+            const dateStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+            const timeStr = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '-')
+            const fileName = `${dateStr.slice(0, 7)}/issue_${dateStr}_${timeStr}_${Date.now()}.jpg`
+            const { error: uploadErr } = await supabase.storage
+                .from('reports')
+                .upload(fileName, compressed, { contentType: 'image/jpeg', upsert: true })
+            if (uploadErr) { toast.error('Failed to upload photo'); return }
+            setHotelIssuePhoto(fileName)
+            toast.success('Photo uploaded')
+        } catch {
+            toast.error('Failed to process photo')
+        } finally {
+            setHotelIssueUploading(false)
         }
     }
 
@@ -880,6 +941,122 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                                     <span className="flex items-center gap-2">
                                         <MessageSquareWarning className="h-3.5 w-3.5" />
                                         Report Issue
+                                    </span>
+                                )}
+                            </Button>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* Report Hotel Issue Section */}
+            <div className="rounded-2xl border border-amber-200 bg-amber-50/50 overflow-hidden">
+                <button
+                    onClick={() => setHotelIssueOpen(!hotelIssueOpen)}
+                    className="w-full flex items-center justify-between px-5 py-3.5 cursor-pointer hover:bg-amber-50 transition-colors"
+                >
+                    <div className="flex items-center gap-3">
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
+                            <AlertTriangle className="h-4 w-4" />
+                        </div>
+                        <div className="text-left">
+                            <span className="text-sm font-bold text-amber-900">Report Hotel Issue</span>
+                            <span className="ml-3 text-xs text-amber-500">Send to Zonal Ops & Zonal HK</span>
+                        </div>
+                    </div>
+                    {hotelIssueOpen ? <ChevronUp className="h-4 w-4 text-amber-400" /> : <ChevronDown className="h-4 w-4 text-amber-400" />}
+                </button>
+
+                {hotelIssueOpen && (
+                    <div className="px-5 pb-5 border-t border-amber-200 pt-4">
+                        <div className="bg-white rounded-xl border border-amber-100 p-4 space-y-3">
+                            <div className="space-y-1.5">
+                                <Label className="text-xs text-slate-600">Issue Description *</Label>
+                                <textarea
+                                    placeholder="Describe the hotel issue in detail (e.g. broken AC in Room 101, plumbing leak, damaged furniture...)"
+                                    value={hotelIssueDescription}
+                                    onChange={(e) => setHotelIssueDescription(e.target.value)}
+                                    rows={3}
+                                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/20 resize-none placeholder:text-slate-400"
+                                />
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs text-slate-600">Category *</Label>
+                                    <Select value={hotelIssueCategory} onValueChange={setHotelIssueCategory}>
+                                        <SelectTrigger className="h-9">
+                                            <SelectValue placeholder="Select category..." />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="OBSERVATION">Observation</SelectItem>
+                                            <SelectItem value="DAMAGE">Damage</SelectItem>
+                                            <SelectItem value="SAFETY">Safety</SelectItem>
+                                            <SelectItem value="MAINTENANCE">Maintenance</SelectItem>
+                                            <SelectItem value="GUEST_COMPLAINT">Guest Complaint</SelectItem>
+                                            <SelectItem value="OTHER">Other</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                                <div className="space-y-1.5">
+                                    <Label className="text-xs text-slate-600">Photo (optional)</Label>
+                                    {hotelIssuePhoto ? (
+                                        <div className="flex items-center gap-2">
+                                            <span className="text-xs text-emerald-600 font-medium flex items-center gap-1">
+                                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                                Photo attached
+                                            </span>
+                                            <button
+                                                type="button"
+                                                onClick={() => setHotelIssuePhoto('')}
+                                                className="text-xs text-amber-600 hover:text-amber-700 font-medium"
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                    ) : (
+                                        <label className={`flex items-center justify-center gap-2 h-9 rounded-lg border cursor-pointer transition-colors ${
+                                            hotelIssueUploading
+                                                ? 'border-slate-200 bg-slate-50 cursor-wait'
+                                                : 'border-amber-300 bg-amber-50/50 hover:bg-amber-50 hover:border-amber-400'
+                                        }`}>
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                capture="environment"
+                                                className="hidden"
+                                                disabled={hotelIssueUploading}
+                                                onChange={handleHotelIssuePhotoCapture}
+                                            />
+                                            {hotelIssueUploading ? (
+                                                <span className="flex items-center gap-1.5 text-xs text-slate-400">
+                                                    <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />
+                                                    Uploading...
+                                                </span>
+                                            ) : (
+                                                <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-600">
+                                                    <Camera className="h-3.5 w-3.5" />
+                                                    Capture Photo
+                                                </span>
+                                            )}
+                                        </label>
+                                    )}
+                                </div>
+                            </div>
+                            <Button
+                                onClick={handleSubmitHotelIssue}
+                                disabled={hotelIssueSubmitting || !hotelIssueDescription.trim() || !hotelIssueCategory}
+                                size="sm"
+                                className="bg-amber-600 hover:bg-amber-700 h-8 text-xs"
+                            >
+                                {hotelIssueSubmitting ? (
+                                    <span className="flex items-center gap-2">
+                                        <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                                        Sending...
+                                    </span>
+                                ) : (
+                                    <span className="flex items-center gap-2">
+                                        <AlertTriangle className="h-3.5 w-3.5" />
+                                        Report Hotel Issue
                                     </span>
                                 )}
                             </Button>

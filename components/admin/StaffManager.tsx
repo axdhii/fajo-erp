@@ -35,6 +35,7 @@ import {
     Shield,
     UserPlus,
     ChevronUp,
+    Camera,
 } from 'lucide-react'
 
 import type { AdminTabProps } from '@/app/(dashboard)/admin/client'
@@ -246,6 +247,22 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
             toast.error(err instanceof Error ? err.message : 'Delete failed')
         } finally {
             setLoading(false)
+        }
+    }
+
+    // ── Request Selfie ──
+    const handleRequestSelfie = async (targetStaffId: string, staffName: string | null) => {
+        try {
+            const res = await fetch('/api/selfie-requests', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ target_staff_id: targetStaffId }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error)
+            toast.success(`Selfie requested from ${staffName || 'staff'}`)
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to request selfie')
         }
     }
 
@@ -552,6 +569,15 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
                                                 </div>
                                             </div>
                                             <div className="flex items-center gap-1 shrink-0">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    onClick={() => handleRequestSelfie(s.id, s.name)}
+                                                    className="text-slate-500 hover:text-amber-600"
+                                                    title="Request Selfie"
+                                                >
+                                                    <Camera className="h-3.5 w-3.5" />
+                                                </Button>
                                                 <Button
                                                     variant="ghost"
                                                     size="sm"

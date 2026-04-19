@@ -366,3 +366,23 @@ export interface LaundryOrder {
     created_at: string
     staff?: { name: string | null }
 }
+
+// ============================================================
+// Selfie Request Types
+// ============================================================
+
+export type SelfieRequestStatus = 'PENDING' | 'COMPLETED' | 'EXPIRED'
+
+export interface SelfieRequest {
+    id: string
+    hotel_id: string
+    requested_by: string
+    target_staff_id: string
+    reason: string | null
+    status: SelfieRequestStatus
+    photo_url: string | null
+    created_at: string
+    completed_at: string | null
+    requester?: { name: string | null; role: string | null }
+    target?: { name: string | null; role: string | null }
+}
