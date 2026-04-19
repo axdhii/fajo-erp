@@ -560,28 +560,33 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
             </div>
 
             {/* Tabs */}
-            <div className="flex bg-white rounded-xl p-1 border border-slate-200 shadow-sm w-fit">
-                {tabs.map(t => (
-                    <button
-                        key={t.key}
-                        onClick={() => setTab(t.key)}
-                        className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg cursor-pointer transition-all ${
-                            tab === t.key
-                                ? 'bg-teal-600 text-white shadow-sm'
-                                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-                        }`}
-                    >
-                        {t.icon}
-                        {t.label}
-                        {(t.badge ?? 0) > 0 && (
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                                tab === t.key ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700'
-                            }`}>
-                                {t.badge}
-                            </span>
-                        )}
-                    </button>
-                ))}
+            <div className="relative">
+                <div className="overflow-x-auto scrollbar-hide -mx-2 px-2 pb-1">
+                    <div className="flex bg-white rounded-xl p-1 border border-slate-200 shadow-sm w-fit min-w-fit">
+                        {tabs.map(t => (
+                            <button
+                                key={t.key}
+                                onClick={() => setTab(t.key)}
+                                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg cursor-pointer transition-all whitespace-nowrap ${
+                                    tab === t.key
+                                        ? 'bg-teal-600 text-white shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                                }`}
+                            >
+                                {t.icon}
+                                {t.label}
+                                {(t.badge ?? 0) > 0 && (
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                        tab === t.key ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700'
+                                    }`}>
+                                        {t.badge}
+                                    </span>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="absolute right-0 top-0 bottom-1 w-8 bg-gradient-to-l from-slate-50 to-transparent pointer-events-none md:hidden" />
             </div>
 
             {/* Loading */}
@@ -641,7 +646,7 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
                                                 </div>
 
                                                 {/* Actions */}
-                                                <div className="flex items-end gap-2">
+                                                <div className="flex items-end gap-2 flex-wrap">
                                                     {ticket.status === 'OPEN' && (
                                                         <>
                                                             <textarea
@@ -763,7 +768,7 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
                                 className="w-full text-sm border border-teal-200 rounded-lg p-2.5 resize-none focus:outline-none focus:ring-2 focus:ring-teal-300 bg-white"
                                 rows={2}
                             />
-                            <div className="flex flex-col sm:flex-row gap-3">
+                            <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
                                 <input
                                     type="number"
                                     placeholder="Item count"
@@ -777,13 +782,13 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
                                     placeholder="Notes (optional)"
                                     value={sendNotes}
                                     onChange={e => setSendNotes(e.target.value)}
-                                    className="flex-1 text-sm border border-teal-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-teal-300 bg-white"
+                                    className="flex-1 min-w-0 text-sm border border-teal-200 rounded-lg p-2.5 focus:outline-none focus:ring-2 focus:ring-teal-300 bg-white"
                                 />
                                 <Button
                                     size="sm"
                                     onClick={handleSendLaundry}
                                     disabled={sending || !sendItems.trim()}
-                                    className="bg-teal-600 hover:bg-teal-700 text-white shrink-0 h-10"
+                                    className="bg-teal-600 hover:bg-teal-700 text-white shrink-0 h-10 w-full sm:w-auto"
                                 >
                                     {sending ? (
                                         <Loader2 className="h-4 w-4 animate-spin" />
@@ -900,8 +905,8 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
                                                     </div>
                                                 </div>
                                                 {/* Payment form */}
-                                                <div className="flex items-end gap-2">
-                                                    <div className="relative flex-1 max-w-[200px]">
+                                                <div className="flex items-end gap-2 flex-wrap">
+                                                    <div className="relative flex-1 min-w-[140px] max-w-[200px]">
                                                         <IndianRupee className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
                                                         <input
                                                             type="number"

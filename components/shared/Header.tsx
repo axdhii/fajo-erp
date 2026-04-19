@@ -109,7 +109,7 @@ export function Header() {
                     </nav>
                 </div>
 
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 sm:gap-4">
                     {timeStr && (
                         <div className="hidden md:flex items-center gap-1.5 text-xs text-slate-500 select-none">
                             <Clock className="h-3.5 w-3.5" />

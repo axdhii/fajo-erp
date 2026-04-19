@@ -994,28 +994,33 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
             </div>
 
             {/* Tabs */}
-            <div className="flex bg-white rounded-xl p-1 border border-slate-200 shadow-sm w-fit flex-wrap gap-1">
-                {tabs.map(t => (
-                    <button
-                        key={t.key}
-                        onClick={() => setTab(t.key)}
-                        className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg cursor-pointer transition-all ${
-                            tab === t.key
-                                ? 'bg-orange-600 text-white shadow-sm'
-                                : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
-                        }`}
-                    >
-                        {t.icon}
-                        {t.label}
-                        {(t.badge ?? 0) > 0 && (
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
-                                tab === t.key ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700'
-                            }`}>
-                                {t.badge}
-                            </span>
-                        )}
-                    </button>
-                ))}
+            <div className="relative">
+                <div className="overflow-x-auto scrollbar-hide -mx-2 px-2 pb-1">
+                    <div className="flex bg-white rounded-xl p-1 border border-slate-200 shadow-sm w-fit min-w-fit">
+                        {tabs.map(t => (
+                            <button
+                                key={t.key}
+                                onClick={() => setTab(t.key)}
+                                className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-lg cursor-pointer transition-all whitespace-nowrap ${
+                                    tab === t.key
+                                        ? 'bg-orange-600 text-white shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50'
+                                }`}
+                            >
+                                {t.icon}
+                                {t.label}
+                                {(t.badge ?? 0) > 0 && (
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                        tab === t.key ? 'bg-white/20 text-white' : 'bg-amber-100 text-amber-700'
+                                    }`}>
+                                        {t.badge}
+                                    </span>
+                                )}
+                            </button>
+                        ))}
+                    </div>
+                </div>
+                <div className="absolute right-0 top-0 bottom-1 w-8 bg-gradient-to-l from-slate-50 to-transparent pointer-events-none md:hidden" />
             </div>
 
             {/* Loading */}
@@ -1446,7 +1451,7 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
                                                 </div>
 
                                                 {/* Actions */}
-                                                <div className="flex items-end gap-2">
+                                                <div className="flex items-end gap-2 flex-wrap">
                                                     {issue.status === 'OPEN' && (
                                                         <>
                                                             <textarea
@@ -1561,7 +1566,7 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
                     {/* Date & Time Navigation */}
                     <Card className="rounded-2xl">
                         <CardContent className="py-3 px-4 space-y-2">
-                            <div className="flex items-center justify-between">
+                            <div className="flex items-center justify-between flex-wrap gap-2">
                                 <div className="flex items-center gap-2">
                                     <Button variant="outline" size="sm" onClick={() => {
                                         const d = new Date(shiftReportDate + 'T00:00:00')
@@ -1574,7 +1579,7 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
                                         type="date"
                                         value={shiftReportDate}
                                         onChange={e => setShiftReportDate(e.target.value)}
-                                        className="w-44 h-8 text-sm"
+                                        className="w-36 sm:w-44 h-8 text-sm"
                                     />
                                     <Button variant="outline" size="sm" onClick={() => {
                                         const d = new Date(shiftReportDate + 'T00:00:00')
@@ -1591,7 +1596,7 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
                                 </div>
                                 <span className="text-xs text-slate-500">{shiftReports.length} reports</span>
                             </div>
-                            <div className="flex items-center gap-2 text-xs">
+                            <div className="flex items-center gap-2 text-xs flex-wrap">
                                 <span className="text-slate-400">From</span>
                                 <Input
                                     type="time"
@@ -1713,7 +1718,7 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
                                                     </div>
 
                                                     {/* Other activity */}
-                                                    <div className="flex items-center gap-4 text-xs text-slate-500">
+                                                    <div className="flex items-center gap-2 sm:gap-4 text-xs text-slate-500 flex-wrap">
                                                         {r.restock_requests_count > 0 && (
                                                             <span className="px-2 py-1 rounded-full bg-orange-50 text-orange-600 font-medium">
                                                                 {r.restock_requests_count} restocks

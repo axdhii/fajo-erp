@@ -443,7 +443,7 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
             {/* CRE Payment Counter */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div className="flex items-center gap-3 rounded-2xl bg-emerald-50 border border-emerald-200 px-4 py-3">
                     <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-100 text-emerald-600">
                         <Banknote className="h-4.5 w-4.5" />
@@ -667,7 +667,7 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                                             </button>
                                         </div>
                                     ) : (
-                                        <div className="grid grid-cols-2 gap-3">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                             {(['front', 'back'] as const).map((side) => (
                                                 <div key={side}>
                                                     {freshupAadharPreviews[side] ? (
