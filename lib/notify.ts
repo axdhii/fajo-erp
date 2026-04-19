@@ -3,7 +3,7 @@ import { SupabaseClient } from '@supabase/supabase-js'
 interface NotifyOptions {
     supabase: SupabaseClient
     hotelId: string
-    recipientRole?: string
+    recipientRole: string
     recipientStaffId?: string | null
     type: string
     title: string
@@ -24,7 +24,7 @@ export async function notify(options: NotifyOptions) {
     try {
         await supabase.from('notifications').insert({
             hotel_id: hotelId,
-            recipient_role: recipientRole || null,
+            recipient_role: recipientRole,
             recipient_staff_id: recipientStaffId || null,
             type,
             title,

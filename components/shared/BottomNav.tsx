@@ -3,7 +3,7 @@
 import { usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { useAuthStore } from '@/lib/store/auth-store'
-import { BookOpen, Calendar, LayoutDashboard, Users, ClipboardList, Sparkles, Wrench } from 'lucide-react'
+import { BookOpen, Calendar, LayoutDashboard, Users, ClipboardList, Sparkles } from 'lucide-react'
 
 export function BottomNav() {
     const { profile } = useAuthStore()

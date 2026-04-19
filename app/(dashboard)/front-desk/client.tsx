@@ -245,7 +245,8 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                 .from('reports')
                 .upload(fileName, compressed, { contentType: 'image/jpeg', upsert: true })
             if (uploadErr) { toast.error('Failed to upload photo'); return }
-            setHotelIssuePhoto(fileName)
+            const { data: urlData } = supabase.storage.from('reports').getPublicUrl(fileName)
+            setHotelIssuePhoto(urlData.publicUrl)
             toast.success('Photo uploaded')
         } catch {
             toast.error('Failed to process photo')
@@ -316,6 +317,7 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
             setFreshupPayment('CASH')
             setFreshupAadharFront(null)
             setFreshupAadharBack(null)
+            Object.values(freshupAadharPreviews).forEach(url => { try { URL.revokeObjectURL(url) } catch {} })
             setFreshupAadharPreviews({})
             setFreshupAadharUrlFront('')
             setFreshupAadharUrlBack('')

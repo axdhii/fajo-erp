@@ -338,10 +338,6 @@ export function SelfieRequestBanner({ staffId, hotelId }: SelfieRequestBannerPro
                     </div>
                 )}
 
-                {/* Hidden video element for when camera is not active but needs to be mounted */}
-                {!cameraActive && (
-                    <video ref={videoRef} className="hidden" />
-                )}
             </div>
         </div>
     )

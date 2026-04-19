@@ -97,6 +97,10 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'id is required' }, { status: 400 })
         }
 
+        if (content === undefined) {
+            return NextResponse.json({ error: 'content is required' }, { status: 400 })
+        }
+
         const { data, error } = await supabase
             .from('notes')
             .update({

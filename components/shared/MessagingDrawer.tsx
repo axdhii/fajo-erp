@@ -112,7 +112,7 @@ export function MessagingDrawer({ open, onClose, staffId, hotelId }: MessagingDr
         if (!open) return
 
         const channel = supabase
-            .channel('group-chat-realtime')
+            .channel(`group-chat-${hotelId}`)
             .on(
                 'postgres_changes',
                 {

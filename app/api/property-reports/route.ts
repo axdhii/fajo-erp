@@ -208,8 +208,10 @@ export async function PATCH(request: NextRequest) {
 
         // Notify the reporter
         try {
+            const reporterRole = data.reporter?.role || 'FrontDesk'
             await supabase.from('notifications').insert({
                 hotel_id: data.hotel_id,
+                recipient_role: reporterRole,
                 recipient_staff_id: current.reported_by,
                 type: 'REPORT_REVIEWED',
                 title: 'Report ' + action,

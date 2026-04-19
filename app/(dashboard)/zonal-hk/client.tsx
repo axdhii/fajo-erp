@@ -269,7 +269,8 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
                 .from('reports')
                 .upload(fileName, compressed, { contentType: 'image/jpeg', upsert: true })
             if (uploadErr) { toast.error('Failed to upload photo'); return }
-            setReportPhotoUrl(fileName)
+            const { data: urlData } = supabase.storage.from('reports').getPublicUrl(fileName)
+            setReportPhotoUrl(urlData.publicUrl)
             toast.success('Photo uploaded')
         } catch {
             toast.error('Failed to process photo')
