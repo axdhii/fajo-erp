@@ -138,7 +138,7 @@
 
 /* Safe area padding for notched devices (iPhone X+) */
 .pb-safe {
-    padding-bottom: env(safe-area-inset-bottom, 0px);
+    padding-bottom: max(env(safe-area-inset-bottom, 0px), 8px);
 }
 .pt-safe {
     padding-top: env(safe-area-inset-top, 0px);
@@ -158,6 +158,27 @@ html {
 html, body {
     overscroll-behavior: none;
     -webkit-overflow-scrolling: touch;
+}
+
+/* Active state feedback for touch devices */
+@media (hover: none) and (pointer: coarse) {
+    .active\:scale-95:active {
+        transform: scale(0.95);
+        transition: transform 0.1s ease;
+    }
+
+    /* Larger touch targets on mobile */
+    button, a, [role="button"] {
+        min-height: 44px;
+        min-width: 44px;
+    }
+
+    /* Prevent text selection on UI elements */
+    button, nav a, [role="button"] {
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+    }
 }
 
 /* Fix iOS input zoom (inputs < 16px trigger zoom) */

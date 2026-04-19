@@ -2,8 +2,10 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { Header } from '@/components/shared/Header'
+import { BottomNav } from '@/components/shared/BottomNav'
 import { ShiftReportModal } from '@/components/shared/ShiftReportModal'
 import { Toaster } from '@/components/ui/sonner'
+import { PushSubscriber } from '@/components/shared/PushSubscriber'
 import { useAuthStore } from '@/lib/store/auth-store'
 
 export default function DashboardLayout({
@@ -28,11 +30,13 @@ export default function DashboardLayout({
     return (
         <div className="min-h-screen bg-slate-50 dark:bg-slate-900 font-sans selection:bg-emerald-500/30">
             <Header />
-            <main className="container mx-auto px-4 py-8">
+            <main className="container mx-auto px-4 py-6 pb-24 md:pb-8">
                 {children}
             </main>
             <ShiftReportModal />
+            <PushSubscriber />
             <Toaster position="bottom-center" richColors />
+            <BottomNav />
         </div>
     )
 }
