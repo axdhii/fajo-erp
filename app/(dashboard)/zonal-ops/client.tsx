@@ -36,16 +36,19 @@ import {
     Download,
     Camera,
     FileText,
+    Eye,
 } from 'lucide-react'
 import type { RestockRequest, PropertyExpense, CustomerIssue, ShiftReport, PropertyReport } from '@/lib/types'
 import { timeAgo } from '@/lib/utils/time'
+import { useUnitStore } from '@/lib/store/unit-store'
+import { useCurrentTime, getCheckoutAlert } from '@/lib/hooks/use-current-time'
 
 interface ZonalOpsClientProps {
     staffId: string
     hotels: { id: string; name: string }[]
 }
 
-type Tab = 'restock' | 'payments' | 'expenses' | 'issues' | 'shift-reports' | 'reports'
+type Tab = 'monitor' | 'restock' | 'payments' | 'expenses' | 'issues' | 'shift-reports' | 'reports'
 
 function formatCurrency(n: number): string {
     return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
@@ -67,8 +70,12 @@ interface PaymentRow {
 export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProps) {
     void _staffId // reserved for future per-staff audit trails
     const [selectedHotelId, setSelectedHotelId] = useState(hotels[0]?.id || '')
-    const [tab, setTab] = useState<Tab>('restock')
+    const [tab, setTab] = useState<Tab>('monitor')
     const [loading, setLoading] = useState(false)
+
+    // ============ MONITOR STATE ============
+    const { units, fetchUnitsWithBookings, subscribeToUnits } = useUnitStore()
+    const now = useCurrentTime(30000) // Update every 30 seconds
 
     // ============ RESTOCK STATE ============
     const [pendingRestocks, setPendingRestocks] = useState<RestockRequest[]>([])
@@ -724,7 +731,9 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
         if (!selectedHotelId) return
         setLoading(true)
         const load = async () => {
-            if (tab === 'restock') {
+            if (tab === 'monitor') {
+                await fetchUnitsWithBookings(selectedHotelId)
+            } else if (tab === 'restock') {
                 await Promise.all([fetchPendingRestocks(), fetchDoneRestocks()])
             } else if (tab === 'payments') {
                 await fetchPayments()
@@ -740,7 +749,7 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
             setLoading(false)
         }
         load()
-    }, [tab, selectedHotelId, fetchPendingRestocks, fetchDoneRestocks, fetchPayments, fetchPendingExpenses, fetchReviewedExpenses, fetchOpenIssues, fetchResolvedIssues, fetchShiftReports, fetchReports])
+    }, [tab, selectedHotelId, fetchUnitsWithBookings, fetchPendingRestocks, fetchDoneRestocks, fetchPayments, fetchPendingExpenses, fetchReviewedExpenses, fetchOpenIssues, fetchResolvedIssues, fetchShiftReports, fetchReports])
 
     // ============ REALTIME SUBSCRIPTIONS ============
 
@@ -831,6 +840,13 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
             .subscribe()
         return () => { supabase.removeChannel(channel) }
     }, [tab, selectedHotelId, fetchReports])
+
+    // Monitor tab realtime (unit status changes)
+    useEffect(() => {
+        if (tab !== 'monitor' || !selectedHotelId) return
+        const unsub = subscribeToUnits(selectedHotelId, true)
+        return unsub
+    }, [tab, selectedHotelId, subscribeToUnits])
 
     // ============ ACTION HANDLERS ============
 
@@ -926,7 +942,8 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
 
     // Refresh current tab
     const handleRefresh = () => {
-        if (tab === 'restock') { fetchPendingRestocks(); fetchDoneRestocks() }
+        if (tab === 'monitor') { fetchUnitsWithBookings(selectedHotelId) }
+        else if (tab === 'restock') { fetchPendingRestocks(); fetchDoneRestocks() }
         else if (tab === 'payments') { fetchPayments() }
         else if (tab === 'expenses') { fetchPendingExpenses(); fetchReviewedExpenses() }
         else if (tab === 'issues') { fetchOpenIssues(); fetchResolvedIssues() }
@@ -952,7 +969,16 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
     const pendingExpenseCount = pendingExpenses.length
     const openIssueCount = openIssues.length
 
+    // Monitor badge computation
+    const overdueUnits = units
+        .filter(u => u.status === 'OCCUPIED' && u.active_booking?.check_out)
+        .filter(u => getCheckoutAlert(u.active_booking!.check_out!, now).level === 'critical')
+    const dirtyUnits = units.filter(u => u.status === 'DIRTY')
+    const cleaningUnits = units.filter(u => u.status === 'IN_PROGRESS')
+    const overdueBadge = overdueUnits.length + dirtyUnits.length + cleaningUnits.length
+
     const tabs: { key: Tab; label: string; icon: React.ReactNode; badge?: number }[] = [
+        { key: 'monitor', label: 'Monitor', icon: <Eye className="h-4 w-4" />, badge: overdueBadge || undefined },
         { key: 'restock', label: 'Restocks', icon: <Package className="h-4 w-4" />, badge: pendingRestockCount },
         { key: 'payments', label: 'Payments', icon: <Banknote className="h-4 w-4" /> },
         { key: 'expenses', label: 'Expenses', icon: <Receipt className="h-4 w-4" />, badge: pendingExpenseCount },
@@ -1028,6 +1054,164 @@ export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProp
             {loading && (
                 <div className="flex items-center justify-center py-12">
                     <Loader2 className="h-6 w-6 animate-spin text-orange-500" />
+                </div>
+            )}
+
+            {/* ======================== MONITOR TAB ======================== */}
+            {tab === 'monitor' && !loading && (
+                <div className="space-y-4">
+                    {/* Summary Stats */}
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                        <div className="rounded-xl bg-red-50 border border-red-200 p-3 text-center">
+                            <p className="text-2xl font-bold text-red-700">{overdueUnits.length}</p>
+                            <p className="text-[10px] font-medium text-red-500 uppercase tracking-wider mt-0.5">Overdue</p>
+                        </div>
+                        <div className="rounded-xl bg-amber-50 border border-amber-200 p-3 text-center">
+                            <p className="text-2xl font-bold text-amber-700">{dirtyUnits.length}</p>
+                            <p className="text-[10px] font-medium text-amber-500 uppercase tracking-wider mt-0.5">Dirty</p>
+                        </div>
+                        <div className="rounded-xl bg-blue-50 border border-blue-200 p-3 text-center">
+                            <p className="text-2xl font-bold text-blue-700">{cleaningUnits.length}</p>
+                            <p className="text-[10px] font-medium text-blue-500 uppercase tracking-wider mt-0.5">Cleaning</p>
+                        </div>
+                        <div className="rounded-xl bg-emerald-50 border border-emerald-200 p-3 text-center">
+                            <p className="text-2xl font-bold text-emerald-700">{units.filter(u => u.status === 'AVAILABLE').length}</p>
+                            <p className="text-[10px] font-medium text-emerald-500 uppercase tracking-wider mt-0.5">Available</p>
+                        </div>
+                    </div>
+
+                    {/* Overdue Checkouts */}
+                    {overdueUnits.length > 0 && (
+                        <div className="rounded-2xl border border-red-200 bg-red-50/50 p-4 space-y-3">
+                            <div className="flex items-center gap-2">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-100 text-red-600">
+                                    <AlertTriangle className="h-4 w-4" />
+                                </div>
+                                <h3 className="text-sm font-bold text-red-900">
+                                    Overdue Checkouts
+                                    <span className="ml-2 px-2 py-0.5 rounded-full bg-red-200 text-red-700 text-[10px] font-bold">{overdueUnits.length}</span>
+                                </h3>
+                            </div>
+                            <div className="space-y-2">
+                                {overdueUnits
+                                    .sort((a, b) => {
+                                        const aAlert = getCheckoutAlert(a.active_booking!.check_out!, now)
+                                        const bAlert = getCheckoutAlert(b.active_booking!.check_out!, now)
+                                        return aAlert.minutesRemaining - bAlert.minutesRemaining
+                                    })
+                                    .map(u => {
+                                        const alert = getCheckoutAlert(u.active_booking!.check_out!, now)
+                                        const guestName = u.active_booking?.guests?.[0]?.name || 'Unknown'
+                                        return (
+                                            <div key={u.id} className="flex items-center justify-between px-3 py-2 rounded-xl bg-red-100/80 text-red-700 text-xs font-medium">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="relative flex h-2 w-2">
+                                                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
+                                                        <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+                                                    </span>
+                                                    <span className="font-bold">{u.unit_number}</span>
+                                                    <span className="text-[10px] opacity-70 truncate max-w-[120px]">{guestName}</span>
+                                                </div>
+                                                <div className="flex items-center gap-1">
+                                                    <Clock className="h-3 w-3" />
+                                                    <span className="font-bold">{alert.label}</span>
+                                                </div>
+                                            </div>
+                                        )
+                                    })
+                                }
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Dirty Rooms — Waiting for Housekeeping */}
+                    {dirtyUnits.length > 0 && (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50/50 p-4 space-y-3">
+                            <div className="flex items-center gap-2">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-amber-100 text-amber-600">
+                                    <AlertTriangle className="h-4 w-4" />
+                                </div>
+                                <h3 className="text-sm font-bold text-amber-900">
+                                    Dirty — Waiting for Housekeeping
+                                    <span className="ml-2 px-2 py-0.5 rounded-full bg-amber-200 text-amber-700 text-[10px] font-bold">{dirtyUnits.length}</span>
+                                </h3>
+                            </div>
+                            <div className="space-y-2">
+                                {dirtyUnits
+                                    .sort((a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime())
+                                    .map(u => {
+                                        const dirtyMinutes = Math.floor((now.getTime() - new Date(u.updated_at).getTime()) / 60000)
+                                        const durationLabel = dirtyMinutes < 60
+                                            ? `${dirtyMinutes}m`
+                                            : `${Math.floor(dirtyMinutes / 60)}h ${dirtyMinutes % 60}m`
+                                        return (
+                                            <div key={u.id} className="flex items-center justify-between px-3 py-2 rounded-xl bg-amber-100/80 text-amber-700 text-xs font-medium">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold">{u.unit_number}</span>
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-200 text-amber-800">
+                                                        {u.type === 'DORM' ? 'Dorm' : 'Room'}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-1 text-amber-800">
+                                                    <Clock className="h-3 w-3" />
+                                                    <span className="font-bold">Dirty {durationLabel}</span>
+                                                </div>
+                                            </div>
+                                        )
+                                    })
+                                }
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Currently Cleaning */}
+                    {cleaningUnits.length > 0 && (
+                        <div className="rounded-2xl border border-blue-200 bg-blue-50/50 p-4 space-y-3">
+                            <div className="flex items-center gap-2">
+                                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-100 text-blue-600">
+                                    <Play className="h-4 w-4" />
+                                </div>
+                                <h3 className="text-sm font-bold text-blue-900">
+                                    Currently Cleaning
+                                    <span className="ml-2 px-2 py-0.5 rounded-full bg-blue-200 text-blue-700 text-[10px] font-bold">{cleaningUnits.length}</span>
+                                </h3>
+                            </div>
+                            <div className="space-y-2">
+                                {cleaningUnits
+                                    .sort((a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime())
+                                    .map(u => {
+                                        const cleaningMinutes = Math.floor((now.getTime() - new Date(u.updated_at).getTime()) / 60000)
+                                        const durationLabel = cleaningMinutes < 60
+                                            ? `${cleaningMinutes}m`
+                                            : `${Math.floor(cleaningMinutes / 60)}h ${cleaningMinutes % 60}m`
+                                        return (
+                                            <div key={u.id} className="flex items-center justify-between px-3 py-2 rounded-xl bg-blue-100/80 text-blue-700 text-xs font-medium">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-bold">{u.unit_number}</span>
+                                                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-200 text-blue-800">
+                                                        {u.type === 'DORM' ? 'Dorm' : 'Room'}
+                                                    </span>
+                                                </div>
+                                                <div className="flex items-center gap-1 text-blue-800">
+                                                    <Clock className="h-3 w-3" />
+                                                    <span className="font-bold">Cleaning {durationLabel}</span>
+                                                </div>
+                                            </div>
+                                        )
+                                    })
+                                }
+                            </div>
+                        </div>
+                    )}
+
+                    {/* All Clear */}
+                    {overdueUnits.length === 0 && dirtyUnits.length === 0 && cleaningUnits.length === 0 && (
+                        <div className="text-center py-12 text-slate-400">
+                            <CheckCircle2 className="h-10 w-10 mx-auto mb-3 text-emerald-400" />
+                            <p className="text-sm font-medium text-slate-600">All rooms are clear</p>
+                            <p className="text-xs mt-1">No overdue checkouts or pending housekeeping</p>
+                        </div>
+                    )}
                 </div>
             )}
 
