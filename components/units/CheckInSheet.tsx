@@ -62,10 +62,13 @@ const emptyGuest = (): GuestInput => ({
     aadhar_url_back: '',
 })
 
-function getDormBedLabel(unitNumber: string): string {
-    const match = unitNumber.match(/A(\d+)/)
+function getDormBedLabel(unit: { unit_number: string; bed_position?: string | null }): string {
+    if (unit.bed_position) return unit.bed_position === 'UPPER' ? 'Upper Bed' : 'Lower Bed'
+    // Fallback: infer from unit number for backward compatibility
+    const match = unit.unit_number.match(/A(\d+)/)
     if (!match) return 'Dorm Bed'
-    return parseInt(match[1]) <= 13 ? 'Lower Bed' : 'Upper Bed'
+    const num = parseInt(match[1])
+    return num <= 13 ? 'Lower Bed' : 'Upper Bed'
 }
 
 function formatDateTime(d: Date): string {
@@ -185,7 +188,7 @@ export function CheckInSheet({
     if (!unit) return null
 
     const isDorm = unit.type === 'DORM'
-    const dormLabel = isDorm ? getDormBedLabel(unit.unit_number) : null
+    const dormLabel = isDorm ? getDormBedLabel(unit) : null
 
     const addGuest = () => {
         setGuests((prev) => [...prev, emptyGuest()])

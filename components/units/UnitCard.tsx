@@ -79,8 +79,10 @@ const StatusIcon = ({ status }: { status: UnitStatus }) => {
     }
 }
 
-function getDormBedLabel(unitNumber: string): string {
-    const match = unitNumber.match(/A(\d+)/)
+function getDormBedLabel(unit: { unit_number: string; bed_position?: string | null }): string {
+    if (unit.bed_position) return unit.bed_position === 'UPPER' ? 'Upper Bed' : 'Lower Bed'
+    // Fallback: infer from unit number for backward compatibility
+    const match = unit.unit_number.match(/A(\d+)/)
     if (!match) return 'Dorm Bed'
     const num = parseInt(match[1])
     return num <= 13 ? 'Lower Bed' : 'Upper Bed'
@@ -111,7 +113,7 @@ export function UnitCard({ unit, onClick, now }: UnitCardProps) {
     const config = statusConfig[unit.status]
     const isDorm = unit.type === 'DORM'
     const guestName = unit.active_booking?.guests?.[0]?.name
-    const dormLabel = isDorm ? getDormBedLabel(unit.unit_number) : null
+    const dormLabel = isDorm ? getDormBedLabel(unit) : null
 
     // Calculate checkout alert for occupied units
     const checkoutAlert: CheckoutAlert | null =

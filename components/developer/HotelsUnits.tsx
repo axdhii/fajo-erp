@@ -62,6 +62,8 @@ interface UnitRow {
     type: 'ROOM' | 'DORM'
     status: string
     base_price: number
+    max_guests: number
+    bed_position: string | null
     maintenance_reason: string | null
 }
 
@@ -113,12 +115,16 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
     const [editUnitPrice, setEditUnitPrice] = useState('')
     const [editUnitStatus, setEditUnitStatus] = useState<string>('AVAILABLE')
     const [editUnitMaintenance, setEditUnitMaintenance] = useState('')
+    const [editUnitMaxGuests, setEditUnitMaxGuests] = useState('')
+    const [editUnitBedPosition, setEditUnitBedPosition] = useState<string>('')
 
     // Add unit form
     const [addUnitHotelId, setAddUnitHotelId] = useState<string | null>(null)
     const [addUnitNumber, setAddUnitNumber] = useState('')
     const [addUnitType, setAddUnitType] = useState<string>('ROOM')
     const [addUnitPrice, setAddUnitPrice] = useState('')
+    const [addUnitMaxGuests, setAddUnitMaxGuests] = useState('3')
+    const [addUnitBedPosition, setAddUnitBedPosition] = useState<string>('')
 
     // Delete confirmation
     const [deleteHotelTarget, setDeleteHotelTarget] = useState<HotelRow | null>(null)
@@ -157,7 +163,7 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
         setLoadingUnits(hId)
         const { data, error } = await supabase
             .from('units')
-            .select('id, hotel_id, unit_number, type, status, base_price, maintenance_reason')
+            .select('id, hotel_id, unit_number, type, status, base_price, max_guests, bed_position, maintenance_reason')
             .eq('hotel_id', hId)
             .order('unit_number')
 
@@ -279,6 +285,8 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
             type: addUnitType,
             status: 'AVAILABLE',
             base_price: addUnitPrice ? Number(addUnitPrice) : (addUnitType === 'ROOM' ? 2000 : 400),
+            max_guests: addUnitMaxGuests ? Number(addUnitMaxGuests) : 3,
+            bed_position: addUnitType === 'DORM' && addUnitBedPosition ? addUnitBedPosition : null,
         })
         if (error) {
             toast.error('Failed to create unit: ' + error.message)
@@ -287,6 +295,8 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
             setAddUnitNumber('')
             setAddUnitPrice('')
             setAddUnitType('ROOM')
+            setAddUnitMaxGuests('3')
+            setAddUnitBedPosition('')
             setAddUnitHotelId(null)
             fetchUnits(addUnitHotelId)
         }
@@ -303,6 +313,8 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
             unit_number: editUnitNumber.trim(),
             type: editUnitType,
             base_price: editUnitPrice ? Number(editUnitPrice) : u.base_price,
+            max_guests: editUnitMaxGuests ? Number(editUnitMaxGuests) : u.max_guests,
+            bed_position: editUnitType === 'DORM' && editUnitBedPosition ? editUnitBedPosition : null,
             status: editUnitStatus,
             maintenance_reason: editUnitStatus === 'MAINTENANCE' ? (editUnitMaintenance.trim() || null) : null,
         }
@@ -361,6 +373,8 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
         setEditUnitPrice(String(u.base_price))
         setEditUnitStatus(u.status)
         setEditUnitMaintenance(u.maintenance_reason || '')
+        setEditUnitMaxGuests(String(u.max_guests ?? 3))
+        setEditUnitBedPosition(u.bed_position || '')
     }
 
     // ---- Computed ----
@@ -648,6 +662,18 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
                                                             className="mt-1 h-8 text-sm"
                                                         />
                                                     </div>
+                                                    <div>
+                                                        <Label className="text-xs text-slate-500">Max Guests</Label>
+                                                        <Input
+                                                            type="number"
+                                                            min={1}
+                                                            max={10}
+                                                            value={addUnitMaxGuests}
+                                                            onChange={(e) => setAddUnitMaxGuests(e.target.value)}
+                                                            placeholder="3"
+                                                            className="mt-1 h-8 text-sm"
+                                                        />
+                                                    </div>
                                                     <div className="flex items-end gap-2">
                                                         <Button
                                                             size="sm"
@@ -659,6 +685,20 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
                                                         </Button>
                                                     </div>
                                                 </div>
+                                                {addUnitType === 'DORM' && (
+                                                    <div className="w-48">
+                                                        <Label className="text-xs text-slate-500">Bed Position</Label>
+                                                        <Select value={addUnitBedPosition} onValueChange={setAddUnitBedPosition}>
+                                                            <SelectTrigger className="mt-1 h-8 text-sm bg-white">
+                                                                <SelectValue placeholder="Select..." />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="UPPER">Upper Bed</SelectItem>
+                                                                <SelectItem value="LOWER">Lower Bed</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 
@@ -712,6 +752,18 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
                                                                             />
                                                                         </div>
                                                                         <div>
+                                                                            <Label className="text-xs text-slate-500">Max Guests</Label>
+                                                                            <Input
+                                                                                type="number"
+                                                                                min={1}
+                                                                                max={10}
+                                                                                value={editUnitMaxGuests}
+                                                                                onChange={(e) => setEditUnitMaxGuests(e.target.value)}
+                                                                                placeholder="3"
+                                                                                className="mt-1 h-8 text-sm"
+                                                                            />
+                                                                        </div>
+                                                                        <div>
                                                                             <Label className="text-xs text-slate-500">Status</Label>
                                                                             <Select value={editUnitStatus} onValueChange={setEditUnitStatus}>
                                                                                 <SelectTrigger className="mt-1 h-8 text-sm bg-white">
@@ -724,6 +776,20 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
                                                                                 </SelectContent>
                                                                             </Select>
                                                                         </div>
+                                                                        {editUnitType === 'DORM' && (
+                                                                            <div>
+                                                                                <Label className="text-xs text-slate-500">Bed Position</Label>
+                                                                                <Select value={editUnitBedPosition} onValueChange={setEditUnitBedPosition}>
+                                                                                    <SelectTrigger className="mt-1 h-8 text-sm bg-white">
+                                                                                        <SelectValue placeholder="Select..." />
+                                                                                    </SelectTrigger>
+                                                                                    <SelectContent>
+                                                                                        <SelectItem value="UPPER">Upper Bed</SelectItem>
+                                                                                        <SelectItem value="LOWER">Lower Bed</SelectItem>
+                                                                                    </SelectContent>
+                                                                                </Select>
+                                                                            </div>
+                                                                        )}
                                                                         {editUnitStatus === 'MAINTENANCE' && (
                                                                             <div>
                                                                                 <Label className="text-xs text-slate-500">Reason</Label>
@@ -785,6 +851,14 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
                                                                                     <IndianRupee className="h-3 w-3" />
                                                                                     {Number(u.base_price).toLocaleString('en-IN')}
                                                                                 </span>
+                                                                                <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                                                                    Max {u.max_guests} guests
+                                                                                </span>
+                                                                                {u.bed_position && (
+                                                                                    <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">
+                                                                                        {u.bed_position === 'UPPER' ? 'Upper Bed' : 'Lower Bed'}
+                                                                                    </span>
+                                                                                )}
                                                                                 {u.maintenance_reason && (
                                                                                     <span className="text-[10px] text-amber-600 truncate max-w-[200px]" title={u.maintenance_reason}>
                                                                                         {u.maintenance_reason}

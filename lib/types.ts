@@ -14,6 +14,7 @@ export interface Unit {
     status: UnitStatus
     base_price: number
     max_guests: number
+    bed_position?: 'UPPER' | 'LOWER' | null
     maintenance_reason: string | null
     created_at: string
     updated_at: string
