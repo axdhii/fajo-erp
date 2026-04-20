@@ -4,7 +4,14 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Camera, Upload, X } from 'lucide-react'
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+} from '@/components/ui/dialog'
+import { Camera, Upload } from 'lucide-react'
 import type { SelfieRequest } from '@/lib/types'
 
 interface SelfieRequestBannerProps {
@@ -195,40 +202,44 @@ export function SelfieRequestBanner({ staffId, hotelId }: SelfieRequestBannerPro
         }
     }
 
-    const handleCancel = () => {
-        stopCamera()
+    const handleRetake = () => {
         setCapturedPhoto(null)
-        setCameraFailed(false)
+        startCamera()
     }
 
     // Don't render anything if no pending request
     if (!pendingRequest) return null
 
     return (
-        <div className="bg-amber-50 border-b border-amber-200 px-4 py-3">
-            <div className="container mx-auto">
-                {/* Default state: show banner with reason and Take Selfie button */}
+        <Dialog open={!!pendingRequest} onOpenChange={() => { /* prevent closing */ }}>
+            <DialogContent
+                className="sm:max-w-md"
+                showCloseButton={false}
+                onPointerDownOutside={(e) => e.preventDefault()}
+                onEscapeKeyDown={(e) => e.preventDefault()}
+                onInteractOutside={(e) => e.preventDefault()}
+            >
+                <DialogHeader>
+                    <DialogTitle className="flex items-center gap-2 text-amber-700">
+                        <Camera className="h-5 w-5" />
+                        Selfie Requested
+                    </DialogTitle>
+                    <DialogDescription>
+                        {pendingRequest?.reason || 'Admin has requested a live selfie from you. Please take a selfie to continue.'}
+                    </DialogDescription>
+                </DialogHeader>
+
+                {/* Default state: show Take Selfie button */}
                 {!cameraActive && !capturedPhoto && !cameraFailed && (
-                    <div className="flex items-center justify-between gap-3 flex-wrap">
-                        <div className="flex items-center gap-2 min-w-0">
-                            <Camera className="h-5 w-5 text-amber-600 shrink-0" />
-                            <div className="min-w-0">
-                                <p className="text-sm font-medium text-amber-800">
-                                    Admin has requested a selfie
-                                </p>
-                                {pendingRequest.reason && (
-                                    <p className="text-xs text-amber-600 truncate">
-                                        Reason: {pendingRequest.reason}
-                                    </p>
-                                )}
-                            </div>
+                    <div className="flex flex-col items-center gap-3 py-4">
+                        <div className="w-20 h-20 rounded-full bg-amber-100 flex items-center justify-center">
+                            <Camera className="h-10 w-10 text-amber-600" />
                         </div>
                         <Button
-                            size="sm"
                             onClick={startCamera}
-                            className="bg-amber-600 hover:bg-amber-700 text-white shrink-0"
+                            className="bg-amber-600 hover:bg-amber-700 text-white min-h-[44px]"
                         >
-                            <Camera className="h-4 w-4 mr-1" />
+                            <Camera className="h-4 w-4 mr-2" />
                             Take Selfie
                         </Button>
                     </div>
@@ -237,12 +248,7 @@ export function SelfieRequestBanner({ staffId, hotelId }: SelfieRequestBannerPro
                 {/* Camera active: show video preview + capture button */}
                 {cameraActive && !capturedPhoto && (
                     <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                            <p className="text-sm font-medium text-amber-800">Position yourself and take the photo</p>
-                            <Button variant="ghost" size="sm" onClick={handleCancel}>
-                                <X className="h-4 w-4" />
-                            </Button>
-                        </div>
+                        <p className="text-sm font-medium text-amber-800 text-center">Position yourself and take the photo</p>
                         <div className="flex justify-center">
                             <video
                                 ref={videoRef}
@@ -252,13 +258,12 @@ export function SelfieRequestBanner({ staffId, hotelId }: SelfieRequestBannerPro
                                 className="rounded-lg border border-amber-300 w-[320px] h-[240px] object-cover"
                             />
                         </div>
-                        <div className="flex justify-center gap-2">
+                        <div className="flex justify-center">
                             <Button
-                                size="sm"
                                 onClick={capturePhoto}
-                                className="bg-amber-600 hover:bg-amber-700 text-white"
+                                className="bg-amber-600 hover:bg-amber-700 text-white min-h-[44px]"
                             >
-                                <Camera className="h-4 w-4 mr-1" />
+                                <Camera className="h-4 w-4 mr-2" />
                                 Capture
                             </Button>
                         </div>
@@ -267,30 +272,32 @@ export function SelfieRequestBanner({ staffId, hotelId }: SelfieRequestBannerPro
 
                 {/* Camera failed: show fallback file upload */}
                 {cameraFailed && !capturedPhoto && (
-                    <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                            <p className="text-sm font-medium text-amber-800">Camera unavailable — upload a photo instead</p>
-                            <Button variant="ghost" size="sm" onClick={handleCancel}>
-                                <X className="h-4 w-4" />
-                            </Button>
-                        </div>
-                        <div className="flex justify-center">
-                            <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept="image/*"
-                                capture="user"
-                                onChange={handleFileUpload}
-                                className="hidden"
-                            />
+                    <div className="space-y-3 py-2">
+                        <p className="text-sm font-medium text-amber-800 text-center">Camera unavailable -- upload a photo instead</p>
+                        <input
+                            ref={fileInputRef}
+                            type="file"
+                            accept="image/*"
+                            capture="user"
+                            onChange={handleFileUpload}
+                            className="hidden"
+                        />
+                        <div className="flex justify-center gap-2">
                             <Button
-                                size="sm"
                                 variant="outline"
                                 onClick={() => fileInputRef.current?.click()}
-                                className="border-amber-300 text-amber-700"
+                                className="border-amber-300 text-amber-700 min-h-[44px]"
                             >
-                                <Upload className="h-4 w-4 mr-1" />
+                                <Upload className="h-4 w-4 mr-2" />
                                 Choose Photo
+                            </Button>
+                            <Button
+                                variant="outline"
+                                onClick={startCamera}
+                                className="border-amber-300 text-amber-700 min-h-[44px]"
+                            >
+                                <Camera className="h-4 w-4 mr-2" />
+                                Try Camera Again
                             </Button>
                         </div>
                     </div>
@@ -299,12 +306,7 @@ export function SelfieRequestBanner({ staffId, hotelId }: SelfieRequestBannerPro
                 {/* Photo captured: show preview + submit/retake */}
                 {capturedPhoto && (
                     <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                            <p className="text-sm font-medium text-amber-800">Review your selfie</p>
-                            <Button variant="ghost" size="sm" onClick={handleCancel}>
-                                <X className="h-4 w-4" />
-                            </Button>
-                        </div>
+                        <p className="text-sm font-medium text-amber-800 text-center">Review your selfie</p>
                         <div className="flex justify-center">
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
@@ -315,30 +317,24 @@ export function SelfieRequestBanner({ staffId, hotelId }: SelfieRequestBannerPro
                         </div>
                         <div className="flex justify-center gap-2">
                             <Button
-                                size="sm"
                                 variant="outline"
-                                onClick={() => {
-                                    setCapturedPhoto(null)
-                                    startCamera()
-                                }}
+                                onClick={handleRetake}
                                 disabled={submitting}
-                                className="border-amber-300 text-amber-700"
+                                className="border-amber-300 text-amber-700 min-h-[44px]"
                             >
                                 Retake
                             </Button>
                             <Button
-                                size="sm"
                                 onClick={handleSubmit}
                                 disabled={submitting}
-                                className="bg-amber-600 hover:bg-amber-700 text-white"
+                                className="bg-amber-600 hover:bg-amber-700 text-white min-h-[44px]"
                             >
                                 {submitting ? 'Submitting...' : 'Submit Selfie'}
                             </Button>
                         </div>
                     </div>
                 )}
-
-            </div>
-        </div>
+            </DialogContent>
+        </Dialog>
     )
 }

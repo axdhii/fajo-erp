@@ -156,11 +156,11 @@ export function CheckInSheet({
             const dateStr = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
             return new Date(`${dateStr}T10:00:00+05:30`)
         }
-        // Room: checkout at 11 AM IST + numberOfDays
+        // Room: checkout at 11:30 AM IST + numberOfDays
         const d = new Date(checkInDate)
         d.setDate(d.getDate() + numberOfDays)
         const dateStr = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
-        return new Date(`${dateStr}T11:00:00+05:30`)
+        return new Date(`${dateStr}T11:30:00+05:30`)
     }, [checkInDate, numberOfDays, manualCheckout, unit])
 
     const maxGuests = unit ? (unit.max_guests || 3) : 3
@@ -543,7 +543,7 @@ export function CheckInSheet({
                                 <SheetDescription className="text-xs mt-0.5">
                                     {isDorm
                                         ? `${dormLabel} · 2:00 PM in / 10:00 AM out`
-                                        : 'Private Room · 12 PM in / 11 AM out'}
+                                        : 'Private Room · 12 PM in / 11:30 AM out'}
                                 </SheetDescription>
                             </div>
                         </div>

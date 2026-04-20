@@ -39,6 +39,7 @@ import {
 } from 'lucide-react'
 
 import type { AdminTabProps } from '@/app/(dashboard)/admin/client'
+import type { SelfieRequest } from '@/lib/types'
 
 interface StaffRow {
     id: string
@@ -94,6 +95,11 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
 
     // Delete confirmation
     const [deleteTarget, setDeleteTarget] = useState<StaffRow | null>(null)
+
+    // Selfie viewer
+    const [selfieViewOpen, setSelfieViewOpen] = useState(false)
+    const [selfieRequests, setSelfieRequests] = useState<SelfieRequest[]>([])
+    const [loadingSelfies, setLoadingSelfies] = useState(false)
 
     // ── Fetch staff ──
     const fetchStaff = useCallback(async () => {
@@ -266,6 +272,22 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
         }
     }
 
+    // ── Fetch selfie requests ──
+    const fetchSelfieRequests = async () => {
+        if (!hotelId) return
+        setLoadingSelfies(true)
+        try {
+            const res = await fetch(`/api/selfie-requests?hotel_id=${hotelId}`)
+            if (res.ok) {
+                const json = await res.json()
+                setSelfieRequests(json.data || [])
+            }
+        } catch {
+            // Silent fail
+        }
+        setLoadingSelfies(false)
+    }
+
     // ── Helpers ──
     const getHotelName = (hid: string) => hotels.find(h => h.id === hid)?.name || 'Unknown'
 
@@ -290,13 +312,24 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
                     </h2>
                     <p className="text-slate-500 text-sm mt-1">{staff.length} staff members across all properties</p>
                 </div>
-                <Button
-                    onClick={() => setShowAddForm(!showAddForm)}
-                    className="bg-violet-600 hover:bg-violet-700"
-                >
-                    {showAddForm ? <ChevronUp className="h-4 w-4 mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
-                    {showAddForm ? 'Close Form' : 'Add Staff'}
-                </Button>
+                <div className="flex items-center gap-2">
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => { fetchSelfieRequests(); setSelfieViewOpen(true) }}
+                        className="text-amber-600 border-amber-200 hover:bg-amber-50"
+                    >
+                        <Camera className="h-3.5 w-3.5 mr-1.5" />
+                        Selfie Requests
+                    </Button>
+                    <Button
+                        onClick={() => setShowAddForm(!showAddForm)}
+                        className="bg-violet-600 hover:bg-violet-700"
+                    >
+                        {showAddForm ? <ChevronUp className="h-4 w-4 mr-1" /> : <Plus className="h-4 w-4 mr-1" />}
+                        {showAddForm ? 'Close Form' : 'Add Staff'}
+                    </Button>
+                </div>
             </div>
 
             {/* Add Staff Form (collapsible) */}
@@ -630,6 +663,54 @@ export function StaffManager({ hotelId, hotels, staffId }: AdminTabProps) {
                             Delete
                         </Button>
                     </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Selfie Requests Viewer Dialog */}
+            <Dialog open={selfieViewOpen} onOpenChange={setSelfieViewOpen}>
+                <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
+                    <DialogHeader>
+                        <DialogTitle>Selfie Requests</DialogTitle>
+                        <DialogDescription>View submitted selfies from staff</DialogDescription>
+                    </DialogHeader>
+
+                    {loadingSelfies ? (
+                        <div className="text-center py-8 text-slate-400">Loading...</div>
+                    ) : selfieRequests.length === 0 ? (
+                        <div className="text-center py-8 text-slate-400">
+                            <Camera className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                            <p className="text-sm">No selfie requests yet</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {selfieRequests.map(sr => (
+                                <div key={sr.id} className="border rounded-lg p-3">
+                                    <div className="flex items-center justify-between mb-2">
+                                        <div>
+                                            <span className="text-sm font-bold text-slate-800">{sr.target?.name || 'Unknown'}</span>
+                                            <span className="text-xs text-slate-400 ml-2">{sr.target?.role}</span>
+                                        </div>
+                                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                            sr.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' :
+                                            sr.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
+                                            'bg-slate-100 text-slate-500'
+                                        }`}>
+                                            {sr.status}
+                                        </span>
+                                    </div>
+                                    {sr.reason && <p className="text-xs text-slate-500 mb-2">{sr.reason}</p>}
+                                    {sr.photo_url && sr.status === 'COMPLETED' && (
+                                        // eslint-disable-next-line @next/next/no-img-element
+                                        <img src={sr.photo_url} alt={`Selfie from ${sr.target?.name}`} className="w-full max-h-64 object-contain rounded-lg border bg-slate-50" />
+                                    )}
+                                    <p className="text-[10px] text-slate-400 mt-2">
+                                        {new Date(sr.created_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hour12: true })}
+                                        {sr.completed_at && ` → Submitted ${new Date(sr.completed_at).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: true })}`}
+                                    </p>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </DialogContent>
             </Dialog>
         </div>

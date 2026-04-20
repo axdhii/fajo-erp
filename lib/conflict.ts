@@ -90,7 +90,7 @@ export async function checkConflict(
 
 /**
  * Calculate expected check-out time based on unit type and check-in time.
- * - Rooms: check-in < 12 PM = today 11 AM. check-in >= 12 PM = tomorrow 11 AM
+ * - Rooms: check-in + numberOfDays at 11:30 AM IST
  * - Dorms: next day 10:00 AM IST
  * Strictly evaluates time using Indian Standard Time (IST) offset to prevent UTC server issues.
  */
@@ -106,9 +106,9 @@ export function calculateCheckOut(
     const checkoutPseudoIst = new Date(pseudoIst)
 
     if (unitType === 'ROOM') {
-        // Room: checkout = checkIn + numberOfDays at 11:00 AM IST
+        // Room: checkout = checkIn + numberOfDays at 11:30 AM IST
         checkoutPseudoIst.setUTCDate(checkoutPseudoIst.getUTCDate() + numberOfDays)
-        checkoutPseudoIst.setUTCHours(11, 0, 0, 0)
+        checkoutPseudoIst.setUTCHours(11, 30, 0, 0)
     } else {
         // Dorm: checkout at 10:00 AM IST
         // If checked in before 10 AM → same day 10 AM
