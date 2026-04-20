@@ -1,20 +1,22 @@
 "use client"
 import { useState, useEffect, useCallback } from 'react'
-import { BookOpen, Calendar, Clock, ClipboardList, LayoutDashboard, LogOut, Menu, MessageSquare, Sparkles, StickyNote, Users, Wrench, X } from 'lucide-react'
+import { BookOpen, Calendar, Clock, ClipboardList, LayoutDashboard, LogOut, MapPin, Menu, MessageSquare, Sparkles, StickyNote, Users, Wrench, X } from 'lucide-react'
 import Link from 'next/link'
 import { useAuthStore } from '@/lib/store/auth-store'
 import { usePathname } from 'next/navigation'
+import { supabase } from '@/lib/supabase/client'
 import { NotificationBell } from './NotificationBell'
 import { MessagingDrawer } from './MessagingDrawer'
 import { NotepadDrawer } from './NotepadDrawer'
 
 export function Header() {
-    const { profile, signOut } = useAuthStore()
+    const { profile, signOut, activeHotelId, setActiveHotelId } = useAuthStore()
     const pathname = usePathname()
     const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
     const [messagingOpen, setMessagingOpen] = useState(false)
     const [notepadOpen, setNotepadOpen] = useState(false)
     const [unreadMessages, setUnreadMessages] = useState(0)
+    const [hotels, setHotels] = useState<{ id: string; name: string; city: string }[]>([])
 
     // Live IST clock
     const [currentTime, setCurrentTime] = useState<Date | null>(null)
@@ -24,6 +26,16 @@ export function Header() {
         const timer = setInterval(() => setCurrentTime(new Date()), 1000)
         return () => clearInterval(timer)
     }, [])
+
+    // Fetch hotels for Admin/Developer hotel switcher
+    useEffect(() => {
+        if (!profile || !['Admin', 'Developer'].includes(profile.role)) return
+        const fetchHotels = async () => {
+            const { data } = await supabase.from('hotels').select('id, name, city').order('name')
+            if (data) setHotels(data)
+        }
+        fetchHotels()
+    }, [profile])
 
     const fetchUnreadMessages = useCallback(async () => {
         try {
@@ -85,6 +97,22 @@ export function Header() {
                             FAJO Hotels
                         </span>
                     </Link>
+
+                    {/* Hotel switcher for Admin/Developer */}
+                    {isAdminOrDev && hotels.length > 1 && (
+                        <div className="flex items-center gap-1.5">
+                            <MapPin className="h-3.5 w-3.5 text-slate-400 hidden sm:block" />
+                            <select
+                                value={activeHotelId || ''}
+                                onChange={(e) => setActiveHotelId(e.target.value)}
+                                className="text-xs font-medium bg-slate-100 border border-slate-200 rounded-lg px-2 py-1.5 text-slate-700 outline-none focus:ring-2 focus:ring-emerald-400/30 cursor-pointer max-w-[140px] sm:max-w-none"
+                            >
+                                {hotels.map(h => (
+                                    <option key={h.id} value={h.id}>{h.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
                     {/* Mobile hamburger button */}
                     <button

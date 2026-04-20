@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { useAuthStore } from '@/lib/store/auth-store'
 import type { Booking, Unit } from '@/lib/types'
 import { useCurrentTime } from '@/lib/hooks/use-current-time'
 import { useUnitStore, type UnitWithBooking } from '@/lib/store/unit-store'
@@ -119,6 +120,10 @@ const BOOKING_STATUS_STYLES: Record<string, { bg: string; border: string; accent
 }
 
 export function ReservationsClient({ hotelId, role }: ReservationsClientProps) {
+    const { profile, activeHotelId } = useAuthStore()
+    const isAdminOrDev = profile?.role === 'Admin' || profile?.role === 'Developer'
+    const effectiveHotelId = (isAdminOrDev && activeHotelId) ? activeHotelId : hotelId
+
     const { units, fetchUnitsWithBookings } = useUnitStore()
     const devNow = useCurrentTime()
     const [bookings, setBookings] = useState<Booking[]>([])
@@ -180,7 +185,7 @@ export function ReservationsClient({ hotelId, role }: ReservationsClientProps) {
             // Check if this request was aborted while the query ran
             if (signal.aborted) return
 
-            const filtered = (allBookings || []).filter(b => b.unit?.hotel_id === hotelId)
+            const filtered = (allBookings || []).filter(b => b.unit?.hotel_id === effectiveHotelId)
             setBookings(filtered as Booking[])
         } catch (err: unknown) {
             if (err instanceof Error && err.name === 'AbortError') return
@@ -188,11 +193,11 @@ export function ReservationsClient({ hotelId, role }: ReservationsClientProps) {
         } finally {
             setIsLoading(false)
         }
-    }, [hotelId, selectedDate])
+    }, [effectiveHotelId, selectedDate])
 
     useEffect(() => {
-        fetchUnitsWithBookings(hotelId)
-    }, [hotelId, fetchUnitsWithBookings])
+        fetchUnitsWithBookings(effectiveHotelId)
+    }, [effectiveHotelId, fetchUnitsWithBookings])
 
     useEffect(() => {
         fetchBookings()
@@ -252,7 +257,7 @@ export function ReservationsClient({ hotelId, role }: ReservationsClientProps) {
         setSelectedBooking(null)
         setSelectedUnit(null)
         fetchBookings()
-        fetchUnitsWithBookings(hotelId)
+        fetchUnitsWithBookings(effectiveHotelId)
     }
 
     // Determine what to show on each card

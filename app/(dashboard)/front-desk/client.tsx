@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { UnitGrid } from '@/components/units/UnitGrid'
 import { useUnitStore } from '@/lib/store/unit-store'
+import { useAuthStore } from '@/lib/store/auth-store'
 import { useCurrentTime, getCheckoutAlert } from '@/lib/hooks/use-current-time'
 import type { UnitType, UnitStatus } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -53,6 +54,10 @@ type TypeFilter = UnitType | 'ALL'
 type StatusFilter = UnitStatus | 'ALL'
 
 export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps) {
+    const { profile, activeHotelId } = useAuthStore()
+    const isAdminOrDev = profile?.role === 'Admin' || profile?.role === 'Developer'
+    const effectiveHotelId = (isAdminOrDev && activeHotelId) ? activeHotelId : hotelId
+
     const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL')
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
     const { units } = useUnitStore()
@@ -463,7 +468,7 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
             const { data } = await supabase
                 .from('hotels')
                 .select('freshup_mode, freshup_person_price, freshup_ac_price, freshup_nonac_price, freshup_max_guests')
-                .eq('id', hotelId)
+                .eq('id', effectiveHotelId)
                 .single()
             if (data) {
                 setFreshupMode(data.freshup_mode || 'PERSON')
@@ -474,7 +479,7 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
             }
         }
         fetchFreshupConfig()
-    }, [hotelId])
+    }, [effectiveHotelId])
 
     // Realtime for expense status updates
     useEffect(() => {
@@ -650,7 +655,7 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
 
                 {restockOpen && (
                     <div className="px-5 pb-5 border-t border-orange-200 pt-4">
-                        <RestockForm open={restockOpen} onClose={() => setRestockOpen(false)} hotelId={hotelId} staffId={staffId} />
+                        <RestockForm open={restockOpen} onClose={() => setRestockOpen(false)} hotelId={effectiveHotelId} staffId={staffId} />
                     </div>
                 )}
             </div>
@@ -1313,7 +1318,7 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
 
             {/* Unit Grid */}
             <UnitGrid
-                hotelId={hotelId}
+                hotelId={effectiveHotelId}
                 typeFilter={typeFilter}
                 statusFilter={statusFilter}
                 now={now}

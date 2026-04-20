@@ -13,8 +13,10 @@ interface StaffProfile {
 interface AuthState {
     user: User | null
     profile: StaffProfile | null
+    activeHotelId: string | null
     isLoading: boolean
     shiftReport: ShiftReport | null
+    setActiveHotelId: (id: string) => void
     checkAuth: () => Promise<void>
     signOut: () => Promise<void>
     completeSignOut: () => Promise<void>
@@ -24,8 +26,11 @@ interface AuthState {
 export const useAuthStore = create<AuthState>((set, get) => ({
     user: null,
     profile: null,
+    activeHotelId: null,
     isLoading: true,
     shiftReport: null,
+
+    setActiveHotelId: (id: string) => set({ activeHotelId: id }),
 
     checkAuth: async () => {
         try {
@@ -40,7 +45,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                     .eq('user_id', session.user.id)
                     .single()
 
-                set({ user: session.user, profile: staffData as StaffProfile })
+                set({ user: session.user, profile: staffData as StaffProfile, activeHotelId: (staffData as StaffProfile).hotel_id })
             } else {
                 set({ user: null, profile: null })
             }
@@ -78,12 +83,12 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
 
         await supabase.auth.signOut()
-        set({ user: null, profile: null, shiftReport: null })
+        set({ user: null, profile: null, activeHotelId: null, shiftReport: null })
     },
 
     completeSignOut: async () => {
         await supabase.auth.signOut()
-        set({ user: null, profile: null, shiftReport: null })
+        set({ user: null, profile: null, activeHotelId: null, shiftReport: null })
     },
 
     clearShiftReport: () => {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { useAuthStore } from '@/lib/store/auth-store'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -71,6 +72,10 @@ const INCIDENT_CATEGORIES: { value: IncidentCategory; label: string }[] = [
 ]
 
 export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
+    const { profile, activeHotelId } = useAuthStore()
+    const isAdminOrDev = profile?.role === 'Admin' || profile?.role === 'Developer'
+    const effectiveHotelId = (isAdminOrDev && activeHotelId) ? activeHotelId : hotelId
+
     const [tab, setTab] = useState<Tab>('attendance')
     const [staff, setStaff] = useState<StaffMember[]>([])
     const [attendance, setAttendance] = useState<Attendance[]>([])
@@ -366,11 +371,11 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
         const { data } = await supabase
             .from('staff')
             .select('id, user_id, hotel_id, role, name, phone, base_salary')
-            .eq('hotel_id', hotelId)
+            .eq('hotel_id', effectiveHotelId)
             .neq('role', 'Admin')
             .order('name', { ascending: true })
         if (data) setStaff(data)
-    }, [hotelId])
+    }, [effectiveHotelId])
 
     // Fetch attendance for selected date
     const fetchAttendance = useCallback(async () => {
@@ -378,46 +383,46 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
         const { data } = await supabase
             .from('attendance')
             .select('*, staff:staff_id(name, role)')
-            .eq('hotel_id', hotelId)
+            .eq('hotel_id', effectiveHotelId)
             .gte('clock_in', attendanceDate + 'T00:00:00+05:30')
             .lt('clock_in', nextDay)
             .order('clock_in', { ascending: false })
         if (data) setAttendance(data)
-    }, [hotelId, attendanceDate])
+    }, [effectiveHotelId, attendanceDate])
 
     // Fetch incidents
     const fetchIncidents = useCallback(async () => {
         const { data } = await supabase
             .from('staff_incidents')
             .select('*, staff:staff_id(name, role)')
-            .eq('hotel_id', hotelId)
+            .eq('hotel_id', effectiveHotelId)
             .order('incident_date', { ascending: false })
         if (data) setIncidents(data)
-    }, [hotelId])
+    }, [effectiveHotelId])
 
     // Fetch payroll
     const fetchPayroll = useCallback(async () => {
         const { data } = await supabase
             .from('payroll')
             .select('*, staff:staff_id(name, role, base_salary)')
-            .eq('hotel_id', hotelId)
+            .eq('hotel_id', effectiveHotelId)
             .eq('month', payrollMonth + '-01')
             .order('created_at', { ascending: false })
         if (data) setPayrolls(data)
-    }, [hotelId, payrollMonth])
+    }, [effectiveHotelId, payrollMonth])
 
     // Fetch shift reports
     const fetchShiftReports = useCallback(async () => {
         const from = `${shiftReportDate}T${shiftReportFromTime}:00+05:30`
         const to = `${shiftReportDate}T${shiftReportToTime}:59+05:30`
         try {
-            const res = await fetch(`/api/shift-reports?hotel_id=${hotelId}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
+            const res = await fetch(`/api/shift-reports?hotel_id=${effectiveHotelId}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`)
             const json = await res.json()
             if (json.data) setShiftReports(json.data)
         } catch {
             setShiftReports([])
         }
-    }, [hotelId, shiftReportDate, shiftReportFromTime, shiftReportToTime])
+    }, [effectiveHotelId, shiftReportDate, shiftReportFromTime, shiftReportToTime])
 
     useEffect(() => {
         fetchStaff()
@@ -434,55 +439,55 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
     useEffect(() => {
         if (tab !== 'attendance') return
         const channel = supabase
-            .channel(`attendance_hr_${hotelId.slice(0, 8)}`)
+            .channel(`attendance_hr_${effectiveHotelId.slice(0, 8)}`)
             .on('postgres_changes', {
                 event: '*',
                 schema: 'public',
                 table: 'attendance',
-                filter: `hotel_id=eq.${hotelId}`,
+                filter: `hotel_id=eq.${effectiveHotelId}`,
             }, () => {
                 fetchAttendance()
             })
             .subscribe()
 
         return () => { supabase.removeChannel(channel) }
-    }, [tab, hotelId, fetchAttendance])
+    }, [tab, effectiveHotelId, fetchAttendance])
 
     // Supabase Realtime: instant incident updates without polling
     useEffect(() => {
         if (tab !== 'incidents') return
         const channel = supabase
-            .channel(`incidents_hr_${hotelId.slice(0, 8)}`)
+            .channel(`incidents_hr_${effectiveHotelId.slice(0, 8)}`)
             .on('postgres_changes', {
                 event: '*',
                 schema: 'public',
                 table: 'staff_incidents',
-                filter: `hotel_id=eq.${hotelId}`,
+                filter: `hotel_id=eq.${effectiveHotelId}`,
             }, () => {
                 fetchIncidents()
             })
             .subscribe()
 
         return () => { supabase.removeChannel(channel) }
-    }, [tab, hotelId, fetchIncidents])
+    }, [tab, effectiveHotelId, fetchIncidents])
 
     // Supabase Realtime: instant payroll updates without polling
     useEffect(() => {
         if (tab !== 'payroll') return
         const channel = supabase
-            .channel(`payroll_hr_${hotelId.slice(0, 8)}`)
+            .channel(`payroll_hr_${effectiveHotelId.slice(0, 8)}`)
             .on('postgres_changes', {
                 event: '*',
                 schema: 'public',
                 table: 'payroll',
-                filter: `hotel_id=eq.${hotelId}`,
+                filter: `hotel_id=eq.${effectiveHotelId}`,
             }, () => {
                 fetchPayroll()
             })
             .subscribe()
 
         return () => { supabase.removeChannel(channel) }
-    }, [tab, hotelId, fetchPayroll])
+    }, [tab, effectiveHotelId, fetchPayroll])
 
     // Date navigation
     const shiftDate = (days: number) => {
@@ -526,7 +531,7 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     staff_id: incidentStaffId,
-                    hotel_id: hotelId,
+                    hotel_id: effectiveHotelId,
                     category: incidentCategory,
                     description: incidentDescription,
                     penalty_amount: incidentPenalty,
@@ -554,7 +559,7 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
             const res = await fetch('/api/payroll', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ hotel_id: hotelId, month: payrollMonth }),
+                body: JSON.stringify({ hotel_id: effectiveHotelId, month: payrollMonth }),
             })
             const json = await res.json()
             if (!res.ok) throw new Error(json.error)
@@ -655,7 +660,7 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
             const res = await fetch('/api/payroll', {
                 method: 'DELETE',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ hotel_id: hotelId, month: payrollMonth }),
+                body: JSON.stringify({ hotel_id: effectiveHotelId, month: payrollMonth }),
             })
             const json = await res.json()
             if (!res.ok) throw new Error(json.error)
@@ -664,7 +669,7 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
             const genRes = await fetch('/api/payroll', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ hotel_id: hotelId, month: payrollMonth }),
+                body: JSON.stringify({ hotel_id: effectiveHotelId, month: payrollMonth }),
             })
             const genJson = await genRes.json()
             if (!genRes.ok) throw new Error(genJson.error)

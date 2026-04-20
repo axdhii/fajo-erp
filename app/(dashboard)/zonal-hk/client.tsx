@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { useAuthStore } from '@/lib/store/auth-store'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -81,6 +82,10 @@ const STATUS_STYLES: Record<string, string> = {
 // ============================================================
 
 export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
+    const { profile, activeHotelId } = useAuthStore()
+    const isAdminOrDev = profile?.role === 'Admin' || profile?.role === 'Developer'
+    const effectiveHotelId = (isAdminOrDev && activeHotelId) ? activeHotelId : hotelId
+
     const [tab, setTab] = useState<Tab>('maintenance')
     const [loading, setLoading] = useState(false)
 
@@ -128,7 +133,7 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
         const { data } = await supabase
             .from('maintenance_tickets')
             .select('*, unit:units(unit_number), staff:reported_by(name)')
-            .eq('hotel_id', hotelId)
+            .eq('hotel_id', effectiveHotelId)
             .in('status', ['OPEN', 'IN_PROGRESS'])
             .order('created_at', { ascending: false })
         const priorityOrder: Record<string, number> = { URGENT: 1, HIGH: 2, MEDIUM: 3, LOW: 4 }
@@ -139,18 +144,18 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
             return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         })
         setActiveTickets(sorted)
-    }, [hotelId])
+    }, [effectiveHotelId])
 
     const fetchResolvedTickets = useCallback(async () => {
         const { data } = await supabase
             .from('maintenance_tickets')
             .select('*, unit:units(unit_number), staff:reported_by(name)')
-            .eq('hotel_id', hotelId)
+            .eq('hotel_id', effectiveHotelId)
             .eq('status', 'RESOLVED')
             .order('resolved_at', { ascending: false })
             .limit(10)
         if (data) setResolvedTickets(data)
-    }, [hotelId])
+    }, [effectiveHotelId])
 
     // ============================================================
     // Laundry fetchers
@@ -160,32 +165,32 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
         const { data } = await supabase
             .from('laundry_orders')
             .select('*, staff:created_by(name)')
-            .eq('hotel_id', hotelId)
+            .eq('hotel_id', effectiveHotelId)
             .eq('status', 'OUT')
             .order('sent_at', { ascending: false })
         if (data) setOutOrders(data)
-    }, [hotelId])
+    }, [effectiveHotelId])
 
     const fetchReturnedOrders = useCallback(async () => {
         const { data } = await supabase
             .from('laundry_orders')
             .select('*, staff:created_by(name)')
-            .eq('hotel_id', hotelId)
+            .eq('hotel_id', effectiveHotelId)
             .eq('status', 'RETURNED')
             .order('returned_at', { ascending: false })
         if (data) setReturnedOrders(data)
-    }, [hotelId])
+    }, [effectiveHotelId])
 
     const fetchPaidOrders = useCallback(async () => {
         const { data } = await supabase
             .from('laundry_orders')
             .select('*, staff:created_by(name)')
-            .eq('hotel_id', hotelId)
+            .eq('hotel_id', effectiveHotelId)
             .eq('status', 'PAID')
             .order('created_at', { ascending: false })
             .limit(20)
         if (data) setPaidOrders(data)
-    }, [hotelId])
+    }, [effectiveHotelId])
 
     // ============================================================
     // Restock fetchers
@@ -195,22 +200,22 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
         const { data } = await supabase
             .from('restock_requests')
             .select('*, unit:units(unit_number), staff:requested_by(name)')
-            .eq('hotel_id', hotelId)
+            .eq('hotel_id', effectiveHotelId)
             .eq('status', 'PENDING')
             .order('created_at', { ascending: false })
         if (data) setPendingRestocks(data)
-    }, [hotelId])
+    }, [effectiveHotelId])
 
     const fetchDoneRestocks = useCallback(async () => {
         const { data } = await supabase
             .from('restock_requests')
             .select('*, unit:units(unit_number), staff:requested_by(name)')
-            .eq('hotel_id', hotelId)
+            .eq('hotel_id', effectiveHotelId)
             .eq('status', 'DONE')
             .order('completed_at', { ascending: false })
             .limit(10)
         if (data) setDoneRestocks(data)
-    }, [hotelId])
+    }, [effectiveHotelId])
 
     // ============================================================
     // Property Reports fetchers & handlers
@@ -218,13 +223,13 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
 
     const fetchReports = useCallback(async () => {
         try {
-            const res = await fetch(`/api/property-reports?hotel_id=${hotelId}&limit=30`)
+            const res = await fetch(`/api/property-reports?hotel_id=${effectiveHotelId}&limit=30`)
             if (res.ok) {
                 const json = await res.json()
                 setReports(json.data || [])
             }
         } catch {}
-    }, [hotelId])
+    }, [effectiveHotelId])
 
     const handleSubmitReport = async () => {
         if (!reportDescription.trim()) { toast.error('Please describe the report'); return }
@@ -307,12 +312,12 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
     useEffect(() => {
         if (tab !== 'maintenance') return
         const channel = supabase
-            .channel(`maint_zonalhk_${hotelId.slice(0, 8)}`)
+            .channel(`maint_zonalhk_${effectiveHotelId.slice(0, 8)}`)
             .on('postgres_changes', {
                 event: '*',
                 schema: 'public',
                 table: 'maintenance_tickets',
-                filter: `hotel_id=eq.${hotelId}`,
+                filter: `hotel_id=eq.${effectiveHotelId}`,
             }, () => {
                 fetchActiveTickets()
                 fetchResolvedTickets()
@@ -320,18 +325,18 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
             .subscribe()
 
         return () => { supabase.removeChannel(channel) }
-    }, [tab, hotelId, fetchActiveTickets, fetchResolvedTickets])
+    }, [tab, effectiveHotelId, fetchActiveTickets, fetchResolvedTickets])
 
     // Laundry realtime
     useEffect(() => {
         if (tab !== 'laundry') return
         const channel = supabase
-            .channel(`laundry_zonalhk_${hotelId.slice(0, 8)}`)
+            .channel(`laundry_zonalhk_${effectiveHotelId.slice(0, 8)}`)
             .on('postgres_changes', {
                 event: '*',
                 schema: 'public',
                 table: 'laundry_orders',
-                filter: `hotel_id=eq.${hotelId}`,
+                filter: `hotel_id=eq.${effectiveHotelId}`,
             }, () => {
                 fetchOutOrders()
                 fetchReturnedOrders()
@@ -340,18 +345,18 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
             .subscribe()
 
         return () => { supabase.removeChannel(channel) }
-    }, [tab, hotelId, fetchOutOrders, fetchReturnedOrders, fetchPaidOrders])
+    }, [tab, effectiveHotelId, fetchOutOrders, fetchReturnedOrders, fetchPaidOrders])
 
     // Restock realtime
     useEffect(() => {
         if (tab !== 'restock') return
         const channel = supabase
-            .channel(`restock_zonalhk_${hotelId.slice(0, 8)}`)
+            .channel(`restock_zonalhk_${effectiveHotelId.slice(0, 8)}`)
             .on('postgres_changes', {
                 event: '*',
                 schema: 'public',
                 table: 'restock_requests',
-                filter: `hotel_id=eq.${hotelId}`,
+                filter: `hotel_id=eq.${effectiveHotelId}`,
             }, () => {
                 fetchPendingRestocks()
                 fetchDoneRestocks()
@@ -359,17 +364,17 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
             .subscribe()
 
         return () => { supabase.removeChannel(channel) }
-    }, [tab, hotelId, fetchPendingRestocks, fetchDoneRestocks])
+    }, [tab, effectiveHotelId, fetchPendingRestocks, fetchDoneRestocks])
 
     // Property reports realtime
     useEffect(() => {
         if (tab !== 'reports') return
         const channel = supabase
-            .channel(`reports_zonalhk_${hotelId.slice(0, 8)}`)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'property_reports', filter: `hotel_id=eq.${hotelId}` }, () => { fetchReports() })
+            .channel(`reports_zonalhk_${effectiveHotelId.slice(0, 8)}`)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'property_reports', filter: `hotel_id=eq.${effectiveHotelId}` }, () => { fetchReports() })
             .subscribe()
         return () => { supabase.removeChannel(channel) }
-    }, [tab, hotelId, fetchReports])
+    }, [tab, effectiveHotelId, fetchReports])
 
     // ============================================================
     // Maintenance actions
@@ -420,7 +425,7 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    hotel_id: hotelId,
+                    hotel_id: effectiveHotelId,
                     items_description: sendItems.trim(),
                     item_count: sendCount ? Number(sendCount) : null,
                     notes: sendNotes.trim() || null,

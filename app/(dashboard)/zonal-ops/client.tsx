@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { useAuthStore } from '@/lib/store/auth-store'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -69,8 +70,15 @@ interface PaymentRow {
 
 export function ZonalOpsClient({ staffId: _staffId, hotels }: ZonalOpsClientProps) {
     void _staffId // reserved for future per-staff audit trails
+    const { profile, activeHotelId } = useAuthStore()
+    const isAdminOrDev = profile?.role === 'Admin' || profile?.role === 'Developer'
     const [selectedHotelId, setSelectedHotelId] = useState(hotels[0]?.id || '')
     const [tab, setTab] = useState<Tab>('monitor')
+
+    // Sync selectedHotelId with activeHotelId from Header switcher for Admin/Developer
+    useEffect(() => {
+        if (isAdminOrDev && activeHotelId) setSelectedHotelId(activeHotelId)
+    }, [isAdminOrDev, activeHotelId])
     const [loading, setLoading] = useState(false)
 
     // ============ MONITOR STATE ============

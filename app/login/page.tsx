@@ -255,10 +255,18 @@ export default function LoginPage() {
             setSelectedRole(null)
             setAvailableRoles([])
         } else if (step === 3) {
-            setStep(2)
-            setSelectedRole(null)
-            setPhone('')
-            setPassword('')
+            // Admin/Dev login skipped hotel+role selection — go back to step 1
+            if (!selectedHotel) {
+                setStep(1)
+                setSelectedRole(null)
+                setPhone('')
+                setPassword('')
+            } else {
+                setStep(2)
+                setSelectedRole(null)
+                setPhone('')
+                setPassword('')
+            }
         }
     }
 
@@ -297,6 +305,34 @@ export default function LoginPage() {
                     toast.error(error.message || 'Login failed')
                 }
                 return
+            }
+
+            // Admin/Developer login without hotel pre-selection:
+            // Look up the actual staff record to determine their real role + hotel
+            if (!selectedHotel) {
+                const { data: { user } } = await supabase.auth.getUser()
+                if (user) {
+                    const { data: staffRecord } = await supabase
+                        .from('staff')
+                        .select('id, hotel_id, role')
+                        .eq('user_id', user.id)
+                        .in('role', ['Admin', 'Developer'])
+                        .limit(1)
+                        .maybeSingle()
+
+                    if (!staffRecord) {
+                        toast.error('No Admin or Developer account found for this phone number')
+                        await supabase.auth.signOut()
+                        setSigningIn(false)
+                        return
+                    }
+
+                    // Update selectedRole to the actual role from DB
+                    const actualRole = staffRecord.role as RoleKey
+                    toast.success('Signed in successfully')
+                    window.location.href = ROLE_ROUTE[actualRole] || '/'
+                    return
+                }
             }
 
             toast.success('Signed in successfully')
@@ -567,64 +603,80 @@ export default function LoginPage() {
                                     <p className="text-xs text-slate-400 mt-1">Contact your administrator</p>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                    {hotels.map((hotel) => {
-                                        const isActive = hotel.status.toUpperCase() === 'ACTIVE'
-                                        return (
-                                            <button
-                                                key={hotel.id}
-                                                type="button"
-                                                onClick={() => handleSelectHotel(hotel)}
-                                                className={`
-                                                    group relative text-left w-full rounded-2xl border-2 p-6 transition-all duration-200
-                                                    min-h-[140px] flex flex-col justify-between
-                                                    ${isActive
-                                                        ? 'border-emerald-200 bg-white hover:border-emerald-400 hover:shadow-lg hover:shadow-emerald-100 cursor-pointer active:scale-[0.98]'
-                                                        : 'border-slate-200 bg-slate-50 cursor-pointer opacity-70'
-                                                    }
-                                                `}
-                                            >
-                                                {/* Top section */}
-                                                <div>
-                                                    <div className="flex items-start justify-between mb-3">
-                                                        <div className={`
-                                                            h-11 w-11 rounded-xl flex items-center justify-center
-                                                            ${isActive
-                                                                ? 'bg-emerald-100 text-emerald-600 group-hover:bg-emerald-200'
-                                                                : 'bg-slate-200 text-slate-400'
-                                                            }
-                                                        `}>
-                                                            <Building2 className="h-5 w-5" />
+                                <>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        {hotels.map((hotel) => {
+                                            const isActive = hotel.status.toUpperCase() === 'ACTIVE'
+                                            return (
+                                                <button
+                                                    key={hotel.id}
+                                                    type="button"
+                                                    onClick={() => handleSelectHotel(hotel)}
+                                                    className={`
+                                                        group relative text-left w-full rounded-2xl border-2 p-6 transition-all duration-200
+                                                        min-h-[140px] flex flex-col justify-between
+                                                        ${isActive
+                                                            ? 'border-emerald-200 bg-white hover:border-emerald-400 hover:shadow-lg hover:shadow-emerald-100 cursor-pointer active:scale-[0.98]'
+                                                            : 'border-slate-200 bg-slate-50 cursor-pointer opacity-70'
+                                                        }
+                                                    `}
+                                                >
+                                                    {/* Top section */}
+                                                    <div>
+                                                        <div className="flex items-start justify-between mb-3">
+                                                            <div className={`
+                                                                h-11 w-11 rounded-xl flex items-center justify-center
+                                                                ${isActive
+                                                                    ? 'bg-emerald-100 text-emerald-600 group-hover:bg-emerald-200'
+                                                                    : 'bg-slate-200 text-slate-400'
+                                                                }
+                                                            `}>
+                                                                <Building2 className="h-5 w-5" />
+                                                            </div>
+                                                            {!isActive && (
+                                                                <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">
+                                                                    <AlertTriangle className="h-3 w-3" />
+                                                                    Under Maintenance
+                                                                </Badge>
+                                                            )}
+                                                            {isActive && (
+                                                                <div className="h-2.5 w-2.5 rounded-full bg-emerald-400 ring-4 ring-emerald-100" />
+                                                            )}
                                                         </div>
-                                                        {!isActive && (
-                                                            <Badge className="bg-amber-100 text-amber-700 border-amber-200 text-[11px]">
-                                                                <AlertTriangle className="h-3 w-3" />
-                                                                Under Maintenance
-                                                            </Badge>
-                                                        )}
-                                                        {isActive && (
-                                                            <div className="h-2.5 w-2.5 rounded-full bg-emerald-400 ring-4 ring-emerald-100" />
-                                                        )}
+                                                        <h3 className={`
+                                                            font-semibold text-base
+                                                            ${isActive ? 'text-slate-900' : 'text-slate-500'}
+                                                        `}>
+                                                            {hotel.name}
+                                                        </h3>
                                                     </div>
-                                                    <h3 className={`
-                                                        font-semibold text-base
-                                                        ${isActive ? 'text-slate-900' : 'text-slate-500'}
-                                                    `}>
-                                                        {hotel.name}
-                                                    </h3>
-                                                </div>
 
-                                                {/* Bottom section */}
-                                                <div className="flex items-center gap-1.5 mt-2">
-                                                    <MapPin className={`h-3.5 w-3.5 ${isActive ? 'text-slate-400' : 'text-slate-300'}`} />
-                                                    <span className={`text-sm ${isActive ? 'text-slate-500' : 'text-slate-400'}`}>
-                                                        {hotel.city}
-                                                    </span>
-                                                </div>
-                                            </button>
-                                        )
-                                    })}
-                                </div>
+                                                    {/* Bottom section */}
+                                                    <div className="flex items-center gap-1.5 mt-2">
+                                                        <MapPin className={`h-3.5 w-3.5 ${isActive ? 'text-slate-400' : 'text-slate-300'}`} />
+                                                        <span className={`text-sm ${isActive ? 'text-slate-500' : 'text-slate-400'}`}>
+                                                            {hotel.city}
+                                                        </span>
+                                                    </div>
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+
+                                    {/* Admin / Developer direct login - skips hotel selection */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            setSelectedRole('Admin')
+                                            setSelectedHotel(null)
+                                            setStep(3)
+                                        }}
+                                        className="w-full mt-6 py-3.5 rounded-xl border-2 border-dashed border-slate-300 text-sm font-semibold text-slate-500 hover:border-emerald-400 hover:text-emerald-600 transition-colors flex items-center justify-center gap-2"
+                                    >
+                                        <Shield className="h-4 w-4" />
+                                        Admin / Developer Login
+                                    </button>
+                                </>
                             )}
                         </div>
                     )}
@@ -716,7 +768,9 @@ export default function LoginPage() {
                                         Sign In
                                     </h2>
                                     <p className="text-sm text-slate-500">
-                                        {selectedHotel?.name} &middot; {selectedRole && ROLE_META[selectedRole]?.label}
+                                        {selectedHotel
+                                            ? <>{selectedHotel.name} &middot; {selectedRole && ROLE_META[selectedRole]?.label}</>
+                                            : 'Admin / Developer'}
                                     </p>
                                 </div>
                             </div>

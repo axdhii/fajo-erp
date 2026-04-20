@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useUnitStore } from '@/lib/store/unit-store'
+import { useAuthStore } from '@/lib/store/auth-store'
 import type { UnitStatus } from '@/lib/types'
 import { Card, CardContent, CardFooter } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -39,6 +40,10 @@ const emptyChecklist = (): CleaningChecklist => ({
 export function HousekeepingClient({
     hotelId,
 }: HousekeepingClientProps) {
+    const { profile, activeHotelId } = useAuthStore()
+    const isAdminOrDev = profile?.role === 'Admin' || profile?.role === 'Developer'
+    const effectiveHotelId = (isAdminOrDev && activeHotelId) ? activeHotelId : hotelId
+
     const { units, fetchUnits, subscribeToUnits, updateUnitStatus } =
         useUnitStore()
     const [processingIds, setProcessingIds] = useState<Set<string>>(new Set())
@@ -48,20 +53,20 @@ export function HousekeepingClient({
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
-        fetchUnits(hotelId).finally(() => setLoading(false))
+        fetchUnits(effectiveHotelId).finally(() => setLoading(false))
 
         // Real-time subscription (instant updates via Supabase WebSocket)
-        const unsubscribeRT = subscribeToUnits(hotelId)
+        const unsubscribeRT = subscribeToUnits(effectiveHotelId)
 
         // Dev toolbar event listener
-        const handleDevChange = () => fetchUnits(hotelId)
+        const handleDevChange = () => fetchUnits(effectiveHotelId)
         window.addEventListener('dev-data-changed', handleDevChange)
 
         return () => {
             unsubscribeRT()
             window.removeEventListener('dev-data-changed', handleDevChange)
         }
-    }, [hotelId, fetchUnits, subscribeToUnits])
+    }, [effectiveHotelId, fetchUnits, subscribeToUnits])
 
     // Show only DIRTY and IN_PROGRESS units
     const actionableUnits = units.filter(
