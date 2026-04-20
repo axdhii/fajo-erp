@@ -110,9 +110,14 @@ export function calculateCheckOut(
         checkoutPseudoIst.setUTCDate(checkoutPseudoIst.getUTCDate() + numberOfDays)
         checkoutPseudoIst.setUTCHours(11, 0, 0, 0)
     } else {
-        // Dorm: next day 10:00 AM IST
-        checkoutPseudoIst.setUTCDate(checkoutPseudoIst.getUTCDate() + 1)
-        checkoutPseudoIst.setUTCHours(10, 0, 0, 0) // 10:00 AM local (IST)
+        // Dorm: checkout at 10:00 AM IST
+        // If checked in before 10 AM → same day 10 AM
+        // If checked in after 10 AM → next day 10 AM
+        const checkInHour = checkoutPseudoIst.getUTCHours()
+        if (checkInHour >= 10) {
+            checkoutPseudoIst.setUTCDate(checkoutPseudoIst.getUTCDate() + 1)
+        }
+        checkoutPseudoIst.setUTCHours(10, 0, 0, 0)
         if (numberOfDays > 1) {
             checkoutPseudoIst.setUTCDate(checkoutPseudoIst.getUTCDate() + (numberOfDays - 1))
         }

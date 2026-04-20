@@ -146,11 +146,21 @@ export function CheckInSheet({
         }
         if (!unit) return new Date()
         const isDorm = unit.type === 'DORM'
+        if (isDorm) {
+            // Dorm: checkout at 10 AM IST
+            // If checked in before 10 AM → same day 10 AM; after 10 AM → next day 10 AM
+            const checkInHourIST = parseInt(checkInDate.toLocaleString('en-US', { timeZone: 'Asia/Kolkata', hour: 'numeric', hour12: false }))
+            const d = new Date(checkInDate)
+            if (checkInHourIST >= 10) d.setDate(d.getDate() + 1)
+            if (numberOfDays > 1) d.setDate(d.getDate() + (numberOfDays - 1))
+            const dateStr = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
+            return new Date(`${dateStr}T10:00:00+05:30`)
+        }
+        // Room: checkout at 11 AM IST + numberOfDays
         const d = new Date(checkInDate)
         d.setDate(d.getDate() + numberOfDays)
-        // Construct checkout time explicitly in IST
         const dateStr = d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
-        return new Date(`${dateStr}T${isDorm ? '10' : '11'}:00:00+05:30`)
+        return new Date(`${dateStr}T11:00:00+05:30`)
     }, [checkInDate, numberOfDays, manualCheckout, unit])
 
     const maxGuests = unit ? (unit.max_guests || 3) : 3
