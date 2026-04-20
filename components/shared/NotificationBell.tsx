@@ -87,7 +87,7 @@ export function NotificationBell({ hotelId, role, staffId }: NotificationBellPro
             {open && (
                 <div
                     ref={panelRef}
-                    className="absolute right-0 top-full mt-2 w-80 sm:w-96 rounded-xl border border-slate-200 bg-white shadow-xl z-[60] overflow-hidden"
+                    className="fixed right-2 left-2 sm:left-auto sm:absolute sm:right-0 top-16 sm:top-full sm:mt-2 sm:w-96 rounded-xl border border-slate-200 bg-white shadow-xl z-[60] overflow-hidden"
                 >
                     {/* Header */}
                     <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
