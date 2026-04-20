@@ -15,6 +15,7 @@ export interface Unit {
     base_price: number
     max_guests: number
     bed_position?: 'UPPER' | 'LOWER' | null
+    ac_type?: 'AC' | 'NON_AC' | null
     maintenance_reason: string | null
     created_at: string
     updated_at: string
@@ -289,6 +290,7 @@ export interface FreshupRecord {
     aadhar_url: string | null
     aadhar_url_front: string | null
     aadhar_url_back: string | null
+    ac_type?: 'AC' | 'NON_AC' | null
     created_by: string | null
     created_at: string
     staff?: { name: string | null }

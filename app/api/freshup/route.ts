@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
         const supabase = await createClient()
         const body = await request.json()
 
-        const { guest_name, guest_phone, guest_count, payment_method, aadhar_url, aadhar_url_front, aadhar_url_back } = body
+        const { guest_name, guest_phone, guest_count, payment_method, aadhar_url, aadhar_url_front, aadhar_url_back, ac_type } = body
 
         if (!guest_name || !guest_phone) {
             return NextResponse.json({ error: 'Guest name and phone are required' }, { status: 400 })
@@ -65,7 +65,6 @@ export async function POST(request: NextRequest) {
         }
 
         const count = Math.max(1, Math.floor(Number(guest_count) || 1))
-        const amount = count * 100 // ₹100 per guest
 
         if (!payment_method || !['CASH', 'DIGITAL'].includes(payment_method)) {
             return NextResponse.json({ error: 'Payment method must be CASH or DIGITAL' }, { status: 400 })
@@ -82,6 +81,31 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Staff profile not found' }, { status: 403 })
         }
 
+        // Fetch hotel freshup config for per-hotel pricing
+        const { data: hotel } = await supabase
+            .from('hotels')
+            .select('freshup_mode, freshup_person_price, freshup_ac_price, freshup_nonac_price, freshup_max_guests')
+            .eq('id', staffProfile.hotel_id)
+            .single()
+
+        const freshupMode = hotel?.freshup_mode || 'PERSON'
+
+        let amount: number
+        if (freshupMode === 'ROOM') {
+            // Room-based: price depends on AC type
+            amount = ac_type === 'AC'
+                ? Number(hotel?.freshup_ac_price || 799)
+                : Number(hotel?.freshup_nonac_price || 699)
+            // Enforce max guests
+            const maxGuests = hotel?.freshup_max_guests || 2
+            if (count > maxGuests) {
+                return NextResponse.json({ error: `Maximum ${maxGuests} guests allowed for room freshup` }, { status: 400 })
+            }
+        } else {
+            // Person-based: price per guest
+            amount = count * Number(hotel?.freshup_person_price || 100)
+        }
+
         const { data, error } = await supabase
             .from('freshup')
             .insert({
@@ -94,6 +118,7 @@ export async function POST(request: NextRequest) {
                 aadhar_url: aadhar_url || null,
                 aadhar_url_front: aadhar_url_front || null,
                 aadhar_url_back: aadhar_url_back || null,
+                ac_type: freshupMode === 'ROOM' ? (ac_type || null) : null,
                 created_by: staffProfile.id,
             })
             .select()

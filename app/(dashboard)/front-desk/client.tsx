@@ -90,6 +90,14 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
     const [freshupPayment, setFreshupPayment] = useState<'CASH' | 'DIGITAL'>('CASH')
     const [freshupSubmitting, setFreshupSubmitting] = useState(false)
 
+    // Freshup hotel config
+    const [freshupMode, setFreshupMode] = useState<'PERSON' | 'ROOM'>('PERSON')
+    const [freshupPersonPrice, setFreshupPersonPrice] = useState(100)
+    const [freshupAcPrice, setFreshupAcPrice] = useState(799)
+    const [freshupNonacPrice, setFreshupNonacPrice] = useState(699)
+    const [freshupMaxGuests, setFreshupMaxGuests] = useState<number | null>(null)
+    const [freshupAcType, setFreshupAcType] = useState<'AC' | 'NON_AC'>('AC')
+
     // Freshup Aadhar state
     const [freshupAadharFront, setFreshupAadharFront] = useState<Blob | null>(null)
     const [freshupAadharBack, setFreshupAadharBack] = useState<Blob | null>(null)
@@ -284,6 +292,11 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
         }
     }
 
+    // Compute freshup price dynamically based on hotel mode
+    const freshupPrice = freshupMode === 'ROOM'
+        ? (freshupAcType === 'AC' ? freshupAcPrice : freshupNonacPrice)
+        : freshupCount * freshupPersonPrice
+
     // Submit freshup
     const handleSubmitFreshup = async () => {
         if (!freshupName.trim()) { toast.error('Please enter guest name'); return }
@@ -306,15 +319,17 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                     payment_method: freshupPayment,
                     aadhar_url_front: freshupAadharUrlFront || null,
                     aadhar_url_back: freshupAadharUrlBack || null,
+                    ac_type: freshupMode === 'ROOM' ? freshupAcType : undefined,
                 }),
             })
             const json = await res.json()
             if (!res.ok) throw new Error(json.error)
-            toast.success(`Freshup recorded — ${formatCurrency(freshupCount * 100)} ${freshupPayment}`)
+            toast.success(`Freshup recorded — ${formatCurrency(freshupPrice)} ${freshupPayment}`)
             setFreshupName('')
             setFreshupPhone('')
             setFreshupCount(1)
             setFreshupPayment('CASH')
+            setFreshupAcType('AC')
             setFreshupAadharFront(null)
             setFreshupAadharBack(null)
             Object.values(freshupAadharPreviews).forEach(url => { try { URL.revokeObjectURL(url) } catch {} })
@@ -441,6 +456,25 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
     }, [staffId])
 
     useEffect(() => { fetchMyExpenses() }, [fetchMyExpenses])
+
+    // Fetch hotel freshup config on mount
+    useEffect(() => {
+        const fetchFreshupConfig = async () => {
+            const { data } = await supabase
+                .from('hotels')
+                .select('freshup_mode, freshup_person_price, freshup_ac_price, freshup_nonac_price, freshup_max_guests')
+                .eq('id', hotelId)
+                .single()
+            if (data) {
+                setFreshupMode(data.freshup_mode || 'PERSON')
+                setFreshupPersonPrice(Number(data.freshup_person_price) || 100)
+                setFreshupAcPrice(Number(data.freshup_ac_price) || 799)
+                setFreshupNonacPrice(Number(data.freshup_nonac_price) || 699)
+                setFreshupMaxGuests(data.freshup_max_guests || null)
+            }
+        }
+        fetchFreshupConfig()
+    }, [hotelId])
 
     // Realtime for expense status updates
     useEffect(() => {
@@ -781,6 +815,37 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                                 </div>
                             )}
 
+                            {/* AC/Non-AC toggle (ROOM mode only) */}
+                            {freshupMode === 'ROOM' && (
+                                <div className="flex items-center gap-3">
+                                    <Label className="text-xs text-slate-600">Room Type</Label>
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setFreshupAcType('AC')}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                                                freshupAcType === 'AC'
+                                                    ? 'bg-blue-100 border-blue-300 text-blue-700'
+                                                    : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            AC — {formatCurrency(freshupAcPrice)}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setFreshupAcType('NON_AC')}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                                                freshupAcType === 'NON_AC'
+                                                    ? 'bg-slate-200 border-slate-400 text-slate-700'
+                                                    : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            Non-AC — {formatCurrency(freshupNonacPrice)}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
                             {/* Guest count stepper */}
                             <div className="flex items-center gap-4">
                                 <Label className="text-xs text-slate-600">Guest Count</Label>
@@ -795,14 +860,16 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                                     <span className="text-sm font-bold text-slate-800 w-8 text-center">{freshupCount}</span>
                                     <button
                                         type="button"
-                                        onClick={() => setFreshupCount(freshupCount + 1)}
+                                        onClick={() => setFreshupCount(
+                                            freshupMaxGuests ? Math.min(freshupMaxGuests, freshupCount + 1) : freshupCount + 1
+                                        )}
                                         className="h-8 w-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
                                     >
                                         <Plus className="h-3 w-3" />
                                     </button>
                                 </div>
                                 <span className="text-sm font-bold text-cyan-700 ml-auto">
-                                    {formatCurrency(freshupCount * 100)}
+                                    {formatCurrency(freshupPrice)}
                                 </span>
                             </div>
 
@@ -866,7 +933,7 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                                 ) : (
                                     <span className="flex items-center gap-2">
                                         <Droplets className="h-3.5 w-3.5" />
-                                        Record Freshup ({formatCurrency(freshupCount * 100)})
+                                        Record Freshup ({formatCurrency(freshupPrice)})
                                     </span>
                                 )}
                             </Button>

@@ -65,6 +65,7 @@ interface UnitRow {
     max_guests: number
     bed_position: string | null
     maintenance_reason: string | null
+    ac_type: string | null
 }
 
 const HOTEL_STATUSES = ['ACTIVE', 'MAINTENANCE'] as const
@@ -117,6 +118,7 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
     const [editUnitMaintenance, setEditUnitMaintenance] = useState('')
     const [editUnitMaxGuests, setEditUnitMaxGuests] = useState('')
     const [editUnitBedPosition, setEditUnitBedPosition] = useState<string>('')
+    const [editUnitAcType, setEditUnitAcType] = useState<string>('')
 
     // Add unit form
     const [addUnitHotelId, setAddUnitHotelId] = useState<string | null>(null)
@@ -125,6 +127,7 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
     const [addUnitPrice, setAddUnitPrice] = useState('')
     const [addUnitMaxGuests, setAddUnitMaxGuests] = useState('3')
     const [addUnitBedPosition, setAddUnitBedPosition] = useState<string>('')
+    const [addUnitAcType, setAddUnitAcType] = useState<string>('')
 
     // Delete confirmation
     const [deleteHotelTarget, setDeleteHotelTarget] = useState<HotelRow | null>(null)
@@ -163,7 +166,7 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
         setLoadingUnits(hId)
         const { data, error } = await supabase
             .from('units')
-            .select('id, hotel_id, unit_number, type, status, base_price, max_guests, bed_position, maintenance_reason')
+            .select('id, hotel_id, unit_number, type, status, base_price, max_guests, bed_position, maintenance_reason, ac_type')
             .eq('hotel_id', hId)
             .order('unit_number')
 
@@ -287,6 +290,7 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
             base_price: addUnitPrice ? Number(addUnitPrice) : (addUnitType === 'ROOM' ? 2000 : 400),
             max_guests: addUnitMaxGuests ? Number(addUnitMaxGuests) : 3,
             bed_position: addUnitType === 'DORM' && addUnitBedPosition ? addUnitBedPosition : null,
+            ac_type: addUnitType === 'ROOM' && addUnitAcType ? addUnitAcType : null,
         })
         if (error) {
             toast.error('Failed to create unit: ' + error.message)
@@ -297,6 +301,7 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
             setAddUnitType('ROOM')
             setAddUnitMaxGuests('3')
             setAddUnitBedPosition('')
+            setAddUnitAcType('')
             setAddUnitHotelId(null)
             fetchUnits(addUnitHotelId)
         }
@@ -315,6 +320,7 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
             base_price: editUnitPrice ? Number(editUnitPrice) : u.base_price,
             max_guests: editUnitMaxGuests ? Number(editUnitMaxGuests) : u.max_guests,
             bed_position: editUnitType === 'DORM' && editUnitBedPosition ? editUnitBedPosition : null,
+            ac_type: editUnitType === 'ROOM' && editUnitAcType ? editUnitAcType : null,
             status: editUnitStatus,
             maintenance_reason: editUnitStatus === 'MAINTENANCE' ? (editUnitMaintenance.trim() || null) : null,
         }
@@ -375,6 +381,7 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
         setEditUnitMaintenance(u.maintenance_reason || '')
         setEditUnitMaxGuests(String(u.max_guests ?? 3))
         setEditUnitBedPosition(u.bed_position || '')
+        setEditUnitAcType(u.ac_type || '')
     }
 
     // ---- Computed ----
@@ -699,6 +706,20 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
                                                         </Select>
                                                     </div>
                                                 )}
+                                                {addUnitType === 'ROOM' && (
+                                                    <div className="space-y-1">
+                                                        <Label className="text-xs">AC Type</Label>
+                                                        <Select value={addUnitAcType} onValueChange={setAddUnitAcType}>
+                                                            <SelectTrigger className="h-9">
+                                                                <SelectValue placeholder="Select..." />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                <SelectItem value="AC">AC</SelectItem>
+                                                                <SelectItem value="NON_AC">Non-AC</SelectItem>
+                                                            </SelectContent>
+                                                        </Select>
+                                                    </div>
+                                                )}
                                             </div>
                                         )}
 
@@ -790,6 +811,20 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
                                                                                 </Select>
                                                                             </div>
                                                                         )}
+                                                                        {editUnitType === 'ROOM' && (
+                                                                            <div>
+                                                                                <Label className="text-xs text-slate-500">AC Type</Label>
+                                                                                <Select value={editUnitAcType} onValueChange={setEditUnitAcType}>
+                                                                                    <SelectTrigger className="mt-1 h-8 text-sm bg-white">
+                                                                                        <SelectValue placeholder="Select..." />
+                                                                                    </SelectTrigger>
+                                                                                    <SelectContent>
+                                                                                        <SelectItem value="AC">AC</SelectItem>
+                                                                                        <SelectItem value="NON_AC">Non-AC</SelectItem>
+                                                                                    </SelectContent>
+                                                                                </Select>
+                                                                            </div>
+                                                                        )}
                                                                         {editUnitStatus === 'MAINTENANCE' && (
                                                                             <div>
                                                                                 <Label className="text-xs text-slate-500">Reason</Label>
@@ -857,6 +892,13 @@ export function HotelsUnits({ hotelId, hotels: _hotels }: AdminTabProps) {
                                                                                 {u.bed_position && (
                                                                                     <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">
                                                                                         {u.bed_position === 'UPPER' ? 'Upper Bed' : 'Lower Bed'}
+                                                                                    </span>
+                                                                                )}
+                                                                                {u.type === 'ROOM' && u.ac_type && (
+                                                                                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                                                                        u.ac_type === 'AC' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'
+                                                                                    }`}>
+                                                                                        {u.ac_type === 'AC' ? 'AC' : 'Non-AC'}
                                                                                     </span>
                                                                                 )}
                                                                                 {u.maintenance_reason && (
