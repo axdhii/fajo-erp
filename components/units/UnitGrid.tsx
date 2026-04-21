@@ -8,6 +8,7 @@ import { CheckInSheet } from './CheckInSheet'
 import { CheckoutSheet } from './CheckoutSheet'
 import { MaintenanceSheet } from './MaintenanceSheet'
 import { ExtendSheet } from './ExtendSheet'
+import { ExtrasSheet } from './ExtrasSheet'
 
 import { ReportIssueSheet } from './ReportIssueSheet'
 import { toast } from 'sonner'
@@ -39,6 +40,7 @@ export function UnitGrid({
     const [checkoutOpen, setCheckoutOpen] = useState(false)
     const [maintenanceOpen, setMaintenanceOpen] = useState(false)
     const [extendOpen, setExtendOpen] = useState(false)
+    const [extrasOpen, setExtrasOpen] = useState(false)
     const [reportIssueOpen, setReportIssueOpen] = useState(false)
     const [actionMenuOpen, setActionMenuOpen] = useState(false)
 
@@ -200,6 +202,14 @@ export function UnitGrid({
                 onSuccess={handleDone}
             />
 
+            <ExtrasSheet
+                open={extrasOpen}
+                onOpenChange={setExtrasOpen}
+                bookingId={selectedUnit?.active_booking?.id || null}
+                unitNumber={selectedUnit?.unit_number || ''}
+                hotelId={hotelId}
+            />
+
             <ReportIssueSheet
                 unit={selectedUnit}
                 open={reportIssueOpen}
@@ -254,6 +264,19 @@ export function UnitGrid({
                                         <div>
                                             <p className="text-sm font-semibold text-slate-800">Extend Stay</p>
                                             <p className="text-[10px] text-slate-400">Add hours/days to checkout</p>
+                                        </div>
+                                    </button>
+
+                                    <button
+                                        onClick={() => { setActionMenuOpen(false); setExtrasOpen(true) }}
+                                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-left hover:bg-emerald-50 transition-colors group"
+                                    >
+                                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-100 text-emerald-600 group-hover:bg-emerald-200 transition-colors">
+                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" /></svg>
+                                        </div>
+                                        <div>
+                                            <p className="text-sm font-semibold text-slate-800">Add Extras</p>
+                                            <p className="text-[10px] text-slate-400">Blanket, pillow, towel, etc.</p>
                                         </div>
                                     </button>
 

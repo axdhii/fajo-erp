@@ -163,6 +163,21 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                 digital += Number(p.amount_digital || 0)
             }
         }
+
+        // Sum extras added by this staff in the current session
+        const { data: extras } = await supabase
+            .from('booking_extras')
+            .select('amount, payment_method')
+            .eq('added_by', staffId)
+            .gte('created_at', sessionStart)
+
+        if (extras) {
+            for (const e of extras) {
+                if (e.payment_method === 'DIGITAL') digital += Number(e.amount || 0)
+                else cash += Number(e.amount || 0)
+            }
+        }
+
         setShiftCash(cash)
         setShiftDigital(digital)
     }, [staffId])
@@ -179,6 +194,13 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                 event: '*',
                 schema: 'public',
                 table: 'payments',
+            }, () => {
+                fetchShiftRevenue()
+            })
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'booking_extras',
             }, () => {
                 fetchShiftRevenue()
             })

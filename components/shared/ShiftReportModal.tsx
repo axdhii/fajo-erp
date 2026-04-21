@@ -151,10 +151,20 @@ export function ShiftReportModal() {
                                 <p className="text-sm font-bold text-emerald-700">{fmt(r.revenue_total)}</p>
                             </div>
                         </div>
+                        {((r.advance_cash ?? 0) > 0 || (r.advance_digital ?? 0) > 0) && (
+                            <p className="text-[10px] text-slate-500 mt-1 text-center">
+                                Includes Advances: Cash {fmt(r.advance_cash ?? 0)} / Digital {fmt(r.advance_digital ?? 0)}
+                            </p>
+                        )}
+                        {(r.extras_count ?? 0) > 0 && (
+                            <p className="text-[10px] text-slate-500 text-center">
+                                Includes Extras ({r.extras_count}): Cash {fmt(r.extras_revenue_cash ?? 0)} / Digital {fmt(r.extras_revenue_digital ?? 0)}
+                            </p>
+                        )}
                     </div>
 
                     {/* Other Counts */}
-                    {(r.restock_requests_count > 0 || r.customer_issues_count > 0 || r.expense_requests_count > 0) && (
+                    {(r.restock_requests_count > 0 || r.customer_issues_count > 0 || r.expense_requests_count > 0 || (r.extras_count ?? 0) > 0) && (
                         <div className="flex flex-wrap gap-2">
                             {r.restock_requests_count > 0 && (
                                 <Badge variant="secondary" className="gap-1.5 py-1 px-2.5">
@@ -166,6 +176,12 @@ export function ShiftReportModal() {
                                 <Badge variant="secondary" className="gap-1.5 py-1 px-2.5">
                                     <AlertTriangle className="h-3 w-3" />
                                     {r.customer_issues_count} Issue{r.customer_issues_count !== 1 ? 's' : ''}
+                                </Badge>
+                            )}
+                            {(r.extras_count ?? 0) > 0 && (
+                                <Badge variant="secondary" className="gap-1.5 py-1 px-2.5 bg-emerald-100 text-emerald-700">
+                                    <Package className="h-3 w-3" />
+                                    {r.extras_count} Extra{(r.extras_count ?? 0) !== 1 ? 's' : ''}
                                 </Badge>
                             )}
                             {r.expense_requests_count > 0 && (

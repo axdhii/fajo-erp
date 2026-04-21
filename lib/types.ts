@@ -244,6 +244,27 @@ export interface MaintenanceTicket {
 }
 
 // ============================================================
+// Booking Extras Types
+// ============================================================
+
+export interface BookingExtra {
+    id: string
+    booking_id: string | null
+    hotel_id: string
+    description: string
+    amount: number
+    payment_method: 'CASH' | 'DIGITAL'
+    added_by: string | null
+    created_at: string
+    staff?: { name: string | null }
+}
+
+export interface ExtraCatalogItem {
+    name: string
+    price: number
+}
+
+// ============================================================
 // Shift Report Types
 // ============================================================
 
@@ -267,6 +288,12 @@ export interface ShiftReport {
     revenue_cash: number
     revenue_digital: number
     revenue_total: number
+    advance_cash?: number
+    advance_digital?: number
+    advance_total?: number
+    extras_count?: number
+    extras_revenue_cash?: number
+    extras_revenue_digital?: number
     created_at: string
     staff?: { name: string | null; role: string }
 }

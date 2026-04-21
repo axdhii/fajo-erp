@@ -78,14 +78,40 @@ export async function generateShiftReport(
     }
 
     // Include advance_amount from check-ins (collected at reservation/check-in time)
+    let advanceCash = 0, advanceDigital = 0
     for (const b of (checkIns || [])) {
         const advance = Number((b as Record<string, unknown>).advance_amount || 0)
         if (advance > 0) {
             const advType = String((b as Record<string, unknown>).advance_type || '').toUpperCase()
             if (advType === 'DIGITAL' || advType === 'UPI' || advType === 'GPAY') {
+                advanceDigital += advance
                 revenueDigital += advance
             } else {
+                advanceCash += advance
                 revenueCash += advance
+            }
+        }
+    }
+
+    // Include booking extras added by this staff during the shift
+    const { data: extras } = await supabase
+        .from('booking_extras')
+        .select('amount, payment_method')
+        .eq('added_by', staffId)
+        .gte('created_at', clockIn)
+        .lt('created_at', clockOut)
+
+    let extrasCash = 0, extrasDigital = 0, extrasCount = 0
+    if (extras) {
+        extrasCount = extras.length
+        for (const e of extras) {
+            const amt = Number(e.amount || 0)
+            if (e.payment_method === 'DIGITAL') {
+                extrasDigital += amt
+                revenueDigital += amt
+            } else {
+                extrasCash += amt
+                revenueCash += amt
             }
         }
     }
@@ -120,6 +146,12 @@ export async function generateShiftReport(
         restock_requests_count: (restocks || []).length,
         customer_issues_count: (issues || []).length,
         expense_requests_count: (expenses || []).length,
+        advance_cash: advanceCash,
+        advance_digital: advanceDigital,
+        advance_total: advanceCash + advanceDigital,
+        extras_count: extrasCount,
+        extras_revenue_cash: extrasCash,
+        extras_revenue_digital: extrasDigital,
         revenue_cash: revenueCash,
         revenue_digital: revenueDigital,
         revenue_total: revenueCash + revenueDigital,
