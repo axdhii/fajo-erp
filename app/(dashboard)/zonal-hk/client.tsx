@@ -7,6 +7,13 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from '@/components/ui/select'
+import {
     Wrench,
     CheckCircle2,
     Clock,
@@ -33,6 +40,7 @@ import { timeAgo } from '@/lib/utils/time'
 interface ZonalHKClientProps {
     hotelId: string
     staffId: string
+    hotels: { id: string; name: string }[]
 }
 
 type Tab = 'maintenance' | 'laundry' | 'restock' | 'reports'
@@ -81,10 +89,20 @@ const STATUS_STYLES: Record<string, string> = {
 // Component
 // ============================================================
 
-export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
+export function ZonalHKClient({ hotelId, staffId, hotels }: ZonalHKClientProps) {
     const { profile, activeHotelId } = useAuthStore()
     const isAdminOrDev = profile?.role === 'Admin' || profile?.role === 'Developer'
-    const effectiveHotelId = (isAdminOrDev && activeHotelId) ? activeHotelId : hotelId
+
+    // Local hotel selector — defaults to staff's assigned hotel (or first hotel if list is non-empty)
+    const [selectedHotelId, setSelectedHotelId] = useState<string>(hotelId || hotels[0]?.id || '')
+
+    // Sync with Header hotel switcher (Admin/Developer only)
+    useEffect(() => {
+        if (isAdminOrDev && activeHotelId) setSelectedHotelId(activeHotelId)
+    }, [isAdminOrDev, activeHotelId])
+
+    // Alias so all downstream code continues to work unchanged
+    const effectiveHotelId = selectedHotelId || hotelId
 
     const [tab, setTab] = useState<Tab>('maintenance')
     const [loading, setLoading] = useState(false)
@@ -539,30 +557,45 @@ export function ZonalHKClient({ hotelId, staffId }: ZonalHKClientProps) {
                     <h1 className="text-3xl font-bold tracking-tight text-slate-900">Zonal HK Dashboard</h1>
                     <p className="text-slate-500 mt-1 text-sm">Maintenance tickets and laundry management.</p>
                 </div>
-                <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                        if (tab === 'maintenance') {
-                            fetchActiveTickets()
-                            fetchResolvedTickets()
-                        } else if (tab === 'laundry') {
-                            fetchOutOrders()
-                            fetchReturnedOrders()
-                            fetchPaidOrders()
-                        } else if (tab === 'restock') {
-                            fetchPendingRestocks()
-                            fetchDoneRestocks()
-                        } else if (tab === 'reports') {
-                            fetchReports()
-                        }
-                        toast.success('Refreshed')
-                    }}
-                    className="gap-2"
-                >
-                    <RefreshCw className="h-4 w-4" />
-                    Refresh
-                </Button>
+                <div className="flex items-center gap-3 w-full sm:w-auto">
+                    {/* Hotel selector */}
+                    {hotels.length > 1 && (
+                        <Select value={selectedHotelId} onValueChange={setSelectedHotelId}>
+                            <SelectTrigger className="w-full sm:w-[200px] h-9 focus:ring-teal-400/30 focus:border-teal-400">
+                                <SelectValue placeholder="Select hotel..." />
+                            </SelectTrigger>
+                            <SelectContent>
+                                {hotels.map(h => (
+                                    <SelectItem key={h.id} value={h.id}>{h.name}</SelectItem>
+                                ))}
+                            </SelectContent>
+                        </Select>
+                    )}
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                            if (tab === 'maintenance') {
+                                fetchActiveTickets()
+                                fetchResolvedTickets()
+                            } else if (tab === 'laundry') {
+                                fetchOutOrders()
+                                fetchReturnedOrders()
+                                fetchPaidOrders()
+                            } else if (tab === 'restock') {
+                                fetchPendingRestocks()
+                                fetchDoneRestocks()
+                            } else if (tab === 'reports') {
+                                fetchReports()
+                            }
+                            toast.success('Refreshed')
+                        }}
+                        className="gap-2 shrink-0"
+                    >
+                        <RefreshCw className="h-4 w-4" />
+                        Refresh
+                    </Button>
+                </div>
             </div>
 
             {/* Tabs */}
