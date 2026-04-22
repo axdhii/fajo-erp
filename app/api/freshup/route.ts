@@ -110,6 +110,11 @@ export async function POST(request: NextRequest) {
             amount = count * Number(hotel?.freshup_person_price || 100)
         }
 
+        // Guest 2 is only valid for ROOM mode. Reject in PERSON mode.
+        if (freshupMode === 'PERSON' && (guest_name_2 || guest_phone_2 || aadhar_url_front_2 || aadhar_url_back_2)) {
+            return NextResponse.json({ error: 'Guest 2 fields are not valid for person-mode freshup' }, { status: 400 })
+        }
+
         // Validate guest 2 if provided (ROOM mode with 2 guests)
         let phone2Digits: string | null = null
         if (guest_name_2 || guest_phone_2) {

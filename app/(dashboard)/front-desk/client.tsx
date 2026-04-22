@@ -1120,7 +1120,9 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                                     <button
                                         type="button"
                                         onClick={() => setFreshupCount(
-                                            freshupMaxGuests ? Math.min(freshupMaxGuests, freshupCount + 1) : freshupCount + 1
+                                            (freshupMode === 'ROOM' && freshupMaxGuests)
+                                                ? Math.min(freshupMaxGuests, freshupCount + 1)
+                                                : freshupCount + 1
                                         )}
                                         className="h-8 w-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
                                     >
