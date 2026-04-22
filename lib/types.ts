@@ -294,6 +294,9 @@ export interface ShiftReport {
     extras_count?: number
     extras_revenue_cash?: number
     extras_revenue_digital?: number
+    freshup_count?: number
+    freshup_revenue_cash?: number
+    freshup_revenue_digital?: number
     created_at: string
     staff?: { name: string | null; role: string }
 }
@@ -317,6 +320,10 @@ export interface FreshupRecord {
     aadhar_url: string | null
     aadhar_url_front: string | null
     aadhar_url_back: string | null
+    guest_name_2?: string | null
+    guest_phone_2?: string | null
+    aadhar_url_front_2?: string | null
+    aadhar_url_back_2?: string | null
     ac_type?: 'AC' | 'NON_AC' | null
     created_by: string | null
     created_at: string

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -13,9 +13,9 @@ import {
     SelectTrigger,
     SelectValue,
 } from '@/components/ui/select'
-import { Search, AlertTriangle, Save, Trash2, BookOpen, UserCheck, Droplets, Package } from 'lucide-react'
+import { Search, AlertTriangle, Save, Trash2, BookOpen, UserCheck, Droplets, Package, Users, Banknote, FileText, Receipt } from 'lucide-react'
 
-type Section = 'bookings' | 'attendance' | 'freshup' | 'extras'
+type Section = 'bookings' | 'attendance' | 'freshup' | 'extras' | 'staff' | 'payroll' | 'incidents' | 'expenses'
 
 interface BookingRow {
     id: string
@@ -105,9 +105,27 @@ export function OverrideConsole() {
     const [extrasList, setExtrasList] = useState<ExtraRow[]>([])
     const [extrasDate, setExtrasDate] = useState(new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }))
 
+    // ===== Staff state =====
+    const [staffList, setStaffList] = useState<Array<{ id: string; name: string | null; phone: string | null; role: string; base_salary: number; hotel_id: string }>>([])
+
+    // ===== Payroll state =====
+    const [payrollList, setPayrollList] = useState<Array<{ id: string; staff_id: string; month: string; base_salary: number; total_penalties: number; total_days_present: number; total_days_absent: number; net_salary: number; status: string; staff?: { name: string | null; role: string } }>>([])
+    const [payrollMonth, setPayrollMonth] = useState(new Date().toISOString().slice(0, 7))
+
+    // ===== Incidents state =====
+    const [incidentList, setIncidentList] = useState<Array<{ id: string; staff_id: string; category: string; description: string | null; penalty_amount: number; incident_date: string; staff?: { name: string | null } }>>([])
+
+    // ===== Expenses state =====
+    const [expenseList, setExpenseList] = useState<Array<{ id: string; description: string; amount: number; category: string | null; status: string; created_at: string; rejection_reason: string | null }>>([])
+
+    // ===== Recent bookings list =====
+    const [recentBookings, setRecentBookings] = useState<Array<{ id: string; status: string; check_in: string; grand_total: number; unit?: { unit_number: string } | null; guests?: Array<{ name: string }> | null }>>([])
+
     // ===== Booking search =====
-    const searchBooking = useCallback(async () => {
-        if (!searchQuery.trim()) {
+    // Accepts an optional explicit query (for direct clicks); falls back to searchQuery state
+    const searchBooking = useCallback(async (explicitQuery?: string) => {
+        const q = (explicitQuery ?? searchQuery).trim()
+        if (!q) {
             toast.error('Enter booking ID or unit number')
             return
         }
@@ -115,12 +133,12 @@ export function OverrideConsole() {
         // Try to find by booking id first, then by unit_number (search recent bookings for that unit)
         let found: BookingRow | null = null
 
-        if (searchQuery.length >= 30) {
+        if (q.length >= 30) {
             // UUID-like — try direct booking id lookup
             const { data } = await supabase
                 .from('bookings')
                 .select('*, unit:units(unit_number, hotel_id)')
-                .eq('id', searchQuery.trim())
+                .eq('id', q)
                 .maybeSingle()
             found = data as BookingRow | null
         }
@@ -130,7 +148,7 @@ export function OverrideConsole() {
             const { data: unit } = await supabase
                 .from('units')
                 .select('id')
-                .eq('unit_number', searchQuery.trim())
+                .eq('unit_number', q)
                 .maybeSingle()
 
             if (unit) {
@@ -431,6 +449,167 @@ export function OverrideConsole() {
         }
     }
 
+    // ===== Recent bookings (auto-load) =====
+    const loadRecentBookings = useCallback(async () => {
+        const { data } = await supabase
+            .from('bookings')
+            .select('id, status, check_in, grand_total, unit:units(unit_number), guests(name)')
+            .order('created_at', { ascending: false })
+            .limit(30)
+        setRecentBookings((data as unknown as Array<{ id: string; status: string; check_in: string; grand_total: number; unit?: { unit_number: string } | null; guests?: Array<{ name: string }> | null }>) || [])
+    }, [])
+
+    // ===== Staff search =====
+    const loadStaff = useCallback(async () => {
+        const { data } = await supabase.from('staff').select('id, name, phone, role, base_salary, hotel_id').order('name')
+        let list = (data as Array<{ id: string; name: string | null; phone: string | null; role: string; base_salary: number; hotel_id: string }>) || []
+        if (searchQuery.trim()) {
+            const q = searchQuery.trim().toLowerCase()
+            list = list.filter(s => (s.name || '').toLowerCase().includes(q) || s.role.toLowerCase().includes(q))
+        }
+        setStaffList(list)
+    }, [searchQuery])
+
+    const saveStaff = async (staff: { id: string; name: string | null; phone: string | null; role: string; base_salary: number }, updates: Partial<{ name: string; phone: string; role: string; base_salary: number }>) => {
+        if (!reason.trim()) { toast.error('Please provide a reason'); return }
+        try {
+            const res = await fetch('/api/overrides/developer', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ table: 'staff', id: staff.id, updates, reason }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error)
+            toast.success('Staff updated')
+            setStaffList(list => list.map(s => s.id === staff.id ? { ...s, ...updates } : s))
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to update staff')
+        }
+    }
+
+    // ===== Payroll =====
+    const loadPayroll = useCallback(async () => {
+        const monthStart = payrollMonth + '-01'
+        const { data } = await supabase
+            .from('payroll')
+            .select('*, staff:staff_id(name, role)')
+            .eq('month', monthStart)
+            .order('created_at', { ascending: false })
+        setPayrollList((data as Array<{ id: string; staff_id: string; month: string; base_salary: number; total_penalties: number; total_days_present: number; total_days_absent: number; net_salary: number; status: string; staff?: { name: string | null; role: string } }>) || [])
+    }, [payrollMonth])
+
+    const savePayroll = async (p: { id: string }, updates: Partial<{ total_days_present: number; total_penalties: number; net_salary: number; status: string }>) => {
+        if (!reason.trim()) { toast.error('Please provide a reason'); return }
+        try {
+            const res = await fetch('/api/overrides/developer', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ table: 'payroll', id: p.id, updates, reason }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error)
+            toast.success('Payroll updated')
+            setPayrollList(list => list.map(x => x.id === p.id ? { ...x, ...updates } : x))
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to update payroll')
+        }
+    }
+
+    // ===== Incidents =====
+    const loadIncidents = useCallback(async () => {
+        const { data } = await supabase
+            .from('staff_incidents')
+            .select('*, staff:staff_id(name)')
+            .order('incident_date', { ascending: false })
+            .limit(50)
+        let list = (data as Array<{ id: string; staff_id: string; category: string; description: string | null; penalty_amount: number; incident_date: string; staff?: { name: string | null } }>) || []
+        if (searchQuery.trim()) {
+            const q = searchQuery.trim().toLowerCase()
+            list = list.filter(i => (i.staff?.name || '').toLowerCase().includes(q) || (i.description || '').toLowerCase().includes(q))
+        }
+        setIncidentList(list)
+    }, [searchQuery])
+
+    const saveIncident = async (inc: { id: string }, updates: Partial<{ penalty_amount: number; description: string; category: string }>) => {
+        if (!reason.trim()) { toast.error('Please provide a reason'); return }
+        try {
+            const res = await fetch('/api/overrides/developer', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ table: 'staff_incidents', id: inc.id, updates, reason }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error)
+            toast.success('Incident updated')
+            setIncidentList(list => list.map(x => x.id === inc.id ? { ...x, ...updates } : x))
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to update incident')
+        }
+    }
+
+    const deleteIncident = async (id: string) => {
+        if (!confirm('Delete this incident? This cannot be undone.')) return
+        try {
+            const res = await fetch(`/api/overrides/developer?table=staff_incidents&id=${id}`, { method: 'DELETE' })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error)
+            toast.success('Deleted')
+            setIncidentList(list => list.filter(i => i.id !== id))
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to delete')
+        }
+    }
+
+    // ===== Expenses =====
+    const loadExpenses = useCallback(async () => {
+        const { data } = await supabase
+            .from('property_expenses')
+            .select('id, description, amount, category, status, created_at, rejection_reason')
+            .order('created_at', { ascending: false })
+            .limit(50)
+        setExpenseList((data as Array<{ id: string; description: string; amount: number; category: string | null; status: string; created_at: string; rejection_reason: string | null }>) || [])
+    }, [])
+
+    const saveExpense = async (ex: { id: string }, updates: Partial<{ amount: number; status: string; rejection_reason: string | null }>) => {
+        if (!reason.trim()) { toast.error('Please provide a reason'); return }
+        try {
+            const res = await fetch('/api/overrides/developer', {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ table: 'property_expenses', id: ex.id, updates, reason }),
+            })
+            const json = await res.json()
+            if (!res.ok) throw new Error(json.error)
+            toast.success('Expense updated')
+            setExpenseList(list => list.map(x => x.id === ex.id ? { ...x, ...updates } : x))
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to update expense')
+        }
+    }
+
+    // Auto-load data when section changes
+    useEffect(() => {
+        if (section === 'bookings') loadRecentBookings()
+        else if (section === 'attendance') searchAttendance()
+        else if (section === 'freshup') searchFreshup()
+        else if (section === 'extras') searchExtras()
+        else if (section === 'staff') loadStaff()
+        else if (section === 'payroll') loadPayroll()
+        else if (section === 'incidents') loadIncidents()
+        else if (section === 'expenses') loadExpenses()
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [section])
+
+    // Re-load when date/month changes
+    useEffect(() => { if (section === 'attendance') searchAttendance() // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [attendanceDate])
+    useEffect(() => { if (section === 'freshup') searchFreshup() // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [freshupDate])
+    useEffect(() => { if (section === 'extras') searchExtras() // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [extrasDate])
+    useEffect(() => { if (section === 'payroll') loadPayroll() // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [payrollMonth])
+
     // Convert ISO timestamp to datetime-local format (YYYY-MM-DDTHH:MM in IST)
     // Uses manual arithmetic (UTC + 5:30) to avoid locale-dependent string formatting bugs
     const toDTLocal = (iso: string | null | undefined) => {
@@ -457,6 +636,10 @@ export function OverrideConsole() {
         { key: 'attendance', label: 'Attendance', icon: <UserCheck className="h-4 w-4" /> },
         { key: 'freshup', label: 'Freshup', icon: <Droplets className="h-4 w-4" /> },
         { key: 'extras', label: 'Extras', icon: <Package className="h-4 w-4" /> },
+        { key: 'staff', label: 'Staff', icon: <Users className="h-4 w-4" /> },
+        { key: 'payroll', label: 'Payroll', icon: <Banknote className="h-4 w-4" /> },
+        { key: 'incidents', label: 'Incidents', icon: <FileText className="h-4 w-4" /> },
+        { key: 'expenses', label: 'Expenses', icon: <Receipt className="h-4 w-4" /> },
     ]
 
     return (
@@ -515,11 +698,41 @@ export function OverrideConsole() {
                                 onKeyDown={(e) => { if (e.key === 'Enter') searchBooking() }}
                                 className="h-9 text-sm"
                             />
-                            <Button onClick={searchBooking} className="h-9 gap-1 bg-red-600 hover:bg-red-700">
+                            <Button onClick={() => searchBooking()} className="h-9 gap-1 bg-red-600 hover:bg-red-700">
                                 <Search className="h-4 w-4" /> Search
                             </Button>
                         </div>
                     </div>
+
+                    {/* Recent Bookings list */}
+                    {!booking && recentBookings.length > 0 && (
+                        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
+                            <div className="flex items-center justify-between mb-1">
+                                <p className="text-xs font-bold text-slate-600 uppercase tracking-wider">Recent Bookings</p>
+                                <Button size="sm" variant="ghost" onClick={loadRecentBookings} className="h-7 text-[10px]">Refresh</Button>
+                            </div>
+                            {recentBookings.map(b => (
+                                <button
+                                    key={b.id}
+                                    onClick={() => { setSearchQuery(b.id); searchBooking(b.id) }}
+                                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 border border-slate-100 transition-colors text-left"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <span className="font-bold text-sm">Unit {b.unit?.unit_number || '?'}</span>
+                                        <span className="text-xs text-slate-500">{b.guests?.[0]?.name || 'Unknown'}</span>
+                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                            b.status === 'CHECKED_IN' ? 'bg-emerald-100 text-emerald-700' :
+                                            b.status === 'CHECKED_OUT' ? 'bg-slate-200 text-slate-700' :
+                                            b.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
+                                            b.status === 'CONFIRMED' ? 'bg-blue-100 text-blue-700' :
+                                            'bg-red-100 text-red-700'
+                                        }`}>{b.status}</span>
+                                    </div>
+                                    <span className="text-xs text-slate-500">₹{Number(b.grand_total).toLocaleString('en-IN')}</span>
+                                </button>
+                            ))}
+                        </div>
+                    )}
 
                     {booking && (
                         <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
@@ -807,6 +1020,90 @@ export function OverrideConsole() {
                     ))}
                 </div>
             )}
+
+            {/* ========== STAFF SECTION ========== */}
+            {section === 'staff' && (
+                <div className="space-y-3">
+                    <div className="rounded-xl border border-slate-200 bg-white p-3">
+                        <div className="flex gap-2">
+                            <Input
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Filter by name or role..."
+                                className="h-9 text-sm"
+                            />
+                            <Button onClick={loadStaff} className="h-9 gap-1 bg-red-600 hover:bg-red-700">
+                                <Search className="h-4 w-4" /> Filter
+                            </Button>
+                        </div>
+                    </div>
+
+                    {staffList.map(s => (
+                        <StaffEditor key={s.id} staff={s} onSave={saveStaff} />
+                    ))}
+                </div>
+            )}
+
+            {/* ========== PAYROLL SECTION ========== */}
+            {section === 'payroll' && (
+                <div className="space-y-3">
+                    <div className="rounded-xl border border-slate-200 bg-white p-3">
+                        <Label className="text-xs">Month</Label>
+                        <Input
+                            type="month"
+                            value={payrollMonth}
+                            onChange={(e) => setPayrollMonth(e.target.value)}
+                            className="h-9 text-sm"
+                        />
+                    </div>
+
+                    {payrollList.length === 0 && (
+                        <div className="text-center py-8 text-slate-400 text-sm">No payroll records for this month</div>
+                    )}
+
+                    {payrollList.map(p => (
+                        <PayrollEditor key={p.id} p={p} onSave={savePayroll} />
+                    ))}
+                </div>
+            )}
+
+            {/* ========== INCIDENTS SECTION ========== */}
+            {section === 'incidents' && (
+                <div className="space-y-3">
+                    <div className="rounded-xl border border-slate-200 bg-white p-3">
+                        <div className="flex gap-2">
+                            <Input
+                                value={searchQuery}
+                                onChange={(e) => setSearchQuery(e.target.value)}
+                                placeholder="Filter by staff name or description..."
+                                className="h-9 text-sm"
+                            />
+                            <Button onClick={loadIncidents} className="h-9 gap-1 bg-red-600 hover:bg-red-700">
+                                <Search className="h-4 w-4" /> Filter
+                            </Button>
+                        </div>
+                    </div>
+
+                    {incidentList.map(inc => (
+                        <IncidentEditor key={inc.id} inc={inc} onSave={saveIncident} onDelete={deleteIncident} />
+                    ))}
+                </div>
+            )}
+
+            {/* ========== EXPENSES SECTION ========== */}
+            {section === 'expenses' && (
+                <div className="space-y-3">
+                    <div className="rounded-xl border border-slate-200 bg-white p-3">
+                        <Button onClick={loadExpenses} className="h-9 gap-1 bg-red-600 hover:bg-red-700">
+                            <Search className="h-4 w-4" /> Refresh
+                        </Button>
+                    </div>
+
+                    {expenseList.map(ex => (
+                        <ExpenseEditor key={ex.id} ex={ex} onSave={saveExpense} />
+                    ))}
+                </div>
+            )}
         </div>
     )
 }
@@ -960,6 +1257,227 @@ function ExtraEditor({ ex, onSave, onDelete }: {
                     description,
                     amount: Number(amount),
                     payment_method: paymentMethod,
+                })}
+            >
+                <Save className="h-4 w-4" /> Save
+            </Button>
+        </div>
+    )
+}
+
+function StaffEditor({ staff, onSave }: {
+    staff: { id: string; name: string | null; phone: string | null; role: string; base_salary: number }
+    onSave: (s: { id: string; name: string | null; phone: string | null; role: string; base_salary: number }, updates: Partial<{ name: string; phone: string; role: string; base_salary: number }>) => void
+}) {
+    const [name, setName] = useState(staff.name || '')
+    const [phone, setPhone] = useState(staff.phone || '')
+    const [role, setRole] = useState(staff.role)
+    const [baseSalary, setBaseSalary] = useState(String(staff.base_salary ?? 0))
+
+    return (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <p className="text-sm font-bold">{staff.name || 'Unknown'} <span className="text-xs text-slate-400 ml-2">{staff.role}</span></p>
+            <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <Label className="text-xs">Name</Label>
+                    <Input value={name} onChange={(e) => setName(e.target.value)} className="h-9 text-sm" />
+                </div>
+                <div>
+                    <Label className="text-xs">Phone</Label>
+                    <Input value={phone} onChange={(e) => setPhone(e.target.value)} className="h-9 text-sm" />
+                </div>
+                <div>
+                    <Label className="text-xs">Role</Label>
+                    <Select value={role} onValueChange={setRole}>
+                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="FrontDesk">FrontDesk</SelectItem>
+                            <SelectItem value="Housekeeping">Housekeeping</SelectItem>
+                            <SelectItem value="HR">HR</SelectItem>
+                            <SelectItem value="ZonalOps">ZonalOps</SelectItem>
+                            <SelectItem value="ZonalHK">ZonalHK</SelectItem>
+                            <SelectItem value="Admin">Admin</SelectItem>
+                            <SelectItem value="Developer">Developer</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div>
+                    <Label className="text-xs">Base Salary</Label>
+                    <Input type="number" value={baseSalary} onChange={(e) => setBaseSalary(e.target.value)} className="h-9 text-sm" />
+                </div>
+            </div>
+            <Button
+                size="sm"
+                className="bg-red-600 hover:bg-red-700 gap-1"
+                onClick={() => onSave(staff, { name, phone, role, base_salary: Number(baseSalary) })}
+            >
+                <Save className="h-4 w-4" /> Save
+            </Button>
+        </div>
+    )
+}
+
+function PayrollEditor({ p, onSave }: {
+    p: { id: string; staff_id: string; month: string; base_salary: number; total_penalties: number; total_days_present: number; total_days_absent: number; net_salary: number; status: string; staff?: { name: string | null; role: string } }
+    onSave: (p: { id: string }, updates: Partial<{ total_days_present: number; total_penalties: number; net_salary: number; status: string }>) => void
+}) {
+    const [daysPresent, setDaysPresent] = useState(String(p.total_days_present))
+    const [penalties, setPenalties] = useState(String(p.total_penalties))
+    const [netSalary, setNetSalary] = useState(String(p.net_salary))
+    const [status, setStatus] = useState(p.status)
+
+    return (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <div className="flex items-center justify-between">
+                <p className="text-sm font-bold">{p.staff?.name || 'Unknown'} <span className="text-xs text-slate-400 ml-2">{p.staff?.role}</span></p>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-200">{p.status}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <Label className="text-xs">Days Present</Label>
+                    <Input type="number" value={daysPresent} onChange={(e) => setDaysPresent(e.target.value)} className="h-9 text-sm" />
+                </div>
+                <div>
+                    <Label className="text-xs">Total Penalties</Label>
+                    <Input type="number" value={penalties} onChange={(e) => setPenalties(e.target.value)} className="h-9 text-sm" />
+                </div>
+                <div>
+                    <Label className="text-xs">Net Salary</Label>
+                    <Input type="number" value={netSalary} onChange={(e) => setNetSalary(e.target.value)} className="h-9 text-sm" />
+                </div>
+                <div>
+                    <Label className="text-xs">Status</Label>
+                    <Select value={status} onValueChange={setStatus}>
+                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="DRAFT">DRAFT</SelectItem>
+                            <SelectItem value="FINALIZED">FINALIZED</SelectItem>
+                            <SelectItem value="PAID">PAID</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+            <Button
+                size="sm"
+                className="bg-red-600 hover:bg-red-700 gap-1"
+                onClick={() => onSave(p, {
+                    total_days_present: Number(daysPresent),
+                    total_penalties: Number(penalties),
+                    net_salary: Number(netSalary),
+                    status,
+                })}
+            >
+                <Save className="h-4 w-4" /> Save
+            </Button>
+        </div>
+    )
+}
+
+function IncidentEditor({ inc, onSave, onDelete }: {
+    inc: { id: string; staff_id: string; category: string; description: string | null; penalty_amount: number; incident_date: string; staff?: { name: string | null } }
+    onSave: (inc: { id: string }, updates: Partial<{ penalty_amount: number; description: string; category: string }>) => void
+    onDelete: (id: string) => void
+}) {
+    const [penalty, setPenalty] = useState(String(inc.penalty_amount))
+    const [description, setDescription] = useState(inc.description || '')
+    const [category, setCategory] = useState(inc.category)
+
+    return (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <div className="flex items-center justify-between">
+                <p className="text-sm font-bold">{inc.staff?.name || 'Unknown'} <span className="text-xs text-slate-400 ml-2">{new Date(inc.incident_date).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}</span></p>
+                <Button size="sm" variant="ghost" onClick={() => onDelete(inc.id)} className="text-red-600 hover:text-red-700">
+                    <Trash2 className="h-4 w-4" />
+                </Button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <Label className="text-xs">Category</Label>
+                    <Select value={category} onValueChange={setCategory}>
+                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="LATE_ARRIVAL">Late Arrival</SelectItem>
+                            <SelectItem value="EARLY_DEPARTURE">Early Departure</SelectItem>
+                            <SelectItem value="ABSENCE">Absence</SelectItem>
+                            <SelectItem value="UNIFORM_VIOLATION">Uniform Violation</SelectItem>
+                            <SelectItem value="GROOMING">Grooming</SelectItem>
+                            <SelectItem value="MISCONDUCT">Misconduct</SelectItem>
+                            <SelectItem value="DAMAGE">Damage</SelectItem>
+                            <SelectItem value="OTHER">Other</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                <div>
+                    <Label className="text-xs">Penalty Amount</Label>
+                    <Input type="number" value={penalty} onChange={(e) => setPenalty(e.target.value)} className="h-9 text-sm" />
+                </div>
+            </div>
+            <div>
+                <Label className="text-xs">Description</Label>
+                <Input value={description} onChange={(e) => setDescription(e.target.value)} className="h-9 text-sm" />
+            </div>
+            <Button
+                size="sm"
+                className="bg-red-600 hover:bg-red-700 gap-1"
+                onClick={() => onSave(inc, { penalty_amount: Number(penalty), description, category })}
+            >
+                <Save className="h-4 w-4" /> Save
+            </Button>
+        </div>
+    )
+}
+
+function ExpenseEditor({ ex, onSave }: {
+    ex: { id: string; description: string; amount: number; category: string | null; status: string; created_at: string; rejection_reason: string | null }
+    onSave: (ex: { id: string }, updates: Partial<{ amount: number; status: string; rejection_reason: string | null }>) => void
+}) {
+    const [amount, setAmount] = useState(String(ex.amount))
+    const [status, setStatus] = useState(ex.status)
+    const [rejectionReason, setRejectionReason] = useState(ex.rejection_reason || '')
+
+    return (
+        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
+            <div className="flex items-center justify-between">
+                <div>
+                    <p className="text-sm font-bold">{ex.description}</p>
+                    <p className="text-xs text-slate-400">{ex.category || 'No category'} · {new Date(ex.created_at).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata' })}</p>
+                </div>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    ex.status === 'APPROVED' ? 'bg-emerald-100 text-emerald-700' :
+                    ex.status === 'REJECTED' ? 'bg-red-100 text-red-700' :
+                    'bg-amber-100 text-amber-700'
+                }`}>{ex.status}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+                <div>
+                    <Label className="text-xs">Amount</Label>
+                    <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="h-9 text-sm" />
+                </div>
+                <div>
+                    <Label className="text-xs">Status</Label>
+                    <Select value={status} onValueChange={setStatus}>
+                        <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="PENDING">PENDING</SelectItem>
+                            <SelectItem value="APPROVED">APPROVED</SelectItem>
+                            <SelectItem value="REJECTED">REJECTED</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+            </div>
+            {status === 'REJECTED' && (
+                <div>
+                    <Label className="text-xs">Rejection Reason</Label>
+                    <Input value={rejectionReason} onChange={(e) => setRejectionReason(e.target.value)} className="h-9 text-sm" />
+                </div>
+            )}
+            <Button
+                size="sm"
+                className="bg-red-600 hover:bg-red-700 gap-1"
+                onClick={() => onSave(ex, {
+                    amount: Number(amount),
+                    status,
+                    rejection_reason: status === 'REJECTED' ? rejectionReason : null,
                 })}
             >
                 <Save className="h-4 w-4" /> Save

@@ -41,6 +41,7 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ message: 'No active clock-in found', skipped: true })
         }
 
+        // Atomic update: only change if still CLOCKED_IN (prevents race condition on double-click)
         const { data, error } = await supabase
             .from('attendance')
             .update({
@@ -48,18 +49,24 @@ export async function PATCH(request: NextRequest) {
                 status: 'CLOCKED_OUT',
             })
             .eq('id', existing.id)
+            .eq('status', 'CLOCKED_IN')
             .select('*, staff!attendance_staff_id_fkey(id, name, role)')
-            .single()
 
         if (error) {
             console.error('Clock out error:', error)
             return NextResponse.json({ error: 'Failed to clock out' }, { status: 500 })
         }
 
+        // If no row was updated, another concurrent call already clocked out — skip report generation
+        if (!data || data.length === 0) {
+            return NextResponse.json({ message: 'Already clocked out', skipped: true })
+        }
+
         // Generate shift report for property-level roles
         const { data: staffProfile } = await supabase
             .from('staff').select('role, hotel_id').eq('id', existing.staff_id).single()
 
+        const updatedRecord = data[0]
         if (staffProfile && ['FrontDesk', 'HR'].includes(staffProfile.role)) {
             try {
                 const result = await generateShiftReport(
@@ -68,16 +75,16 @@ export async function PATCH(request: NextRequest) {
                 )
                 if (result.error) {
                     console.error('Shift report insert error:', result.error)
-                    return NextResponse.json({ data, shiftReport: null, reportError: 'Shift report could not be saved' })
+                    return NextResponse.json({ data: updatedRecord, shiftReport: null, reportError: 'Shift report could not be saved' })
                 }
-                return NextResponse.json({ data, shiftReport: result.data })
+                return NextResponse.json({ data: updatedRecord, shiftReport: result.data })
             } catch (err) {
                 console.error('Shift report generation failed:', err)
-                return NextResponse.json({ data, shiftReport: null, reportError: 'Shift report generation failed' })
+                return NextResponse.json({ data: updatedRecord, shiftReport: null, reportError: 'Shift report generation failed' })
             }
         }
 
-        return NextResponse.json({ data })
+        return NextResponse.json({ data: updatedRecord })
     } catch (err) {
         console.error('Clock out error:', err)
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

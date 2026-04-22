@@ -3,7 +3,10 @@ import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 
 // Supported tables that can be overridden by Developer
-const ALLOWED_TABLES = ['bookings', 'payments', 'guests', 'attendance', 'freshup', 'booking_extras'] as const
+const ALLOWED_TABLES = [
+    'bookings', 'payments', 'guests', 'attendance', 'freshup', 'booking_extras',
+    'staff', 'payroll', 'staff_incidents', 'property_expenses',
+] as const
 type AllowedTable = typeof ALLOWED_TABLES[number]
 
 // PATCH /api/overrides/developer — Developer-only override for any supported table

@@ -207,9 +207,57 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             const monthPay = sumRevenue(monthPayments as unknown as PaymentWithBooking[])
             const rangePay = sumRevenue(rangePayments as unknown as PaymentWithBooking[])
 
-            setTodayRevenue({ cash: todayPay.cash + todayAdv.cash, digital: todayPay.digital + todayAdv.digital, total: todayPay.total + todayAdv.total })
-            setMonthRevenue({ cash: monthPay.cash + monthAdv.cash, digital: monthPay.digital + monthAdv.digital, total: monthPay.total + monthAdv.total })
-            setRangeRevenue({ cash: rangePay.cash + rangeAdv.cash, digital: rangePay.digital + rangeAdv.digital, total: rangePay.total + rangeAdv.total })
+            // Query booking_extras for each date range
+            const extrasSelect = 'amount, payment_method, hotel_id'
+            const [todayExtrasRes, monthExtrasRes, rangeExtrasRes] = await Promise.all([
+                supabase.from('booking_extras').select(extrasSelect).gte('created_at', today + 'T00:00:00+05:30'),
+                supabase.from('booking_extras').select(extrasSelect).gte('created_at', monthStart + 'T00:00:00+05:30'),
+                supabase.from('booking_extras').select(extrasSelect).gte('created_at', `${dateFrom}T${timeFrom}:00+05:30`).lte('created_at', `${dateTo}T${timeTo}:59+05:30`),
+            ])
+
+            type CashDigitalRow = { amount: number; payment_method: string; hotel_id: string }
+            const sumCashDigital = (rows: CashDigitalRow[] | null) => {
+                if (!rows) return { cash: 0, digital: 0, total: 0 }
+                const filtered = hotelId ? rows.filter(r => r.hotel_id === hotelId) : rows
+                let cash = 0, digital = 0
+                for (const r of filtered) {
+                    const amt = Number(r.amount || 0)
+                    if (r.payment_method === 'DIGITAL') digital += amt
+                    else cash += amt
+                }
+                return { cash, digital, total: cash + digital }
+            }
+
+            const todayExtras = sumCashDigital(todayExtrasRes.data as CashDigitalRow[])
+            const monthExtras = sumCashDigital(monthExtrasRes.data as CashDigitalRow[])
+            const rangeExtras = sumCashDigital(rangeExtrasRes.data as CashDigitalRow[])
+
+            // Query freshup for each date range
+            const [todayFreshupRes, monthFreshupRes, rangeFreshupRes] = await Promise.all([
+                supabase.from('freshup').select(extrasSelect).gte('created_at', today + 'T00:00:00+05:30'),
+                supabase.from('freshup').select(extrasSelect).gte('created_at', monthStart + 'T00:00:00+05:30'),
+                supabase.from('freshup').select(extrasSelect).gte('created_at', `${dateFrom}T${timeFrom}:00+05:30`).lte('created_at', `${dateTo}T${timeTo}:59+05:30`),
+            ])
+
+            const todayFreshup = sumCashDigital(todayFreshupRes.data as CashDigitalRow[])
+            const monthFreshup = sumCashDigital(monthFreshupRes.data as CashDigitalRow[])
+            const rangeFreshup = sumCashDigital(rangeFreshupRes.data as CashDigitalRow[])
+
+            setTodayRevenue({
+                cash: todayPay.cash + todayAdv.cash + todayExtras.cash + todayFreshup.cash,
+                digital: todayPay.digital + todayAdv.digital + todayExtras.digital + todayFreshup.digital,
+                total: todayPay.total + todayAdv.total + todayExtras.total + todayFreshup.total,
+            })
+            setMonthRevenue({
+                cash: monthPay.cash + monthAdv.cash + monthExtras.cash + monthFreshup.cash,
+                digital: monthPay.digital + monthAdv.digital + monthExtras.digital + monthFreshup.digital,
+                total: monthPay.total + monthAdv.total + monthExtras.total + monthFreshup.total,
+            })
+            setRangeRevenue({
+                cash: rangePay.cash + rangeAdv.cash + rangeExtras.cash + rangeFreshup.cash,
+                digital: rangePay.digital + rangeAdv.digital + rangeExtras.digital + rangeFreshup.digital,
+                total: rangePay.total + rangeAdv.total + rangeExtras.total + rangeFreshup.total,
+            })
 
             // Per-hotel revenue breakdown (from range dates)
             const perHotel: Record<string, HotelRevenue> = {}
@@ -236,6 +284,26 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                         perHotel[hid].cash += adv
                     }
                     perHotel[hid].total += adv
+                }
+            }
+            // Add extras to per-hotel breakdown
+            for (const e of (rangeExtrasRes.data || []) as CashDigitalRow[]) {
+                const hid = e.hotel_id
+                if (hid && perHotel[hid]) {
+                    const amt = Number(e.amount || 0)
+                    if (e.payment_method === 'DIGITAL') perHotel[hid].digital += amt
+                    else perHotel[hid].cash += amt
+                    perHotel[hid].total += amt
+                }
+            }
+            // Add freshup to per-hotel breakdown
+            for (const f of (rangeFreshupRes.data || []) as CashDigitalRow[]) {
+                const hid = f.hotel_id
+                if (hid && perHotel[hid]) {
+                    const amt = Number(f.amount || 0)
+                    if (f.payment_method === 'DIGITAL') perHotel[hid].digital += amt
+                    else perHotel[hid].cash += amt
+                    perHotel[hid].total += amt
                 }
             }
             setHotelRevenues(Object.values(perHotel))

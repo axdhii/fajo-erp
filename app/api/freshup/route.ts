@@ -53,7 +53,11 @@ export async function POST(request: NextRequest) {
         const supabase = await createClient()
         const body = await request.json()
 
-        const { guest_name, guest_phone, guest_count, payment_method, aadhar_url, aadhar_url_front, aadhar_url_back, ac_type } = body
+        const {
+            guest_name, guest_phone, guest_count, payment_method,
+            aadhar_url, aadhar_url_front, aadhar_url_back, ac_type,
+            guest_name_2, guest_phone_2, aadhar_url_front_2, aadhar_url_back_2,
+        } = body
 
         if (!guest_name || !guest_phone) {
             return NextResponse.json({ error: 'Guest name and phone are required' }, { status: 400 })
@@ -106,6 +110,18 @@ export async function POST(request: NextRequest) {
             amount = count * Number(hotel?.freshup_person_price || 100)
         }
 
+        // Validate guest 2 if provided (ROOM mode with 2 guests)
+        let phone2Digits: string | null = null
+        if (guest_name_2 || guest_phone_2) {
+            if (!guest_name_2?.trim()) {
+                return NextResponse.json({ error: 'Guest 2 name is required' }, { status: 400 })
+            }
+            phone2Digits = String(guest_phone_2 || '').replace(/\D/g, '')
+            if (phone2Digits.length !== 10) {
+                return NextResponse.json({ error: 'Guest 2 phone must be exactly 10 digits' }, { status: 400 })
+            }
+        }
+
         const { data, error } = await supabase
             .from('freshup')
             .insert({
@@ -119,6 +135,10 @@ export async function POST(request: NextRequest) {
                 aadhar_url_front: aadhar_url_front || null,
                 aadhar_url_back: aadhar_url_back || null,
                 ac_type: freshupMode === 'ROOM' ? (ac_type || null) : null,
+                guest_name_2: guest_name_2?.trim() || null,
+                guest_phone_2: phone2Digits,
+                aadhar_url_front_2: aadhar_url_front_2 || null,
+                aadhar_url_back_2: aadhar_url_back_2 || null,
                 created_by: staffProfile.id,
             })
             .select()

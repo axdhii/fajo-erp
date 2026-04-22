@@ -103,7 +103,7 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
     const [freshupMaxGuests, setFreshupMaxGuests] = useState<number | null>(null)
     const [freshupAcType, setFreshupAcType] = useState<'AC' | 'NON_AC'>('AC')
 
-    // Freshup Aadhar state
+    // Freshup Aadhar state (Guest 1)
     const [freshupAadharFront, setFreshupAadharFront] = useState<Blob | null>(null)
     const [freshupAadharBack, setFreshupAadharBack] = useState<Blob | null>(null)
     const [freshupAadharPreviews, setFreshupAadharPreviews] = useState<Record<string, string>>({})
@@ -113,6 +113,16 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
     const [freshupAadharMatch, setFreshupAadharMatch] = useState<AadharMatch | null>(null)
     const [freshupLookingUp, setFreshupLookingUp] = useState(false)
     const [freshupAadharBypass, setFreshupAadharBypass] = useState(false)
+
+    // Freshup Guest 2 state (for ROOM mode with 2 guests)
+    const [freshupName2, setFreshupName2] = useState('')
+    const [freshupPhone2, setFreshupPhone2] = useState('')
+    const [freshupAadharFront2, setFreshupAadharFront2] = useState<Blob | null>(null)
+    const [freshupAadharBack2, setFreshupAadharBack2] = useState<Blob | null>(null)
+    const [freshupAadharPreviews2, setFreshupAadharPreviews2] = useState<Record<string, string>>({})
+    const [freshupAadharUrlFront2, setFreshupAadharUrlFront2] = useState('')
+    const [freshupAadharUrlBack2, setFreshupAadharUrlBack2] = useState('')
+    const [freshupUploading2, setFreshupUploading2] = useState(false)
 
     // CRE Payment counter state
     const [shiftCash, setShiftCash] = useState(0)
@@ -178,6 +188,20 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
             }
         }
 
+        // Sum freshup records created by this staff in the current session
+        const { data: freshups } = await supabase
+            .from('freshup')
+            .select('amount, payment_method')
+            .eq('created_by', staffId)
+            .gte('created_at', sessionStart)
+
+        if (freshups) {
+            for (const f of freshups) {
+                if (f.payment_method === 'DIGITAL') digital += Number(f.amount || 0)
+                else cash += Number(f.amount || 0)
+            }
+        }
+
         setShiftCash(cash)
         setShiftDigital(digital)
     }, [staffId])
@@ -201,6 +225,13 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                 event: '*',
                 schema: 'public',
                 table: 'booking_extras',
+            }, () => {
+                fetchShiftRevenue()
+            })
+            .on('postgres_changes', {
+                event: '*',
+                schema: 'public',
+                table: 'freshup',
             }, () => {
                 fetchShiftRevenue()
             })
@@ -326,12 +357,26 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
 
     // Submit freshup
     const handleSubmitFreshup = async () => {
-        if (!freshupName.trim()) { toast.error('Please enter guest name'); return }
+        if (freshupSubmitting) return
+        if (!freshupName.trim()) { toast.error('Please enter primary guest name'); return }
         const digits = freshupPhone.replace(/\D/g, '')
-        if (digits.length !== 10) { toast.error('Phone must be 10 digits'); return }
+        if (digits.length !== 10) { toast.error('Primary guest phone must be 10 digits'); return }
         if (!freshupAadharBypass && (!freshupAadharUrlFront || !freshupAadharUrlBack)) {
-            toast.error('Aadhar front and back photos are mandatory')
+            toast.error('Primary guest Aadhar photos are mandatory')
             return
+        }
+
+        // For ROOM mode with 2 guests, validate guest 2 details
+        const needsGuest2 = freshupMode === 'ROOM' && freshupCount >= 2
+        let digits2 = ''
+        if (needsGuest2) {
+            if (!freshupName2.trim()) { toast.error('Please enter guest 2 name'); return }
+            digits2 = freshupPhone2.replace(/\D/g, '')
+            if (digits2.length !== 10) { toast.error('Guest 2 phone must be 10 digits'); return }
+            if (!freshupAadharBypass && (!freshupAadharUrlFront2 || !freshupAadharUrlBack2)) {
+                toast.error('Guest 2 Aadhar photos are mandatory')
+                return
+            }
         }
 
         setFreshupSubmitting(true)
@@ -347,6 +392,10 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                     aadhar_url_front: freshupAadharUrlFront || null,
                     aadhar_url_back: freshupAadharUrlBack || null,
                     ac_type: freshupMode === 'ROOM' ? freshupAcType : undefined,
+                    guest_name_2: needsGuest2 ? freshupName2.trim() : null,
+                    guest_phone_2: needsGuest2 ? digits2 : null,
+                    aadhar_url_front_2: needsGuest2 ? (freshupAadharUrlFront2 || null) : null,
+                    aadhar_url_back_2: needsGuest2 ? (freshupAadharUrlBack2 || null) : null,
                 }),
             })
             const json = await res.json()
@@ -365,6 +414,15 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
             setFreshupAadharUrlBack('')
             setFreshupAadharMatch(null)
             setFreshupAadharBypass(false)
+            // Reset guest 2 state
+            setFreshupName2('')
+            setFreshupPhone2('')
+            setFreshupAadharFront2(null)
+            setFreshupAadharBack2(null)
+            Object.values(freshupAadharPreviews2).forEach(url => { try { URL.revokeObjectURL(url) } catch {} })
+            setFreshupAadharPreviews2({})
+            setFreshupAadharUrlFront2('')
+            setFreshupAadharUrlBack2('')
             setFreshupOpen(false)
             fetchShiftRevenue() // Update revenue counter
         } catch (err: unknown) {
@@ -466,6 +524,65 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
         } catch (err) {
             console.error('Aadhar capture error:', err)
             toast.error('Failed to process Aadhar photo')
+        }
+    }
+
+    // Freshup Guest 2: capture Aadhar photo (for Aluva ROOM mode with 2 guests)
+    const handleFreshupAadharCapture2 = async (side: 'front' | 'back', e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0]
+        if (!file) return
+        try {
+            const { compressImage } = await import('@/lib/utils/compress-image')
+            const compressed = await compressImage(file)
+            const previewUrl = URL.createObjectURL(compressed)
+            setFreshupAadharPreviews2(prev => ({ ...prev, [side]: previewUrl }))
+
+            const newFront = side === 'front' ? compressed : freshupAadharFront2
+            const newBack = side === 'back' ? compressed : freshupAadharBack2
+            if (side === 'front') setFreshupAadharFront2(compressed)
+            if (side === 'back') setFreshupAadharBack2(compressed)
+
+            if (newFront && newBack) {
+                setFreshupUploading2(true)
+                try {
+                    const { stitchAadhar } = await import('@/lib/utils/stitch-aadhar')
+                    const guestName = (freshupName2 || 'Guest2').replace(/[^a-zA-Z0-9]/g, '_')
+                    const phone = freshupPhone2.replace(/\D/g, '') || '0000000000'
+                    const dateStr = new Date().toLocaleDateString('en-GB', { timeZone: 'Asia/Kolkata' }).replace(/\//g, '-')
+                    const stitched = await stitchAadhar(newFront, newBack, {
+                        guestName: freshupName2 || 'Guest 2', phone, date: dateStr,
+                    })
+                    const monthStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }).slice(0, 7)
+                    const timeStr = new Date().toLocaleTimeString('en-GB', { timeZone: 'Asia/Kolkata', hour: '2-digit', minute: '2-digit', hour12: false }).replace(':', '-')
+                    const fileName = `${monthStr}/freshup_${guestName}_${phone}_${dateStr}_${timeStr}_g2.jpg`
+
+                    const { error: uploadErr } = await supabase.storage
+                        .from('aadhars')
+                        .upload(fileName, stitched, { contentType: 'image/jpeg', upsert: true })
+
+                    if (uploadErr) {
+                        toast.error('Failed to upload Guest 2 Aadhar')
+                        console.error('Upload error:', uploadErr)
+                        return
+                    }
+
+                    setFreshupAadharUrlFront2(fileName)
+                    setFreshupAadharUrlBack2(fileName)
+                    const stitchedPreview = URL.createObjectURL(stitched)
+                    setFreshupAadharPreviews2({ stitched: stitchedPreview })
+                    toast.success('Guest 2 Aadhar stitched & uploaded')
+                } catch (err) {
+                    console.error('Stitch/upload error:', err)
+                    toast.error('Failed to stitch Guest 2 Aadhar')
+                } finally {
+                    setFreshupUploading2(false)
+                }
+            } else {
+                toast.info(`Guest 2 Aadhar ${side} captured — now capture the ${side === 'front' ? 'back' : 'front'} side`)
+            }
+        } catch (err) {
+            console.error('Guest 2 Aadhar capture error:', err)
+            toast.error('Failed to process Guest 2 Aadhar photo')
         }
     }
 
@@ -837,6 +954,121 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                                                     )}
                                                 </div>
                                             ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {/* Guest 2 section — ROOM mode with 2+ guests (Aluva) */}
+                            {freshupMode === 'ROOM' && freshupCount >= 2 && (
+                                <div className="rounded-xl border border-cyan-200 bg-cyan-50/30 p-3 space-y-3">
+                                    <p className="text-[10px] font-bold uppercase tracking-widest text-cyan-700">
+                                        Guest 2 Details
+                                    </p>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs text-slate-600">Guest 2 Name *</Label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. Jane Doe"
+                                                value={freshupName2}
+                                                onChange={(e) => setFreshupName2(e.target.value)}
+                                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 placeholder:text-slate-400"
+                                            />
+                                        </div>
+                                        <div className="space-y-1.5">
+                                            <Label className="text-xs text-slate-600">Guest 2 Phone *</Label>
+                                            <input
+                                                type="text"
+                                                placeholder="e.g. 9876543210"
+                                                inputMode="numeric"
+                                                maxLength={10}
+                                                value={freshupPhone2}
+                                                onChange={(e) => setFreshupPhone2(e.target.value.replace(/\D/g, ''))}
+                                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-cyan-400 focus:ring-2 focus:ring-cyan-400/20 placeholder:text-slate-400"
+                                            />
+                                        </div>
+                                    </div>
+
+                                    {/* Guest 2 Aadhar Capture */}
+                                    {!freshupAadharBypass && (
+                                        <div className="space-y-2">
+                                            <Label className="text-xs text-slate-600">Guest 2 Aadhar Photos *</Label>
+                                            {freshupAadharPreviews2.stitched ? (
+                                                <div className="space-y-2">
+                                                    <div className="relative rounded-lg overflow-hidden border border-emerald-200">
+                                                        <img
+                                                            src={freshupAadharPreviews2.stitched}
+                                                            alt="Guest 2 Aadhar"
+                                                            className="w-full h-auto max-h-48 object-contain bg-slate-50"
+                                                        />
+                                                        <div className="absolute top-2 left-2 px-2 py-0.5 rounded-full bg-emerald-500 text-white text-[10px] font-bold">
+                                                            Front + Back
+                                                        </div>
+                                                    </div>
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setFreshupAadharFront2(null)
+                                                            setFreshupAadharBack2(null)
+                                                            setFreshupAadharPreviews2({})
+                                                            setFreshupAadharUrlFront2('')
+                                                            setFreshupAadharUrlBack2('')
+                                                        }}
+                                                        className="text-xs text-cyan-600 hover:text-cyan-700 font-medium"
+                                                    >
+                                                        Re-capture
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                                    {(['front', 'back'] as const).map((side) => (
+                                                        <div key={side}>
+                                                            {freshupAadharPreviews2[side] ? (
+                                                                <div className="relative rounded-lg overflow-hidden border border-emerald-200">
+                                                                    <img
+                                                                        src={freshupAadharPreviews2[side]}
+                                                                        alt={`Guest 2 Aadhar ${side}`}
+                                                                        className="w-full h-24 object-cover"
+                                                                    />
+                                                                    <div className="absolute top-1 left-1 px-1.5 py-0.5 rounded-full bg-emerald-500 text-white text-[9px] font-bold capitalize">
+                                                                        {side}
+                                                                    </div>
+                                                                    <div className="absolute top-1 right-1">
+                                                                        <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                                                                    </div>
+                                                                </div>
+                                                            ) : (
+                                                                <label className={`flex flex-col items-center justify-center h-24 rounded-lg border-2 border-dashed cursor-pointer transition-colors ${
+                                                                    freshupUploading2
+                                                                        ? 'border-slate-200 bg-slate-50 cursor-wait'
+                                                                        : 'border-cyan-300 bg-cyan-50/50 hover:bg-cyan-50 hover:border-cyan-400'
+                                                                }`}>
+                                                                    <input
+                                                                        type="file"
+                                                                        accept="image/*"
+                                                                        capture="environment"
+                                                                        className="hidden"
+                                                                        disabled={freshupUploading2}
+                                                                        onChange={(e) => handleFreshupAadharCapture2(side, e)}
+                                                                    />
+                                                                    {freshupUploading2 ? (
+                                                                        <div className="text-center">
+                                                                            <div className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-400 border-t-transparent mx-auto mb-1" />
+                                                                            <span className="text-[10px] text-slate-400">Stitching...</span>
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="text-center">
+                                                                            <Camera className="h-5 w-5 text-cyan-500 mx-auto mb-1" />
+                                                                            <span className="text-[10px] font-semibold text-cyan-600 capitalize">{side}</span>
+                                                                        </div>
+                                                                    )}
+                                                                </label>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
                                         </div>
                                     )}
                                 </div>

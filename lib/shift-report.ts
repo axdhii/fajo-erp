@@ -101,7 +101,7 @@ export async function generateShiftReport(
         .gte('created_at', clockIn)
         .lt('created_at', clockOut)
 
-    let extrasCash = 0, extrasDigital = 0, extrasCount = 0
+    let extrasCash = 0, extrasDigital = 0, extrasCount = 0, freshupCash = 0, freshupDigital = 0, freshupCount = 0
     if (extras) {
         extrasCount = extras.length
         for (const e of extras) {
@@ -111,6 +111,28 @@ export async function generateShiftReport(
                 revenueDigital += amt
             } else {
                 extrasCash += amt
+                revenueCash += amt
+            }
+        }
+    }
+
+    // Include freshup records created by this staff during the shift
+    const { data: freshups } = await supabase
+        .from('freshup')
+        .select('amount, payment_method')
+        .eq('created_by', staffId)
+        .gte('created_at', clockIn)
+        .lt('created_at', clockOut)
+
+    if (freshups) {
+        freshupCount = freshups.length
+        for (const f of freshups) {
+            const amt = Number(f.amount || 0)
+            if (f.payment_method === 'DIGITAL') {
+                freshupDigital += amt
+                revenueDigital += amt
+            } else {
+                freshupCash += amt
                 revenueCash += amt
             }
         }
@@ -152,17 +174,30 @@ export async function generateShiftReport(
         extras_count: extrasCount,
         extras_revenue_cash: extrasCash,
         extras_revenue_digital: extrasDigital,
+        freshup_count: freshupCount,
+        freshup_revenue_cash: freshupCash,
+        freshup_revenue_digital: freshupDigital,
         revenue_cash: revenueCash,
         revenue_digital: revenueDigital,
         revenue_total: revenueCash + revenueDigital,
     }
 
-    // 9. Insert
+    // 9. Insert — if a report already exists for this attendance, fetch and return it (idempotent)
     const { data, error } = await supabase
         .from('shift_reports')
         .insert(report)
         .select()
         .single()
+
+    // Postgres unique violation code 23505 — another concurrent call already created this report
+    if (error && (error as { code?: string }).code === '23505') {
+        const { data: existing } = await supabase
+            .from('shift_reports')
+            .select()
+            .eq('attendance_id', attendanceId)
+            .single()
+        return { data: existing, error: null }
+    }
 
     return { data, error }
 }
