@@ -70,6 +70,7 @@ export function ReservationSheet({
     const [checkInDate, setCheckInDate] = useState('')
     const [checkInTime, setCheckInTime] = useState('12:00')
     const [guests, setGuests] = useState<GuestInput[]>([emptyGuest()])
+    const [guestCount, setGuestCount] = useState(1)
     const [expectedArrival, setExpectedArrival] = useState('')
     const [numberOfDays, setNumberOfDays] = useState(1)
     const [advanceAmount, setAdvanceAmount] = useState('')
@@ -95,7 +96,7 @@ export function ReservationSheet({
             })
     }, [units])
 
-    const isDormEligible = guests.length >= 5
+    const isDormEligible = guestCount >= 5
 
     // Reset dorm mode when guest count drops below 5
     useEffect(() => {
@@ -126,8 +127,8 @@ export function ReservationSheet({
     const toggleDormBed = (id: string) => {
         setSelectedDormIds((prev) => {
             if (prev.includes(id)) return prev.filter((x) => x !== id)
-            if (prev.length >= guests.length) {
-                toast.error(`Maximum ${guests.length} beds (1 per guest)`)
+            if (prev.length >= guestCount) {
+                toast.error(`Maximum ${guestCount} beds (1 per guest)`)
                 return prev
             }
             return [...prev, id]
@@ -142,8 +143,8 @@ export function ReservationSheet({
     const roomPricing = useMemo(() => {
         if (bookingMode !== 'ROOM' || !selectedUnit) return null
         const perDayBase = Number(selectedUnit.base_price) * numberOfDays
-        return calculateBookingPrice(selectedUnit.type, perDayBase, guests.length, roomMaxGuests)
-    }, [bookingMode, selectedUnit, guests.length, numberOfDays, roomMaxGuests])
+        return calculateBookingPrice(selectedUnit.type, perDayBase, guestCount, roomMaxGuests)
+    }, [bookingMode, selectedUnit, guestCount, numberOfDays, roomMaxGuests])
 
     // Pricing for dorm mode
     const dormPricing = useMemo(() => {
@@ -183,22 +184,29 @@ export function ReservationSheet({
         setGuests((p) => p.map((g, idx) => (idx === i ? { ...g, [f]: v } : g)))
 
     const handleSubmit = async () => {
+        if (isSubmitting) return
+        setIsSubmitting(true)
+        setConflictError(null)
+
         if (bookingMode === 'DORM') {
-            if (selectedDormIds.length !== guests.length) {
+            if (selectedDormIds.length !== guestCount) {
                 toast.error(
-                    `Select exactly ${guests.length} dorm beds (${selectedDormIds.length} selected)`
+                    `Select exactly ${guestCount} dorm beds (${selectedDormIds.length} selected)`
                 )
+                setIsSubmitting(false)
                 return
             }
         } else {
             if (!selectedUnitId) {
                 toast.error('Please select a room')
+                setIsSubmitting(false)
                 return
             }
         }
 
         if (!checkInDate) {
             toast.error('Please select a check-in date')
+            setIsSubmitting(false)
             return
         }
 
@@ -207,36 +215,41 @@ export function ReservationSheet({
             localStorage.getItem('fajo_bypass_credentials') === 'true'
 
         if (!isBypassEnabled) {
-            for (let i = 0; i < guests.length; i++) {
-                if (!guests[i].name.trim()) {
-                    toast.error(`Guest ${i + 1}: Name is required`)
-                    return
-                }
-                const phoneDigits = guests[i].phone.replace(/\D/g, '')
-                if (phoneDigits.length !== 10) {
-                    toast.error(
-                        `Guest ${i + 1}: Phone number must be exactly 10 digits`
-                    )
-                    return
-                }
+            if (!guests[0].name.trim()) {
+                toast.error('Primary guest name is required')
+                setIsSubmitting(false)
+                return
+            }
+            const phoneDigits = guests[0].phone.replace(/\D/g, '')
+            if (phoneDigits.length !== 10) {
+                toast.error('Primary guest phone must be exactly 10 digits')
+                setIsSubmitting(false)
+                return
             }
         }
 
-        setIsSubmitting(true)
-        setConflictError(null)
-
         try {
             const checkIn = new Date(`${checkInDate}T${checkInTime}:00+05:30`)
-            const guestPayload = guests.map((g, i) => ({
-                name:
-                    g.name.trim() ||
-                    (isBypassEnabled ? `Dev Guest ${i + 1}` : ''),
-                phone:
-                    g.phone.trim() || (isBypassEnabled ? '0000000000' : ''),
-                aadhar_number: g.aadhar_number.trim() || null,
-                aadhar_url_front: g.aadhar_url_front || null,
-                aadhar_url_back: g.aadhar_url_back || null,
-            }))
+            // Build payload: primary guest (full info) + placeholders for additional guests
+            const primary = guests[0]
+            const guestPayload = [
+                {
+                    name: primary.name.trim() || (isBypassEnabled ? 'Dev Guest 1' : ''),
+                    phone: primary.phone.trim() || (isBypassEnabled ? '0000000000' : ''),
+                    aadhar_number: primary.aadhar_number?.trim() || null,
+                    aadhar_url_front: primary.aadhar_url_front || null,
+                    aadhar_url_back: primary.aadhar_url_back || null,
+                },
+            ]
+            for (let i = 1; i < guestCount; i++) {
+                guestPayload.push({
+                    name: `Guest ${i + 1}`,
+                    phone: '0000000000',
+                    aadhar_number: null,
+                    aadhar_url_front: null,
+                    aadhar_url_back: null,
+                })
+            }
 
             const payload =
                 bookingMode === 'DORM'
@@ -312,6 +325,7 @@ export function ReservationSheet({
         setCheckInDate('')
         setCheckInTime('12:00')
         setGuests([emptyGuest()])
+        setGuestCount(1)
         setExpectedArrival('')
         setAdvanceAmount('')
         setAdvanceType('CASH')
@@ -379,7 +393,7 @@ export function ReservationSheet({
                                             : 'text-slate-500 hover:text-slate-700'
                                     }`}
                                 >
-                                    Dorm Beds ({guests.length})
+                                    Dorm Beds ({guestCount})
                                 </button>
                             </div>
                         )}
@@ -412,16 +426,16 @@ export function ReservationSheet({
                             <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <Label className="text-xs text-slate-600">
-                                        Select {guests.length} Dorm Beds *
+                                        Select {guestCount} Dorm Beds *
                                     </Label>
                                     <span
                                         className={`text-xs font-bold px-2 py-0.5 rounded-full ${
-                                            selectedDormIds.length === guests.length
+                                            selectedDormIds.length === guestCount
                                                 ? 'bg-emerald-100 text-emerald-700'
                                                 : 'bg-amber-100 text-amber-700'
                                         }`}
                                     >
-                                        {selectedDormIds.length}/{guests.length}
+                                        {selectedDormIds.length}/{guestCount}
                                     </span>
                                 </div>
                                 {/* Lower Beds */}
@@ -590,64 +604,60 @@ export function ReservationSheet({
                         </div>
                     )}
 
-                    {/* Guests */}
+                    {/* Primary Guest + Count */}
                     <div className="space-y-3">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <Users className="h-4 w-4 text-slate-500" />
-                                <Label className="text-sm font-semibold text-slate-700">
-                                    Guests ({guests.length}{bookingMode === 'ROOM' ? ` (${roomMaxGuests} included)` : ''})
-                                </Label>
-                            </div>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                onClick={addGuest}
-                                disabled={false}
-                                className="h-7 text-xs gap-1 border-dashed"
-                            >
-                                <Plus className="h-3 w-3" />
-                                Add
-                            </Button>
+                        <div className="flex items-center gap-2">
+                            <Users className="h-4 w-4 text-slate-500" />
+                            <Label className="text-sm font-semibold text-slate-700">
+                                Primary Guest{bookingMode === 'ROOM' ? ` (${roomMaxGuests} included)` : ''}
+                            </Label>
                         </div>
 
-                        {guests.map((guest, i) => (
-                            <div
-                                key={i}
-                                className="relative rounded-xl border border-slate-200 bg-slate-50/50 p-3 space-y-2"
-                            >
-                                {guests.length > 1 && (
-                                    <button
-                                        onClick={() => removeGuest(i)}
-                                        className="absolute top-2 right-2 text-slate-400 hover:text-red-500 transition-colors"
-                                    >
-                                        <Trash2 className="h-3 w-3" />
-                                    </button>
-                                )}
-                                <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
-                                    Guest {i + 1}
-                                </p>
-                                <div className="grid grid-cols-2 gap-2">
-                                    <Input
-                                        placeholder="Full Name *"
-                                        value={guest.name}
-                                        onChange={(e) =>
-                                            updateGuest(i, 'name', e.target.value)
-                                        }
-                                        className="h-8 text-xs bg-white"
-                                    />
-                                    <Input
-                                        placeholder="Phone *"
-                                        value={guest.phone}
-                                        onChange={(e) =>
-                                            updateGuest(i, 'phone', e.target.value)
-                                        }
-                                        className="h-8 text-xs bg-white"
-                                    />
-                                </div>
+                        <div className="relative rounded-xl border border-slate-200 bg-slate-50/50 p-3 space-y-2">
+                            <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
+                                Guest 1 (Primary)
+                            </p>
+                            <div className="grid grid-cols-2 gap-2">
+                                <Input
+                                    placeholder="Full Name *"
+                                    value={guests[0].name}
+                                    onChange={(e) => updateGuest(0, 'name', e.target.value)}
+                                    className="h-8 text-xs bg-white"
+                                />
+                                <Input
+                                    placeholder="Phone *"
+                                    value={guests[0].phone}
+                                    onChange={(e) => updateGuest(0, 'phone', e.target.value)}
+                                    className="h-8 text-xs bg-white"
+                                />
                             </div>
-                        ))}
+                        </div>
+
+                        {/* Total Guest Count Stepper */}
+                        <div className="flex items-center justify-between rounded-xl border border-slate-200 bg-white p-3">
+                            <div>
+                                <Label className="text-xs font-semibold text-slate-700">Total Guests</Label>
+                                <p className="text-[10px] text-slate-500 mt-0.5">Additional guests&apos; details can be added on arrival</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setGuestCount(Math.max(1, guestCount - 1))}
+                                    disabled={guestCount <= 1}
+                                    className="h-8 w-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    <Minus className="h-3 w-3" />
+                                </button>
+                                <span className="text-base font-bold text-slate-800 w-8 text-center">{guestCount}</span>
+                                <button
+                                    type="button"
+                                    onClick={() => setGuestCount(guestCount + 1)}
+                                    className="h-8 w-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50"
+                                >
+                                    <Plus className="h-3 w-3" />
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     {/* Advance Payment */}

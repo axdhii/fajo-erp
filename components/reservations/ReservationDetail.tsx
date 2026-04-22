@@ -26,6 +26,8 @@ import {
     Camera,
     CheckCircle2,
     UserSearch,
+    Plus,
+    Trash2,
 } from 'lucide-react'
 import type { AadharMatch } from '@/lib/utils/merge-aadhar'
 
@@ -63,6 +65,9 @@ export function ReservationDetail({
 }: ReservationDetailProps) {
     const [isConverting, setIsConverting] = useState(false)
     const [isCancelling, setIsCancelling] = useState(false)
+    const [isAddingGuest, setIsAddingGuest] = useState(false)
+    const [isRemovingGuest, setIsRemovingGuest] = useState(false)
+    const [isConfirmingRes, setIsConfirmingRes] = useState(false)
     const [showPayment, setShowPayment] = useState(false)
     const [amountCash, setAmountCash] = useState('')
     const [amountDigital, setAmountDigital] = useState('')
@@ -141,6 +146,75 @@ export function ReservationDetail({
         setGuestData((prev) =>
             prev.map((g) => (g.id === id ? { ...g, [field]: value } : g))
         )
+    }
+
+    // Save edited guest name/phone to DB (for on-arrival edits)
+    const saveGuestField = async (guestId: string, updates: { name?: string; phone?: string }) => {
+        try {
+            const { error } = await supabase.from('guests').update(updates).eq('id', guestId)
+            if (error) throw error
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to save guest')
+        }
+    }
+
+    // Add a new placeholder guest to the booking
+    const addGuestToBooking = async () => {
+        if (!booking || isAddingGuest) return
+        setIsAddingGuest(true)
+        const newIndex = guestData.length + 1
+        try {
+            const { data, error } = await supabase
+                .from('guests')
+                .insert({
+                    booking_id: booking.id,
+                    name: `Guest ${newIndex}`,
+                    phone: '0000000000',
+                })
+                .select('id, name, phone, aadhar_number, aadhar_url_front, aadhar_url_back')
+                .single()
+            if (error || !data) throw error || new Error('Failed to add guest')
+
+            // Update booking guest_count
+            await supabase.from('bookings').update({ guest_count: newIndex }).eq('id', booking.id)
+
+            setGuestData(prev => [...prev, {
+                id: data.id,
+                booking_id: booking.id,
+                name: data.name,
+                phone: data.phone,
+                aadhar_number: data.aadhar_number || '',
+                aadhar_url_front: data.aadhar_url_front || '',
+                aadhar_url_back: data.aadhar_url_back || '',
+                unit_number: booking.unit?.unit_number || '',
+            }])
+            toast.success('Guest added')
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to add guest')
+        } finally {
+            setIsAddingGuest(false)
+        }
+    }
+
+    // Remove a guest (not the primary)
+    const removeGuestFromBooking = async (guestId: string, index: number) => {
+        if (!booking || index === 0 || isRemovingGuest) return
+        if (!confirm('Remove this guest? This will reduce the guest count.')) return
+        setIsRemovingGuest(true)
+        try {
+            const { error } = await supabase.from('guests').delete().eq('id', guestId)
+            if (error) throw error
+
+            const newCount = Math.max(1, guestData.length - 1)
+            await supabase.from('bookings').update({ guest_count: newCount }).eq('id', booking.id)
+
+            setGuestData(prev => prev.filter(g => g.id !== guestId))
+            toast.success('Guest removed')
+        } catch (err: unknown) {
+            toast.error(err instanceof Error ? err.message : 'Failed to remove guest')
+        } finally {
+            setIsRemovingGuest(false)
+        }
     }
 
     const handlePhoneLookup = async (index: number, phone: string) => {
@@ -521,31 +595,67 @@ export function ReservationDetail({
 
                     {/* Guests */}
                     <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4 space-y-2">
-                        <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4 text-slate-400" />
-                            <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                                Guests ({guestData.length})
-                            </p>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Users className="h-4 w-4 text-slate-400" />
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                                    Guests ({guestData.length})
+                                </p>
+                            </div>
+                            {!isGroupBooking && (
+                                <Button
+                                    type="button"
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={addGuestToBooking}
+                                    disabled={isAddingGuest}
+                                    className="h-6 text-[10px] gap-1 border-dashed"
+                                >
+                                    <Plus className="h-3 w-3" />
+                                    Add Guest
+                                </Button>
+                            )}
                         </div>
                         {guestData.map((g, i) => (
                             <div key={g.id || `guest-${i}`} className="space-y-3 border-b border-slate-100 last:border-0 pb-3 last:pb-0">
-                                <div className="flex items-center gap-3 text-sm">
-                                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold shrink-0">
+                                <div className="flex items-start gap-3 text-sm">
+                                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-slate-600 text-[10px] font-bold shrink-0 mt-1">
                                         {i + 1}
                                     </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="font-medium text-slate-800 truncate">
-                                            {g.name}
-                                        </p>
-                                        <p className="text-xs text-slate-400">
-                                            {g.phone}
-                                            {isGroupBooking && g.unit_number && (
-                                                <span className="ml-2 text-violet-500 font-medium">
-                                                    · Bed {g.unit_number}
-                                                </span>
-                                            )}
-                                        </p>
+                                    <div className="flex-1 min-w-0 space-y-1.5">
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <Input
+                                                value={g.name}
+                                                onChange={(e) => handleGuestChange(g.id, 'name', e.target.value)}
+                                                onBlur={() => saveGuestField(g.id, { name: g.name })}
+                                                placeholder="Name"
+                                                className="h-7 text-xs bg-white"
+                                            />
+                                            <Input
+                                                value={g.phone}
+                                                onChange={(e) => handleGuestChange(g.id, 'phone', e.target.value.replace(/\D/g, ''))}
+                                                onBlur={() => saveGuestField(g.id, { phone: g.phone })}
+                                                placeholder="Phone"
+                                                maxLength={10}
+                                                className="h-7 text-xs bg-white"
+                                            />
+                                        </div>
+                                        {isGroupBooking && g.unit_number && (
+                                            <p className="text-[10px] text-violet-500 font-medium">
+                                                · Bed {g.unit_number}
+                                            </p>
+                                        )}
                                     </div>
+                                    {i > 0 && !isGroupBooking && (
+                                        <button
+                                            type="button"
+                                            onClick={() => removeGuestFromBooking(g.id, i)}
+                                            className="text-slate-400 hover:text-red-500 mt-1.5"
+                                            title="Remove guest"
+                                        >
+                                            <Trash2 className="h-3.5 w-3.5" />
+                                        </button>
+                                    )}
                                 </div>
                                 {showPayment && (
                                     <div className="pl-9 space-y-1.5 animate-in fade-in slide-in-from-top-1 duration-300">
@@ -894,7 +1004,10 @@ export function ReservationDetail({
 
                     {booking.status === 'PENDING' && (
                         <Button
+                            disabled={isConfirmingRes}
                             onClick={async () => {
+                                if (isConfirmingRes) return
+                                setIsConfirmingRes(true)
                                 try {
                                     const res = await fetch('/api/reservations/cancel', {
                                         method: 'PATCH',
@@ -906,6 +1019,8 @@ export function ReservationDetail({
                                     onOpenChange(false)
                                 } catch (err: unknown) {
                                     toast.error(err instanceof Error ? err.message : 'Failed to confirm')
+                                } finally {
+                                    setIsConfirmingRes(false)
                                 }
                             }}
                             className="w-full h-10 text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-xl mb-2"

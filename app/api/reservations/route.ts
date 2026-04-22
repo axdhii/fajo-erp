@@ -101,20 +101,30 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        // Validate guests
-        for (const guest of guests) {
-            if (!guest.name || !guest.phone) {
-                return NextResponse.json(
-                    { error: 'Each guest must have a name and phone number' },
-                    { status: 400 }
-                )
-            }
-            const phoneDigits = guest.phone.replace(/\D/g, '')
-            if (phoneDigits.length !== 10) {
-                return NextResponse.json(
-                    { error: `Guest ${guest.name || 'Unnamed'}'s phone number must be exactly 10 digits` },
-                    { status: 400 }
-                )
+        // Validate guests — primary guest requires full info, others can be placeholders
+        for (let i = 0; i < guests.length; i++) {
+            const guest = guests[i]
+            if (i === 0) {
+                // Primary guest: name and valid phone required
+                if (!guest.name?.trim() || !guest.phone) {
+                    return NextResponse.json(
+                        { error: 'Primary guest must have a name and phone number' },
+                        { status: 400 }
+                    )
+                }
+                const phoneDigits = String(guest.phone).replace(/\D/g, '')
+                if (phoneDigits.length !== 10) {
+                    return NextResponse.json(
+                        { error: `Primary guest phone number must be exactly 10 digits` },
+                        { status: 400 }
+                    )
+                }
+                guest.phone = phoneDigits
+            } else {
+                // Additional guests: auto-fill placeholders if missing
+                if (!guest.name?.trim()) guest.name = `Guest ${i + 1}`
+                const phoneDigits = String(guest.phone || '').replace(/\D/g, '')
+                guest.phone = phoneDigits.length === 10 ? phoneDigits : '0000000000'
             }
         }
 

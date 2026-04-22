@@ -26,18 +26,20 @@ import { BookingsGuests } from '@/components/developer/BookingsGuests'
 import { StaffAuth } from '@/components/developer/StaffAuth'
 import { TestFactory } from '@/components/developer/TestFactory'
 import { DangerZone } from '@/components/developer/DangerZone'
-import { Building2, BookOpen, Users, Beaker, AlertTriangle } from 'lucide-react'
+import { OverrideConsole } from '@/components/developer/OverrideConsole'
+import { Building2, BookOpen, Users, Beaker, AlertTriangle, Settings } from 'lucide-react'
 
 // ============================================================
 // Tab definitions
 // ============================================================
-type TabKey = 'health' | 'hotels' | 'bookings' | 'staff' | 'test' | 'danger'
+type TabKey = 'health' | 'hotels' | 'bookings' | 'staff' | 'override' | 'test' | 'danger'
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
     { key: 'health',   label: 'System Health',     icon: <Activity className="h-4 w-4" /> },
     { key: 'hotels',   label: 'Hotels & Units',    icon: <Building2 className="h-4 w-4" /> },
     { key: 'bookings', label: 'Bookings & Guests', icon: <BookOpen className="h-4 w-4" /> },
     { key: 'staff',    label: 'Staff & Auth',      icon: <Users className="h-4 w-4" /> },
+    { key: 'override', label: 'Override Console',  icon: <Settings className="h-4 w-4" /> },
     { key: 'test',     label: 'Test Factory',      icon: <Beaker className="h-4 w-4" /> },
     { key: 'danger',   label: 'Danger Zone',       icon: <AlertTriangle className="h-4 w-4" /> },
 ]
@@ -164,6 +166,7 @@ export function DevClient({ hotelId, staffId }: DevClientProps) {
                 {tab === 'hotels'   && <HotelsUnits {...tabProps} />}
                 {tab === 'bookings' && <BookingsGuests {...tabProps} />}
                 {tab === 'staff'    && <StaffAuth {...tabProps} />}
+                {tab === 'override' && <OverrideConsole />}
                 {tab === 'test'     && <TestFactory {...tabProps} />}
                 {tab === 'danger'   && <DangerZone {...tabProps} />}
             </div>
