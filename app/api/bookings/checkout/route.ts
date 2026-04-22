@@ -78,6 +78,7 @@ export async function POST(request: NextRequest) {
                         .update({
                             status: 'CHECKED_OUT',
                             checked_out_by: staffProfile?.id || null,
+                            checked_out_at: actualDeparture,
                             notes: (sib.notes ? sib.notes + ' | ' : '') + `[Checked out: ${actualDeparture}]`,
                         })
                         .eq('id', sib.id)
@@ -145,12 +146,14 @@ export async function POST(request: NextRequest) {
         // Update booking to CHECKED_OUT
         // Keep original check_out (the paid-for checkout time)
         // Append actual departure time to notes
+        const checkoutTime = getDevNow().toISOString()
         const { error: bookingUpdateError } = await supabase
             .from('bookings')
             .update({
                 status: 'CHECKED_OUT',
-                notes: (booking.notes ? booking.notes + ' | ' : '') + `[Checked out: ${getDevNow().toISOString()}]`,
+                notes: (booking.notes ? booking.notes + ' | ' : '') + `[Checked out: ${checkoutTime}]`,
                 checked_out_by: staffProfile?.id || null,
+                checked_out_at: checkoutTime,
             })
             .eq('id', bookingId)
 

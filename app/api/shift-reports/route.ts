@@ -19,6 +19,21 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'hotel_id is required' }, { status: 400 })
         }
 
+        // Authorization: caller must belong to the requested hotel, OR be Admin/Developer/ZonalOps/ZonalHK/HR
+        const { data: caller } = await supabase
+            .from('staff')
+            .select('hotel_id, role')
+            .eq('user_id', auth.userId)
+            .single()
+        if (!caller) {
+            return NextResponse.json({ error: 'Staff record not found' }, { status: 403 })
+        }
+        const privilegedRoles = ['Admin', 'Developer', 'ZonalOps', 'ZonalHK', 'HR']
+        const isPrivileged = privilegedRoles.includes(caller.role)
+        if (!isPrivileged && caller.hotel_id !== hotelId) {
+            return NextResponse.json({ error: 'Forbidden — cannot access other hotels' }, { status: 403 })
+        }
+
         let query = supabase
             .from('shift_reports')
             .select('*, staff:staff_id(name, role)')

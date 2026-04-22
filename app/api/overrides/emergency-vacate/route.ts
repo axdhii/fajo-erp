@@ -56,12 +56,14 @@ export async function POST(request: NextRequest) {
             .eq('status', 'CHECKED_IN')
 
         if (activeBookings && activeBookings.length > 0) {
+            const now = new Date().toISOString()
             for (const b of activeBookings) {
                 await supabase
                     .from('bookings')
                     .update({
                         status: 'CHECKED_OUT',
                         checked_out_by: callerStaff?.id || null,
+                        checked_out_at: now,
                         notes: (b.notes ? b.notes + ' | ' : '') + `[EMERGENCY VACATE] ${vacateReason}`,
                     })
                     .eq('id', b.id)

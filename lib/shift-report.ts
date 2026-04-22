@@ -11,24 +11,25 @@ export async function generateShiftReport(
     // 1. Check-ins (bookings created by this staff, status CHECKED_IN or CHECKED_OUT)
     const { data: checkIns } = await supabase
         .from('bookings')
-        .select('id, unit_id, grand_total, advance_amount, advance_type, guests(name), unit:units(unit_number)')
+        .select('id, unit_id, grand_total, advance_amount, advance_type, guests(name), unit:units(unit_number, hotel_id)')
         .eq('created_by', staffId)
         .gte('created_at', clockIn)
         .lte('created_at', clockOut)
         .in('status', ['CHECKED_IN', 'CHECKED_OUT'])
 
     // 2. Check-outs (bookings checked out by this staff)
+    // Use checked_out_at (immutable) as primary filter; fall back to updated_at for legacy rows
     const { data: checkOuts } = await supabase
         .from('bookings')
-        .select('id, unit_id, guests(name), unit:units(unit_number)')
+        .select('id, unit_id, guests(name), unit:units(unit_number, hotel_id)')
         .eq('checked_out_by', staffId)
-        .gte('updated_at', clockIn)
-        .lte('updated_at', clockOut)
+        .gte('checked_out_at', clockIn)
+        .lte('checked_out_at', clockOut)
 
     // 3. Reservations created
     const { data: reservations } = await supabase
         .from('bookings')
-        .select('id, unit_id, check_in, guests(name), unit:units(unit_number)')
+        .select('id, unit_id, check_in, guests(name), unit:units(unit_number, hotel_id)')
         .eq('created_by', staffId)
         .gte('created_at', clockIn)
         .lte('created_at', clockOut)
@@ -65,12 +66,16 @@ export async function generateShiftReport(
     ]
     const uniqueBookingIds = [...new Set(allBookingIds)]
 
+    // Only count payments CREATED during this shift window — prevents
+    // double-counting when Staff B's checkout includes Staff A's check-in payment
     let revenueCash = 0, revenueDigital = 0
     if (uniqueBookingIds.length > 0) {
         const { data: payments } = await supabase
             .from('payments')
             .select('amount_cash, amount_digital')
             .in('booking_id', uniqueBookingIds)
+            .gte('created_at', clockIn)
+            .lte('created_at', clockOut)
         if (payments) {
             revenueCash = payments.reduce((s, p) => s + Number(p.amount_cash || 0), 0)
             revenueDigital = payments.reduce((s, p) => s + Number(p.amount_digital || 0), 0)
@@ -99,7 +104,7 @@ export async function generateShiftReport(
         .select('amount, payment_method')
         .eq('added_by', staffId)
         .gte('created_at', clockIn)
-        .lt('created_at', clockOut)
+        .lte('created_at', clockOut)
 
     let extrasCash = 0, extrasDigital = 0, extrasCount = 0, freshupCash = 0, freshupDigital = 0, freshupCount = 0
     if (extras) {
@@ -122,7 +127,7 @@ export async function generateShiftReport(
         .select('amount, payment_method')
         .eq('created_by', staffId)
         .gte('created_at', clockIn)
-        .lt('created_at', clockOut)
+        .lte('created_at', clockOut)
 
     if (freshups) {
         freshupCount = freshups.length

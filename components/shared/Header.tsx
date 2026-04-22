@@ -16,6 +16,17 @@ export function Header() {
     const [messagingOpen, setMessagingOpen] = useState(false)
     const [notepadOpen, setNotepadOpen] = useState(false)
     const [unreadMessages, setUnreadMessages] = useState(0)
+    const [signingOut, setSigningOut] = useState(false)
+
+    const handleSignOut = async () => {
+        if (signingOut) return
+        setSigningOut(true)
+        try {
+            await signOut()
+        } finally {
+            setSigningOut(false)
+        }
+    }
     const [hotels, setHotels] = useState<{ id: string; name: string; city: string }[]>([])
 
     // Live IST clock
@@ -172,7 +183,7 @@ export function Header() {
                     >
                         <StickyNote className="h-5 w-5 text-slate-600" />
                     </button>
-                    <button onClick={signOut} title="Sign Out" className="flex items-center gap-2 rounded-full border border-slate-200 p-2.5 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors">
+                    <button onClick={handleSignOut} disabled={signingOut} title="Sign Out" className="flex items-center gap-2 rounded-full border border-slate-200 p-2.5 hover:bg-red-50 hover:text-red-600 hover:border-red-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                         <LogOut className="h-5 w-5" />
                     </button>
                 </div>

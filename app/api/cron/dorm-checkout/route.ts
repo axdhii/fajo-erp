@@ -56,6 +56,7 @@ export async function GET(request: NextRequest) {
             .update({
                 status: 'CHECKED_OUT',
                 updated_at: now.toISOString(),
+                checked_out_at: now.toISOString(),
             })
             .in('id', bookingIds)
 
