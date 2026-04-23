@@ -435,7 +435,11 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
     // Freshup: phone lookup for returning guest Aadhar
     const handleFreshupPhoneLookup = async (phone: string) => {
         const digits = phone.replace(/\D/g, '')
-        if (digits.length !== 10) return
+        if (digits.length !== 10) {
+            // Clear any stale match banner when phone becomes invalid (prevents wrong aadhar linkage)
+            setFreshupAadharMatch(null)
+            return
+        }
         if (freshupAadharUrlFront && freshupAadharUrlBack) return
         setFreshupLookingUp(true)
         try {
@@ -959,6 +963,80 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                                 </div>
                             )}
 
+                            {/* AC/Non-AC toggle (ROOM mode only) */}
+                            {freshupMode === 'ROOM' && (
+                                <div className="flex items-center gap-3">
+                                    <Label className="text-xs text-slate-600">Room Type</Label>
+                                    <div className="flex gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={() => setFreshupAcType('AC')}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                                                freshupAcType === 'AC'
+                                                    ? 'bg-blue-100 border-blue-300 text-blue-700'
+                                                    : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            AC — {formatCurrency(freshupAcPrice)}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setFreshupAcType('NON_AC')}
+                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
+                                                freshupAcType === 'NON_AC'
+                                                    ? 'bg-slate-200 border-slate-400 text-slate-700'
+                                                    : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
+                                            }`}
+                                        >
+                                            Non-AC — {formatCurrency(freshupNonacPrice)}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Guest count stepper */}
+                            <div className="flex items-center gap-4">
+                                <Label className="text-xs text-slate-600">Guest Count</Label>
+                                <div className="flex items-center gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            const next = Math.max(1, freshupCount - 1)
+                                            setFreshupCount(next)
+                                            // Clear Guest 2 state if count drops below 2 (prevents stale data reuse)
+                                            if (next < 2) {
+                                                setFreshupName2('')
+                                                setFreshupPhone2('')
+                                                setFreshupAadharFront2(null)
+                                                setFreshupAadharBack2(null)
+                                                Object.values(freshupAadharPreviews2).forEach(url => { try { URL.revokeObjectURL(url) } catch {} })
+                                                setFreshupAadharPreviews2({})
+                                                setFreshupAadharUrlFront2('')
+                                                setFreshupAadharUrlBack2('')
+                                            }
+                                        }}
+                                        className="h-8 w-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
+                                    >
+                                        <Minus className="h-3 w-3" />
+                                    </button>
+                                    <span className="text-sm font-bold text-slate-800 w-8 text-center">{freshupCount}</span>
+                                    <button
+                                        type="button"
+                                        onClick={() => setFreshupCount(
+                                            (freshupMode === 'ROOM' && freshupMaxGuests)
+                                                ? Math.min(freshupMaxGuests, freshupCount + 1)
+                                                : freshupCount + 1
+                                        )}
+                                        className="h-8 w-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
+                                    >
+                                        <Plus className="h-3 w-3" />
+                                    </button>
+                                </div>
+                                <span className="text-sm font-bold text-cyan-700 ml-auto">
+                                    {formatCurrency(freshupPrice)}
+                                </span>
+                            </div>
+
                             {/* Guest 2 section — ROOM mode with 2+ guests (Aluva) */}
                             {freshupMode === 'ROOM' && freshupCount >= 2 && (
                                 <div className="rounded-xl border border-cyan-200 bg-cyan-50/30 p-3 space-y-3">
@@ -1074,66 +1152,6 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                                 </div>
                             )}
 
-                            {/* AC/Non-AC toggle (ROOM mode only) */}
-                            {freshupMode === 'ROOM' && (
-                                <div className="flex items-center gap-3">
-                                    <Label className="text-xs text-slate-600">Room Type</Label>
-                                    <div className="flex gap-2">
-                                        <button
-                                            type="button"
-                                            onClick={() => setFreshupAcType('AC')}
-                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
-                                                freshupAcType === 'AC'
-                                                    ? 'bg-blue-100 border-blue-300 text-blue-700'
-                                                    : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
-                                            }`}
-                                        >
-                                            AC — {formatCurrency(freshupAcPrice)}
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => setFreshupAcType('NON_AC')}
-                                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border ${
-                                                freshupAcType === 'NON_AC'
-                                                    ? 'bg-slate-200 border-slate-400 text-slate-700'
-                                                    : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'
-                                            }`}
-                                        >
-                                            Non-AC — {formatCurrency(freshupNonacPrice)}
-                                        </button>
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Guest count stepper */}
-                            <div className="flex items-center gap-4">
-                                <Label className="text-xs text-slate-600">Guest Count</Label>
-                                <div className="flex items-center gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => setFreshupCount(Math.max(1, freshupCount - 1))}
-                                        className="h-8 w-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
-                                    >
-                                        <Minus className="h-3 w-3" />
-                                    </button>
-                                    <span className="text-sm font-bold text-slate-800 w-8 text-center">{freshupCount}</span>
-                                    <button
-                                        type="button"
-                                        onClick={() => setFreshupCount(
-                                            (freshupMode === 'ROOM' && freshupMaxGuests)
-                                                ? Math.min(freshupMaxGuests, freshupCount + 1)
-                                                : freshupCount + 1
-                                        )}
-                                        className="h-8 w-8 rounded-lg border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition-colors"
-                                    >
-                                        <Plus className="h-3 w-3" />
-                                    </button>
-                                </div>
-                                <span className="text-sm font-bold text-cyan-700 ml-auto">
-                                    {formatCurrency(freshupPrice)}
-                                </span>
-                            </div>
-
                             {/* Payment method */}
                             <div className="flex items-center gap-3">
                                 <Label className="text-xs text-slate-600">Payment</Label>
@@ -1182,7 +1200,20 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
 
                             <Button
                                 onClick={handleSubmitFreshup}
-                                disabled={freshupSubmitting || !freshupName.trim() || freshupPhone.replace(/\D/g, '').length !== 10 || (!freshupAadharBypass && (!freshupAadharUrlFront || !freshupAadharUrlBack))}
+                                disabled={(() => {
+                                    const needsGuest2 = freshupMode === 'ROOM' && freshupCount >= 2
+                                    if (freshupSubmitting) return true
+                                    if (freshupUploading || freshupUploading2) return true
+                                    if (!freshupName.trim()) return true
+                                    if (freshupPhone.replace(/\D/g, '').length !== 10) return true
+                                    if (!freshupAadharBypass && (!freshupAadharUrlFront || !freshupAadharUrlBack)) return true
+                                    if (needsGuest2) {
+                                        if (!freshupName2.trim()) return true
+                                        if (freshupPhone2.replace(/\D/g, '').length !== 10) return true
+                                        if (!freshupAadharBypass && (!freshupAadharUrlFront2 || !freshupAadharUrlBack2)) return true
+                                    }
+                                    return false
+                                })()}
                                 size="sm"
                                 className="bg-cyan-600 hover:bg-cyan-700 h-8 text-xs"
                             >

@@ -96,6 +96,10 @@ export async function POST(request: NextRequest) {
 
         let amount: number
         if (freshupMode === 'ROOM') {
+            // ac_type is required and must be valid in ROOM mode
+            if (!ac_type || !['AC', 'NON_AC'].includes(ac_type)) {
+                return NextResponse.json({ error: 'ac_type must be AC or NON_AC for room freshup' }, { status: 400 })
+            }
             // Room-based: price depends on AC type
             amount = ac_type === 'AC'
                 ? Number(hotel?.freshup_ac_price || 799)
@@ -104,6 +108,10 @@ export async function POST(request: NextRequest) {
             const maxGuests = hotel?.freshup_max_guests || 2
             if (count > maxGuests) {
                 return NextResponse.json({ error: `Maximum ${maxGuests} guests allowed for room freshup` }, { status: 400 })
+            }
+            // Require Guest 2 details when count >= 2
+            if (count >= 2 && !guest_name_2?.trim()) {
+                return NextResponse.json({ error: 'Guest 2 name is required for 2-guest room freshup' }, { status: 400 })
             }
         } else {
             // Person-based: price per guest
