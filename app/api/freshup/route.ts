@@ -16,9 +16,10 @@ export async function GET(request: NextRequest) {
             return NextResponse.json({ error: 'hotel_id is required' }, { status: 400 })
         }
 
+        // Alias: DB column is `phone` but consumers expect `guest_phone`. Expose both.
         let query = supabase
             .from('freshup')
-            .select('*, staff:created_by(name)')
+            .select('*, guest_phone:phone, staff:created_by(name)')
             .eq('hotel_id', hotelId)
             .order('created_at', { ascending: false })
 
@@ -140,7 +141,9 @@ export async function POST(request: NextRequest) {
             .insert({
                 hotel_id: staffProfile.hotel_id,
                 guest_name: guest_name.trim(),
-                guest_phone: phoneDigits,
+                // DB column is `phone`, not `guest_phone` — inserting into the wrong
+                // name silently fails with 42703 and leaves the table empty.
+                phone: phoneDigits,
                 guest_count: count,
                 amount,
                 payment_method,
@@ -158,8 +161,14 @@ export async function POST(request: NextRequest) {
             .single()
 
         if (error) {
-            console.error('Freshup insert error:', error)
-            return NextResponse.json({ error: 'Failed to create freshup record' }, { status: 500 })
+            console.error('Freshup insert error:', {
+                code: (error as { code?: string }).code,
+                message: error.message,
+                details: (error as { details?: string }).details,
+                hint: (error as { hint?: string }).hint,
+                hotel_id: staffProfile.hotel_id,
+            })
+            return NextResponse.json({ error: error.message || 'Failed to create freshup record' }, { status: 500 })
         }
 
         return NextResponse.json({ data, success: true })
