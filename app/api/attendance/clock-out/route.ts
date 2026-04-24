@@ -74,13 +74,21 @@ export async function PATCH(request: NextRequest) {
                     existing.clock_in, getDevNow().toISOString(), existing.id
                 )
                 if (result.error) {
-                    console.error('Shift report insert error:', result.error)
-                    return NextResponse.json({ data: updatedRecord, shiftReport: null, reportError: 'Shift report could not be saved' })
+                    const e = result.error as { code?: string; message?: string; details?: string; hint?: string }
+                    console.error('Shift report insert error:', {
+                        code: e.code, message: e.message, details: e.details, hint: e.hint,
+                        attendance_id: existing.id, staff_id: existing.staff_id, hotel_id: existing.hotel_id,
+                    })
+                    return NextResponse.json({ data: updatedRecord, shiftReport: null, reportError: 'Shift report could not be saved', debug: { code: e.code, message: e.message } })
                 }
                 return NextResponse.json({ data: updatedRecord, shiftReport: result.data })
             } catch (err) {
-                console.error('Shift report generation failed:', err)
-                return NextResponse.json({ data: updatedRecord, shiftReport: null, reportError: 'Shift report generation failed' })
+                const e = err as { code?: string; message?: string; details?: string; hint?: string; stack?: string }
+                console.error('Shift report generation failed:', {
+                    code: e.code, message: e.message, details: e.details, hint: e.hint, stack: e.stack,
+                    attendance_id: existing.id, staff_id: existing.staff_id, hotel_id: existing.hotel_id,
+                })
+                return NextResponse.json({ data: updatedRecord, shiftReport: null, reportError: 'Shift report generation failed', debug: { message: e.message } })
             }
         }
 
