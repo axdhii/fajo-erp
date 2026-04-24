@@ -70,6 +70,9 @@ export async function POST(request: NextRequest) {
         if (!messageBody) {
             return NextResponse.json({ error: 'Message body cannot be empty' }, { status: 400 })
         }
+        if (messageBody.length > 5000) {
+            return NextResponse.json({ error: 'Message body cannot exceed 5000 characters' }, { status: 400 })
+        }
 
         const { data, error } = await supabase
             .from('messages')

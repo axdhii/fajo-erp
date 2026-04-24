@@ -194,17 +194,21 @@ export async function PATCH(request: NextRequest) {
             updatePayload.resolved_at = getDevNow().toISOString()
         }
 
-        const { data, error } = await supabase
+        const { data: rows, error } = await supabase
             .from('property_reports')
             .update(updatePayload)
             .eq('id', id)
+            .eq('status', current.status)
             .select('*, reporter:reported_by(name, role), reviewer:reviewed_by(name)')
-            .single()
 
         if (error) {
             console.error('Property report update error:', error)
             return NextResponse.json({ error: 'Failed to update property report' }, { status: 500 })
         }
+        if (!rows || rows.length === 0) {
+            return NextResponse.json({ error: 'Report status changed — refresh and retry' }, { status: 409 })
+        }
+        const data = rows[0]
 
         // Notify the reporter
         try {

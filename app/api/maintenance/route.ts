@@ -155,17 +155,21 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'No fields to update' }, { status: 400 })
         }
 
-        const { data, error } = await supabase
+        const { data: rows, error } = await supabase
             .from('maintenance_tickets')
             .update(updates)
             .eq('id', ticket_id)
+            .eq('status', currentTicket.status)
             .select('*, unit:units(unit_number), staff:reported_by(name)')
-            .single()
 
         if (error) {
             console.error('Maintenance update error:', error)
             return NextResponse.json({ error: 'Failed to update maintenance ticket' }, { status: 500 })
         }
+        if (!rows || rows.length === 0) {
+            return NextResponse.json({ error: 'Ticket status changed by another session — refresh and retry' }, { status: 409 })
+        }
+        const data = rows[0]
 
         // When a ticket is resolved and has a unit, auto-set unit to AVAILABLE
         // if no other open tickets remain for that unit

@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDevNow } from '@/lib/dev-time'
-import { requireAuth } from '@/lib/auth'
+import { requireCronOrAdmin } from '@/lib/cron-auth'
 
 // GET /api/cron/dorm-checkout
 // Called by Vercel Cron or external scheduler at 10:00 AM IST daily.
@@ -9,15 +9,8 @@ import { requireAuth } from '@/lib/auth'
 // In production, requires CRON_SECRET header. In dev, requires auth.
 export async function GET(request: NextRequest) {
     try {
-        // Allow Vercel Cron via secret header, otherwise require auth
-        const cronSecret = process.env.CRON_SECRET
-        const authHeader = request.headers.get('authorization')
-        if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
-            // Authorized via cron secret — proceed
-        } else {
-            const auth = await requireAuth()
-            if (!auth.authenticated) return auth.response
-        }
+        const gate = await requireCronOrAdmin(request)
+        if (!gate.ok) return gate.response
 
         const supabase = await createClient()
         const now = getDevNow()

@@ -5,11 +5,14 @@ import { requireAuth } from '@/lib/auth'
 
 // Admin-only Supabase client for storage operations (needs service role for deletion)
 function getAdminClient() {
-    return createSupabaseClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!,
-        { auth: { autoRefreshToken: false, persistSession: false } }
-    )
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+    if (!url || !key) {
+        throw new Error('SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_URL not configured')
+    }
+    return createSupabaseClient(url, key, {
+        auth: { autoRefreshToken: false, persistSession: false },
+    })
 }
 
 // ============================================================

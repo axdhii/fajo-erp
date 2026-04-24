@@ -145,17 +145,21 @@ export async function PATCH(request: NextRequest) {
             }
         }
 
-        const { data, error } = await supabase
+        const { data: updateRows, error } = await supabase
             .from('customer_issues')
             .update(updatePayload)
             .eq('id', issue_id)
+            .eq('status', current.status)
             .select('*, unit:units(unit_number), reporter:reported_by(name), resolver:resolved_by(name)')
-            .single()
 
         if (error) {
             console.error('Customer issue update error:', error)
             return NextResponse.json({ error: 'Failed to update customer issue' }, { status: 500 })
         }
+        if (!updateRows || updateRows.length === 0) {
+            return NextResponse.json({ error: 'Issue status changed by another session — refresh and retry' }, { status: 409 })
+        }
+        const data = updateRows[0]
 
         // Notify the CRE who reported (on resolve)
         if (status === 'RESOLVED' && data.reported_by) {

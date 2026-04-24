@@ -42,12 +42,21 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        // Look up staff ID for checkout attribution (needed for both primary and siblings)
+        // Look up staff ID + role for checkout attribution and role gating
         const { data: staffProfile } = await supabase
             .from('staff')
-            .select('id')
+            .select('id, role')
             .eq('user_id', auth.userId)
             .single()
+
+        // Force checkout (skipping balance-due validation) is destructive — only Admin/Dev/ZonalOps
+        const callerRole = staffProfile?.role
+        if (force && !['Admin', 'Developer', 'ZonalOps'].includes(callerRole || '')) {
+            return NextResponse.json(
+                { error: 'Force checkout requires Admin, Developer, or ZonalOps role' },
+                { status: 403 }
+            )
+        }
 
         // Handle group dorm checkout — process all beds in the group
         if (booking.group_id) {
@@ -121,33 +130,46 @@ export async function POST(request: NextRequest) {
             }
         }
 
-        // Update payment record if payment was collected
+        // Update payment record if payment was collected.
+        // Critical: bump `created_at` to now() so shift-report revenue attribution
+        // credits the CHECKOUT staff (not the original check-in staff) for money
+        // collected during checkout. Without this, a night-shift CRE's checkout
+        // collections get folded under the day-shift CRE's timestamp.
+        const now = getDevNow().toISOString()
         if (incomingTotal > 0 && latestPayment) {
-            await supabase
+            const { error: payErr } = await supabase
                 .from('payments')
                 .update({
                     amount_cash: Number(latestPayment.amount_cash) + incomingCash,
                     amount_digital: Number(latestPayment.amount_digital) + incomingDigital,
-                    total_paid: Number(latestPayment.total_paid) + incomingTotal
+                    total_paid: Number(latestPayment.total_paid) + incomingTotal,
+                    created_at: now,
                 })
                 .eq('id', latestPayment.id)
+            if (payErr) {
+                console.error('Checkout payment update error:', payErr)
+                return NextResponse.json({ error: 'Failed to record payment' }, { status: 500 })
+            }
         } else if (incomingTotal > 0 && !latestPayment) {
-            // No existing payment record — insert a new one so money is not lost
-            await supabase
+            const { error: payErr } = await supabase
                 .from('payments')
-                .insert({
+                .upsert({
                     booking_id: bookingId,
                     amount_cash: incomingCash,
                     amount_digital: incomingDigital,
                     total_paid: incomingTotal,
-                })
+                }, { onConflict: 'booking_id' })
+            if (payErr) {
+                console.error('Checkout payment insert error:', payErr)
+                return NextResponse.json({ error: 'Failed to record payment' }, { status: 500 })
+            }
         }
 
-        // Update booking to CHECKED_OUT
-        // Keep original check_out (the paid-for checkout time)
-        // Append actual departure time to notes
-        const checkoutTime = getDevNow().toISOString()
-        const { error: bookingUpdateError } = await supabase
+        // Update booking to CHECKED_OUT atomically — prevents TOCTOU race where
+        // two concurrent checkout requests both transition the booking and
+        // overwrite each other's notes / checked_out_by.
+        const checkoutTime = now
+        const { data: updated, error: bookingUpdateError } = await supabase
             .from('bookings')
             .update({
                 status: 'CHECKED_OUT',
@@ -156,12 +178,20 @@ export async function POST(request: NextRequest) {
                 checked_out_at: checkoutTime,
             })
             .eq('id', bookingId)
+            .eq('status', 'CHECKED_IN')
+            .select('id')
 
         if (bookingUpdateError) {
             console.error('Booking update error:', bookingUpdateError)
             return NextResponse.json(
                 { error: 'Failed to update booking status' },
                 { status: 500 }
+            )
+        }
+        if (!updated || updated.length === 0) {
+            return NextResponse.json(
+                { error: 'Booking is no longer CHECKED_IN — another session may have checked it out' },
+                { status: 409 }
             )
         }
 

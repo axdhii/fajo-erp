@@ -29,7 +29,7 @@ export async function generateShiftReport(
     // 3. Reservations created
     const { data: reservations } = await supabase
         .from('bookings')
-        .select('id, unit_id, check_in, guests(name), unit:units(unit_number, hotel_id)')
+        .select('id, unit_id, check_in, advance_amount, advance_type, guests(name), unit:units(unit_number, hotel_id)')
         .eq('created_by', staffId)
         .gte('created_at', clockIn)
         .lte('created_at', clockOut)
@@ -82,20 +82,29 @@ export async function generateShiftReport(
         }
     }
 
-    // Include advance_amount from check-ins (collected at reservation/check-in time)
+    // Include advance_amount from both check-ins AND reservations created during
+    // this shift. Advances on reservations (CONFIRMED/PENDING) are real cash/digital
+    // the staff collected during their window — omitting them undercounts revenue
+    // for staff who took deposits without an immediate check-in.
     let advanceCash = 0, advanceDigital = 0
-    for (const b of (checkIns || [])) {
-        const advance = Number((b as Record<string, unknown>).advance_amount || 0)
-        if (advance > 0) {
-            const advType = String((b as Record<string, unknown>).advance_type || '').toUpperCase()
-            if (advType === 'DIGITAL' || advType === 'UPI' || advType === 'GPAY') {
-                advanceDigital += advance
-                revenueDigital += advance
-            } else {
-                advanceCash += advance
-                revenueCash += advance
-            }
+    const fetchAdvance = (b: Record<string, unknown>) => {
+        const advance = Number(b.advance_amount || 0)
+        if (advance <= 0) return
+        const advType = String(b.advance_type || '').toUpperCase()
+        if (advType === 'DIGITAL' || advType === 'UPI' || advType === 'GPAY') {
+            advanceDigital += advance
+            revenueDigital += advance
+        } else {
+            advanceCash += advance
+            revenueCash += advance
         }
+    }
+    for (const b of (checkIns || [])) fetchAdvance(b as Record<string, unknown>)
+    // Fetch reservation advances separately to avoid double-counting when a booking
+    // appears in both lists (won't happen given status filters, but defensive).
+    const checkInIds = new Set((checkIns || []).map(b => b.id))
+    for (const b of (reservations || [])) {
+        if (!checkInIds.has(b.id)) fetchAdvance(b as Record<string, unknown>)
     }
 
     // Include booking extras added by this staff during the shift

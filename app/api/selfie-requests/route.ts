@@ -178,6 +178,7 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'This request is no longer pending' }, { status: 409 })
         }
 
+        // Atomic guard: only transition if still PENDING (prevents TOCTOU race)
         const { data, error } = await supabase
             .from('selfie_requests')
             .update({
@@ -186,13 +187,19 @@ export async function PATCH(request: NextRequest) {
                 completed_at: new Date().toISOString(),
             })
             .eq('id', id)
+            .eq('status', 'PENDING')
             .select('*, requester:requested_by(name, role), target:target_staff_id(name, role)')
-            .single()
 
         if (error) {
             console.error('Selfie request update error:', error)
             return NextResponse.json({ error: 'Failed to update selfie request' }, { status: 500 })
         }
+
+        if (!data || data.length === 0) {
+            return NextResponse.json({ error: 'Request is no longer pending' }, { status: 409 })
+        }
+
+        const updated = data[0]
 
         // Notify the admin who requested it
         try {
@@ -204,11 +211,11 @@ export async function PATCH(request: NextRequest) {
                 title: 'Selfie Submitted',
                 message: `${callerStaff.name || 'Staff'} has submitted their selfie`,
                 source_table: 'selfie_requests',
-                source_id: data.id,
+                source_id: updated.id,
             })
         } catch { /* never block */ }
 
-        return NextResponse.json({ data })
+        return NextResponse.json({ data: updated })
     } catch (err) {
         console.error('Selfie requests PATCH error:', err)
         return NextResponse.json({ error: 'Internal server error' }, { status: 500 })

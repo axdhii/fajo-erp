@@ -29,6 +29,19 @@ export async function POST(request: NextRequest) {
         const digitalAmount = Number(amountDigital) || 0
         const days = Math.max(1, Math.floor(Number(numberOfDays) || 1))
 
+        // Gate the bypass flags to Admin/Developer/ZonalOps — any authenticated staff
+        // used to be able to force a double-booking or skip balance-due validation.
+        if (bypassConflict || isBypass) {
+            const { data: callerStaff } = await supabase
+                .from('staff').select('role').eq('user_id', auth.userId).single()
+            if (!callerStaff || !['Admin', 'Developer', 'ZonalOps'].includes(callerStaff.role)) {
+                return NextResponse.json(
+                    { error: 'Bypass flags require Admin, Developer, or ZonalOps role' },
+                    { status: 403 }
+                )
+            }
+        }
+
         // Validate each guest has name, phone, and phone is exactly 10 digits
         for (const guest of guests) {
             if (!guest.name || !guest.phone) {

@@ -101,9 +101,10 @@ export async function PATCH(request: Request) {
             )
         }
 
-        // 4. Update the payments record if there is a fee
+        // 4. Update the payments record if there is a fee. On failure, ROLL BACK the
+        // booking extension — otherwise the guest's stay is extended + grand_total
+        // is increased but no payment is recorded, leading to revenue loss.
         if (fee > 0 && paymentType) {
-            // Fetch existing payment
             const { data: paymentRecords } = await supabase
                 .from('payments')
                 .select('*')
@@ -112,21 +113,46 @@ export async function PATCH(request: Request) {
 
             const paymentRecord = paymentRecords?.[0] || null
 
+            const updatePayload: Record<string, number | string> = {
+                total_paid: Number(paymentRecord?.total_paid || 0) + fee,
+                // Credit the extending staff's shift window via created_at bump
+                created_at: new Date().toISOString(),
+            }
+            if (paymentType === 'CASH') {
+                updatePayload.amount_cash = Number(paymentRecord?.amount_cash || 0) + fee
+            } else if (paymentType === 'DIGITAL') {
+                updatePayload.amount_digital = Number(paymentRecord?.amount_digital || 0) + fee
+            }
+
+            let payErr: unknown = null
             if (paymentRecord) {
-                const updatePayload: Record<string, number> = {
-                    total_paid: Number(paymentRecord.total_paid) + fee
-                }
+                const { error } = await supabase.from('payments').update(updatePayload).eq('id', paymentRecord.id)
+                payErr = error
+            } else {
+                const { error } = await supabase.from('payments').insert({
+                    booking_id: booking.id,
+                    amount_cash: paymentType === 'CASH' ? fee : 0,
+                    amount_digital: paymentType === 'DIGITAL' ? fee : 0,
+                    total_paid: fee,
+                })
+                payErr = error
+            }
 
-                if (paymentType === 'CASH') {
-                    updatePayload.amount_cash = Number(paymentRecord.amount_cash) + fee
-                } else if (paymentType === 'DIGITAL') {
-                    updatePayload.amount_digital = Number(paymentRecord.amount_digital) + fee
-                }
-
+            if (payErr) {
+                console.error('Extend payment update failed, rolling back booking:', payErr)
                 await supabase
-                    .from('payments')
-                    .update(updatePayload)
-                    .eq('id', paymentRecord.id)
+                    .from('bookings')
+                    .update({
+                        check_out: booking.check_out,
+                        surcharge: booking.surcharge,
+                        grand_total: booking.grand_total,
+                        notes: booking.notes,
+                    })
+                    .eq('id', booking.id)
+                return NextResponse.json(
+                    { error: 'Failed to record extension fee — extension cancelled' },
+                    { status: 500 }
+                )
             }
         }
 

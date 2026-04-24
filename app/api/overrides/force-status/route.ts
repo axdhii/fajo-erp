@@ -47,11 +47,13 @@ export async function POST(request: NextRequest) {
 
         const previousStatus = unit.status
 
-        // Fetch staff ID early — needed for auto-resolve and ticket creation
+        // Fetch staff ID + name for attribution/audit
         const { data: callerStaff } = await supabase
-            .from('staff').select('id').eq('user_id', auth.userId).single()
+            .from('staff').select('id, name').eq('user_id', auth.userId).single()
 
-        // If unit was OCCUPIED and we're force-releasing it, also close any active bookings
+        // If unit was OCCUPIED and we're force-releasing it, also close any active
+        // bookings. Use atomic guard to prevent TOCTOU: don't overwrite rows that
+        // another concurrent checkout already transitioned.
         if (previousStatus === 'OCCUPIED') {
             const { data: activeBookings } = await supabase
                 .from('bookings')
@@ -68,9 +70,10 @@ export async function POST(request: NextRequest) {
                             status: 'CHECKED_OUT',
                             checked_out_by: callerStaff?.id || null,
                             checked_out_at: now,
-                            notes: (b.notes ? b.notes + ' | ' : '') + `[FORCE RELEASED] ${reason || 'Emergency override by CRE'}`,
+                            notes: (b.notes ? b.notes + ' | ' : '') + `[FORCE RELEASED by ${callerStaff?.name || 'Staff'}] ${reason || 'Emergency override'}`,
                         })
                         .eq('id', b.id)
+                        .eq('status', 'CHECKED_IN')
                 }
             }
         }
@@ -118,6 +121,22 @@ export async function POST(request: NextRequest) {
             // Notify ZonalHK
             try { await supabase.from('notifications').insert({ hotel_id: unit.hotel_id, recipient_role: 'ZonalHK', type: 'NEW_MAINTENANCE', title: 'Unit Set to Maintenance', message: `${unit.unit_number} — ${reason || 'Maintenance required'}`, link: '/zonal-hk', source_table: 'units', source_id: unitId }) } catch { /* never block */ }
         }
+
+        // Audit trail for every force-status — survives even when no active booking
+        // was present to append notes onto.
+        try {
+            await supabase.from('property_reports').insert({
+                hotel_id: unit.hotel_id,
+                reported_by: callerStaff?.id || null,
+                type: 'REPORT',
+                category: 'OBSERVATION',
+                description: `[FORCE-STATUS] Unit ${unit.unit_number}: ${previousStatus} → ${newStatus}${reason ? ` | Reason: ${reason}` : ''}`,
+                photo_url: null,
+                status: 'RESOLVED',
+                reviewed_by: callerStaff?.id || null,
+                review_notes: 'Auto-audit from force-status override',
+            })
+        } catch { /* audit must not fail the override */ }
 
         return NextResponse.json({
             success: true,

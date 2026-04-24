@@ -44,11 +44,11 @@ export async function POST(request: NextRequest) {
 
         const vacateReason = reason || 'Emergency vacate by CRE'
 
-        // Look up caller staff ID for audit trail
+        // Look up caller staff ID + name for audit trail
         const { data: callerStaff } = await supabase
-            .from('staff').select('id').eq('user_id', auth.userId).single()
+            .from('staff').select('id, name').eq('user_id', auth.userId).single()
 
-        // Close all active bookings on this unit (preserve existing notes)
+        // Close all active bookings on this unit with atomic status guard
         const { data: activeBookings } = await supabase
             .from('bookings')
             .select('id, notes')
@@ -64,9 +64,10 @@ export async function POST(request: NextRequest) {
                         status: 'CHECKED_OUT',
                         checked_out_by: callerStaff?.id || null,
                         checked_out_at: now,
-                        notes: (b.notes ? b.notes + ' | ' : '') + `[EMERGENCY VACATE] ${vacateReason}`,
+                        notes: (b.notes ? b.notes + ' | ' : '') + `[EMERGENCY VACATE by ${callerStaff?.name || 'Staff'}] ${vacateReason}`,
                     })
                     .eq('id', b.id)
+                    .eq('status', 'CHECKED_IN')
             }
         }
 
@@ -99,6 +100,21 @@ export async function POST(request: NextRequest) {
 
         // Notify ZonalHK about the emergency maintenance
         try { await supabase.from('notifications').insert({ hotel_id: unit.hotel_id, recipient_role: 'ZonalHK', type: 'URGENT_MAINTENANCE', title: 'Emergency Vacate — Maintenance Required', message: `${unit.unit_number} — ${vacateReason || 'Emergency vacate'}`, link: '/zonal-hk', source_table: 'maintenance_tickets', source_id: ticket?.id || null }) } catch { /* never block */ }
+
+        // Audit trail
+        try {
+            await supabase.from('property_reports').insert({
+                hotel_id: unit.hotel_id,
+                reported_by: callerStaff?.id || null,
+                type: 'REPORT',
+                category: 'SAFETY',
+                description: `[EMERGENCY-VACATE] ${unit.unit_number} | Reason: ${vacateReason} | Bookings closed: ${activeBookings?.length || 0}`,
+                photo_url: null,
+                status: 'RESOLVED',
+                reviewed_by: callerStaff?.id || null,
+                review_notes: 'Auto-audit from emergency-vacate override',
+            })
+        } catch { /* audit must not fail the override */ }
 
         return NextResponse.json({
             success: true,

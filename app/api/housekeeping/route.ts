@@ -49,17 +49,26 @@ export async function PATCH(request: NextRequest) {
             )
         }
 
-        // Update unit status
-        const { error: updateError } = await supabase
+        // Atomic transition — prevents two HK staff from both transitioning
+        // DIRTY → IN_PROGRESS simultaneously.
+        const { data: rows, error: updateError } = await supabase
             .from('units')
             .update({ status: newStatus })
             .eq('id', unitId)
+            .eq('status', unit.status)
+            .select('id')
 
         if (updateError) {
             console.error('Housekeeping update error:', updateError)
             return NextResponse.json(
                 { error: 'Failed to update status' },
                 { status: 500 }
+            )
+        }
+        if (!rows || rows.length === 0) {
+            return NextResponse.json(
+                { error: 'Unit status changed — another housekeeping staff may have transitioned it' },
+                { status: 409 }
             )
         }
 

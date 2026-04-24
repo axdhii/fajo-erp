@@ -118,7 +118,7 @@ export async function PATCH(request: NextRequest) {
             return NextResponse.json({ error: 'Restock request is already completed' }, { status: 409 })
         }
 
-        const { data, error } = await supabase
+        const { data: rows, error } = await supabase
             .from('restock_requests')
             .update({
                 status: 'DONE',
@@ -126,13 +126,17 @@ export async function PATCH(request: NextRequest) {
                 completed_by: callerStaff.id,
             })
             .eq('id', request_id)
+            .eq('status', currentRequest.status)
             .select('*, unit:units(unit_number), staff:requested_by(name)')
-            .single()
 
         if (error) {
             console.error('Restock update error:', error)
             return NextResponse.json({ error: 'Failed to update restock request' }, { status: 500 })
         }
+        if (!rows || rows.length === 0) {
+            return NextResponse.json({ error: 'Request status changed — refresh and retry' }, { status: 409 })
+        }
+        const data = rows[0]
 
         // Notify the requester (use their actual role, not hardcoded FrontDesk)
         if (data.requested_by) {

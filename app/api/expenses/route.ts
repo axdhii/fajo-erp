@@ -153,17 +153,21 @@ export async function PATCH(request: NextRequest) {
             updatePayload.rejection_reason = rejection_reason
         }
 
-        const { data, error } = await supabase
+        const { data: rows, error } = await supabase
             .from('property_expenses')
             .update(updatePayload)
             .eq('id', expense_id)
+            .eq('status', 'PENDING')
             .select('*, requester:requested_by(name), reviewer:reviewed_by(name)')
-            .single()
 
         if (error) {
             console.error('Expense review error:', error)
             return NextResponse.json({ error: 'Failed to review expense' }, { status: 500 })
         }
+        if (!rows || rows.length === 0) {
+            return NextResponse.json({ error: 'Expense was just reviewed by another admin — refresh' }, { status: 409 })
+        }
+        const data = rows[0]
 
         // Notify the submitter (use their actual role, not hardcoded FrontDesk)
         try {

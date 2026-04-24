@@ -56,11 +56,17 @@ export async function POST(request: NextRequest) {
         const supabase = await createClient()
 
         const { data: callerStaff } = await supabase
-            .from('staff').select('id, hotel_id').eq('user_id', auth.userId).single()
+            .from('staff').select('id, hotel_id, role').eq('user_id', auth.userId).single()
         if (!callerStaff) return NextResponse.json({ error: 'Staff not found' }, { status: 403 })
 
         const body = await request.json()
         const { booking_id, description, amount, payment_method } = body
+
+        // Floating extras (no booking_id) are privileged — could hide ledger revenue
+        // without a guest anchor. Restrict to Admin/Developer/ZonalOps.
+        if (!booking_id && !['Admin', 'Developer', 'ZonalOps'].includes(callerStaff.role)) {
+            return NextResponse.json({ error: 'Floating extras (no booking) require Admin, Developer, or ZonalOps role' }, { status: 403 })
+        }
 
         if (!description || !String(description).trim()) {
             return NextResponse.json({ error: 'Description is required' }, { status: 400 })

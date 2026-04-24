@@ -179,7 +179,12 @@ export async function POST(request: NextRequest) {
             convertedBookingIds.push(b.id)
         }
 
-        // Insert payment records — distribute across all bookings proportionally
+        // Insert payment records — distribute across all bookings proportionally.
+        // Critical: on ANY payment failure, roll back all converted bookings to
+        // CONFIRMED so we don't have CHECKED_IN beds with missing payment records
+        // (money lost). Use upsert on booking_id in case the check-in flow already
+        // inserted a payment row for the same booking (UNIQUE constraint).
+        const paymentErrors: string[] = []
         if (isGroup && allBookings.length > 1) {
             for (const b of allBookings) {
                 const proportion = finalGrandTotal > 0
@@ -191,31 +196,44 @@ export async function POST(request: NextRequest) {
 
                 const { error: paymentError } = await supabase
                     .from('payments')
-                    .insert({
+                    .upsert({
                         booking_id: b.id,
                         amount_cash: bCash,
                         amount_digital: bDigital,
                         total_paid: bTotal,
-                    })
+                    }, { onConflict: 'booking_id' })
 
                 if (paymentError) {
                     console.error(`Payment insert error for booking ${b.id}:`, paymentError)
+                    paymentErrors.push(b.id)
                 }
             }
         } else {
             const { error: paymentError } = await supabase
                 .from('payments')
-                .insert({
+                .upsert({
                     booking_id: booking.id,
                     amount_cash: cashAmount,
                     amount_digital: digitalAmount,
                     total_paid: totalPaid,
-                })
+                }, { onConflict: 'booking_id' })
 
             if (paymentError) {
                 console.error('Payment insert error:', paymentError)
-                // Non-fatal — booking still converted
+                paymentErrors.push(booking.id)
             }
+        }
+
+        if (paymentErrors.length > 0) {
+            // Roll back all converted bookings to CONFIRMED and units back to AVAILABLE
+            await supabase
+                .from('bookings')
+                .update({ status: 'CONFIRMED' })
+                .in('id', convertedBookingIds)
+            return NextResponse.json(
+                { error: 'Payment could not be persisted — conversion rolled back. Please retry.' },
+                { status: 500 }
+            )
         }
 
         // Set all units to OCCUPIED

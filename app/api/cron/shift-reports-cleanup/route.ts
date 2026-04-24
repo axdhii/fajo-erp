@@ -1,40 +1,30 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/auth'
+import { requireCronOrAdmin } from '@/lib/cron-auth'
 
 // GET /api/cron/shift-reports-cleanup
 // Called by Vercel Cron once a day.
-// Deletes shift_reports rows older than 7 days.
+// Deletes shift_reports rows older than 60 days.
 //
-// Retention policy: shift reports are only useful to Admin/owners for recent
-// staff accountability. Keeping them unbounded bloats the table without
-// business value. Older data is still available in the underlying tables
-// (attendance, bookings, payments), just not in pre-aggregated form.
-//
-// In production, requires CRON_SECRET header. In dev, requires auth.
+// Retention policy: 60 days covers a full monthly payroll cycle + grace for
+// disputes. The underlying tables (attendance, bookings, payments) retain the
+// raw data; shift_reports is the denormalized per-staff revenue attribution
+// that matters for payroll audits.
 export async function GET(request: NextRequest) {
     try {
-        // Allow Vercel Cron via secret header, otherwise require auth
-        const cronSecret = process.env.CRON_SECRET
-        const authHeader = request.headers.get('authorization')
-        if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
-            // Authorized via cron secret — proceed
-        } else {
-            const auth = await requireAuth()
-            if (!auth.authenticated) return auth.response
-        }
+        const gate = await requireCronOrAdmin(request)
+        if (!gate.ok) return gate.response
 
         const supabase = await createClient()
 
-        // Calculate 7 days ago
-        const sevenDaysAgo = new Date()
-        sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
+        const sixtyDaysAgo = new Date()
+        sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60)
 
         // Delete and return the count so ops can see the effect
         const { data, error } = await supabase
             .from('shift_reports')
             .delete()
-            .lt('created_at', sevenDaysAgo.toISOString())
+            .lt('created_at', sixtyDaysAgo.toISOString())
             .select('id')
 
         if (error) {
@@ -49,7 +39,7 @@ export async function GET(request: NextRequest) {
         return NextResponse.json({
             success: true,
             deleted: deletedCount,
-            message: `Cleaned up ${deletedCount} shift report${deletedCount === 1 ? '' : 's'} older than 7 days`,
+            message: `Cleaned up ${deletedCount} shift report${deletedCount === 1 ? '' : 's'} older than 60 days`,
         })
     } catch (err) {
         console.error('Shift reports cleanup cron error:', err)

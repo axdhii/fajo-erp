@@ -154,6 +154,14 @@ export async function PATCH(request: NextRequest) {
         if (!auth.authenticated) return auth.response
 
         const supabase = await createClient()
+
+        // Payroll edits are privileged — only Admin/Developer/HR can edit/finalize/pay
+        const { data: callerStaff } = await supabase
+            .from('staff').select('role').eq('user_id', auth.userId).single()
+        if (!callerStaff || !['Admin', 'Developer', 'HR'].includes(callerStaff.role)) {
+            return NextResponse.json({ error: 'Payroll actions require Admin, Developer, or HR role' }, { status: 403 })
+        }
+
         const body = await request.json()
         const { payroll_id, action } = body // action: "finalize" | "pay"
 

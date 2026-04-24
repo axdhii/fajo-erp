@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAuth } from '@/lib/auth'
+import { requireCronOrAdmin } from '@/lib/cron-auth'
 
 // GET /api/cron/selfie-cleanup
 // Called by Vercel Cron or external scheduler.
@@ -8,15 +8,8 @@ import { requireAuth } from '@/lib/auth'
 // In production, requires CRON_SECRET header. In dev, requires auth.
 export async function GET(request: NextRequest) {
     try {
-        // Allow Vercel Cron via secret header, otherwise require auth
-        const cronSecret = process.env.CRON_SECRET
-        const authHeader = request.headers.get('authorization')
-        if (cronSecret && authHeader === `Bearer ${cronSecret}`) {
-            // Authorized via cron secret — proceed
-        } else {
-            const auth = await requireAuth()
-            if (!auth.authenticated) return auth.response
-        }
+        const gate = await requireCronOrAdmin(request)
+        if (!gate.ok) return gate.response
 
         const supabase = await createClient()
 
@@ -45,19 +38,20 @@ export async function GET(request: NextRequest) {
             })
         }
 
-        // Delete photos from storage for requests that have a photo_url
+        // Delete photos from storage for requests that have a photo_url.
+        // Handles both public and signed URL shapes so bucket privacy changes
+        // don't silently orphan files.
         for (const req of expired) {
             if (req.photo_url) {
                 try {
-                    // Extract the path from the full URL — the photo_url contains the path after the bucket
-                    // e.g., "selfies/2026-04/selfie_abc_1234.jpg"
                     const url = new URL(req.photo_url)
-                    const pathMatch = url.pathname.match(/\/object\/public\/reports\/(.+)/)
-                    if (pathMatch) {
-                        await supabase.storage.from('reports').remove([pathMatch[1]])
+                    const match = url.pathname.match(/\/object\/(?:public|sign|authenticated)\/([^/]+)\/(.+)/)
+                    if (match) {
+                        const [, bucket, path] = match
+                        const cleanPath = path.split('?')[0]
+                        await supabase.storage.from(bucket).remove([cleanPath])
                     }
                 } catch {
-                    // Log but don't block — deleting the record is more important
                     console.warn(`Failed to delete photo for selfie request ${req.id}`)
                 }
             }

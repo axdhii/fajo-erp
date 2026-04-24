@@ -4,8 +4,8 @@ import { NextResponse } from 'next/server'
 // POST /api/cleanup-hk — Remove hk2-hk5 accounts, keep only hk1
 export async function POST() {
     try {
-        if (process.env.NODE_ENV === 'production') {
-            return NextResponse.json({ error: 'Not available in production' }, { status: 403 })
+        if (process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'preview') {
+            return NextResponse.json({ error: 'Not available outside local development' }, { status: 403 })
         }
 
         const supabase = await createClient()

@@ -71,6 +71,9 @@ export async function POST(request: NextRequest) {
         }
 
         const count = Math.max(1, Math.floor(Number(guest_count) || 1))
+        if (count > 20) {
+            return NextResponse.json({ error: 'guest_count cannot exceed 20' }, { status: 400 })
+        }
 
         if (!payment_method || !['CASH', 'DIGITAL'].includes(payment_method)) {
             return NextResponse.json({ error: 'Payment method must be CASH or DIGITAL' }, { status: 400 })

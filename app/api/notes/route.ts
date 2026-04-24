@@ -52,6 +52,9 @@ export async function POST(request: NextRequest) {
 
         const body = await request.json()
         const { content } = body
+        if (typeof content === 'string' && content.length > 10000) {
+            return NextResponse.json({ error: 'Note content cannot exceed 10,000 characters' }, { status: 400 })
+        }
 
         const { data, error } = await supabase
             .from('staff_notes')
@@ -99,6 +102,9 @@ export async function PATCH(request: NextRequest) {
 
         if (content === undefined) {
             return NextResponse.json({ error: 'content is required' }, { status: 400 })
+        }
+        if (typeof content === 'string' && content.length > 10000) {
+            return NextResponse.json({ error: 'Note content cannot exceed 10,000 characters' }, { status: 400 })
         }
 
         const { data, error } = await supabase
