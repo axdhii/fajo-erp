@@ -3,11 +3,20 @@ import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase/client'
 import { User } from '@supabase/supabase-js'
 import type { ShiftReport } from '@/lib/types'
+import { useUnitStore } from '@/lib/store/unit-store'
+import { useNotificationStore } from '@/lib/store/notification-store'
+
+// Reset all auxiliary Zustand stores so the next user who signs in on a shared
+// tablet doesn't briefly see the previous user's data.
+function clearAllStores() {
+    try { useUnitStore.setState({ units: [], isLoading: false }) } catch {}
+    try { useNotificationStore.setState({ notifications: [], unreadCount: 0, initialized: false, isLoading: false, error: null }) } catch {}
+}
 
 interface StaffProfile {
     id: string
     hotel_id: string
-    role: 'Admin' | 'FrontDesk' | 'HR' | 'ZonalOps' | 'ZonalHK' | 'Developer'
+    role: 'Admin' | 'FrontDesk' | 'HR' | 'ZonalOps' | 'ZonalHK' | 'Developer' | 'Housekeeping'
     name: string | null
 }
 
@@ -94,11 +103,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         }
 
         await supabase.auth.signOut()
+        clearAllStores()
         set({ user: null, profile: null, activeHotelId: null, shiftReport: null })
     },
 
     completeSignOut: async () => {
         await supabase.auth.signOut()
+        clearAllStores()
         set({ user: null, profile: null, activeHotelId: null, shiftReport: null })
     },
 

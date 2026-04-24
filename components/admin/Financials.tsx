@@ -353,29 +353,38 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
 
     // ── Fetch payments ledger ──
     const fetchPayments = useCallback(async () => {
-        const { data, error } = await supabase
+        // Honour timeFrom/timeTo from the summary cards (previously hardcoded
+        // 00:00–23:59:59 caused mismatch between revenue cards and ledger) and
+        // push the hotel filter into the server query (via inner-join) so
+        // pagination doesn't break for sparse hotels.
+        const fromIso = `${dateFrom}T${timeFrom}:00+05:30`
+        const toIso = `${dateTo}T${timeTo}:59+05:30`
+        let query = supabase
             .from('payments')
-            .select('*, booking:bookings(unit_id, guests(name), unit:units(unit_number, hotel_id))')
+            .select(hotelId
+                ? '*, booking:bookings!inner(unit_id, guests(name), unit:units!inner(unit_number, hotel_id))'
+                : '*, booking:bookings(unit_id, guests(name), unit:units(unit_number, hotel_id))')
             .order('created_at', { ascending: false })
-            .gte('created_at', dateFrom + 'T00:00:00+05:30')
-            .lte('created_at', dateTo + 'T23:59:59+05:30')
+            .gte('created_at', fromIso)
+            .lte('created_at', toIso)
             .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+
+        if (hotelId) {
+            // Supabase embedded-filter syntax: filters the inner-joined rows.
+            query = query.eq('booking.unit.hotel_id', hotelId)
+        }
+
+        const { data, error } = await query
 
         if (error) {
             console.error('Payments fetch error:', error)
             return
         }
 
-        let rows = (data || []) as unknown as PaymentRow[]
-        // Filter by hotel if needed
-        if (hotelId) {
-            rows = rows.filter(r => r.booking?.unit?.hotel_id === hotelId)
-        }
-
+        const rows = (data || []) as unknown as PaymentRow[]
         setPayments(rows)
-        // Use filtered count for hasMore when hotel filter is active
-        setHasMore(hotelId ? rows.length > 0 && (data || []).length === PAGE_SIZE : (data || []).length === PAGE_SIZE)
-    }, [hotelId, dateFrom, dateTo, page])
+        setHasMore(rows.length === PAGE_SIZE)
+    }, [hotelId, dateFrom, dateTo, timeFrom, timeTo, page])
 
     // ── Step 1: Generate Report (query data, open preview modal) ──
     const handleGenerateReport = async () => {

@@ -76,6 +76,20 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
     const isAdminOrDev = profile?.role === 'Admin' || profile?.role === 'Developer'
     const effectiveHotelId = (isAdminOrDev && activeHotelId) ? activeHotelId : hotelId
 
+    // When Admin/Dev switches hotel, the hotelName prop (server-rendered from
+    // staff's own hotel) goes stale. Resolve the active hotel's name on demand
+    // so downloaded reports don't show the wrong property.
+    const [effectiveHotelName, setEffectiveHotelName] = useState(hotelName)
+    useEffect(() => {
+        if (effectiveHotelId === hotelId) {
+            setEffectiveHotelName(hotelName)
+            return
+        }
+        supabase.from('hotels').select('name').eq('id', effectiveHotelId).single().then(({ data }) => {
+            if (data?.name) setEffectiveHotelName(data.name)
+        })
+    }, [effectiveHotelId, hotelId, hotelName])
+
     const [tab, setTab] = useState<Tab>('attendance')
     const [staff, setStaff] = useState<StaffMember[]>([])
     const [attendance, setAttendance] = useState<Attendance[]>([])
@@ -173,7 +187,7 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
             ctx.textAlign = 'center'
             ctx.fillStyle = '#1e293b'
             ctx.font = 'bold 20px system-ui, sans-serif'
-            ctx.fillText(hotelName, W / 2, y)
+            ctx.fillText(effectiveHotelName, W / 2, y)
             y += 18
             ctx.fillStyle = '#94a3b8'
             ctx.font = '12px system-ui, sans-serif'
@@ -364,7 +378,7 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
         } finally {
             setDownloadingReport(null)
         }
-    }, [hotelName])
+    }, [effectiveHotelName])
 
     // Fetch staff list (excluding Admin)
     const fetchStaff = useCallback(async () => {

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { useAuthStore } from '@/lib/store/auth-store'
 import {
     Select,
     SelectContent,
@@ -72,11 +73,19 @@ interface AdminClientProps {
 }
 
 export function AdminClient({ hotelId, staffId }: AdminClientProps) {
+    const { activeHotelId, setActiveHotelId } = useAuthStore()
     const [tab, setTab] = useState<TabKey>('command')
     const [hotels, setHotels] = useState<{ id: string; name: string; city: string; status: string }[]>([])
-    const [selectedHotelId, setSelectedHotelId] = useState<string | null>(null) // null = all hotels
+    // Initialise from global switcher so it starts coherent with the header.
+    const [selectedHotelId, setSelectedHotelId] = useState<string | null>(activeHotelId || null)
     const [loadingHotels, setLoadingHotels] = useState(true)
     const [archiveOpen, setArchiveOpen] = useState(false)
+
+    // Mirror global switcher: when the header changes activeHotelId, update the
+    // internal dropdown so the tabs' data stays in sync.
+    useEffect(() => {
+        if (activeHotelId) setSelectedHotelId(activeHotelId)
+    }, [activeHotelId])
 
     // Fetch all hotels on mount
     useEffect(() => {
@@ -96,7 +105,10 @@ export function AdminClient({ hotelId, staffId }: AdminClientProps) {
     const selectorValue = selectedHotelId ?? 'all'
 
     const handleHotelChange = (value: string) => {
-        setSelectedHotelId(value === 'all' ? null : value)
+        const next = value === 'all' ? null : value
+        setSelectedHotelId(next)
+        // Keep the global switcher in lockstep when a concrete hotel is chosen.
+        if (next) setActiveHotelId(next)
     }
 
     // Props passed to every tab component

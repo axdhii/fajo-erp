@@ -9,6 +9,7 @@ const ROLE_ROUTES: Record<string, string[]> = {
     Developer: ['/developer', '/admin', '/front-desk', '/reservations', '/housekeeping', '/hr', '/zonal-ops', '/zonal-hk'],
     Admin: ['/admin', '/front-desk', '/reservations', '/housekeeping', '/hr', '/zonal-ops', '/zonal-hk'],
     FrontDesk: ['/front-desk', '/reservations', '/housekeeping'],
+    Housekeeping: ['/housekeeping'],
     HR: ['/hr'],
     ZonalOps: ['/zonal-ops'],
     ZonalHK: ['/zonal-hk'],
@@ -22,6 +23,7 @@ function defaultPathForRole(role: string): string {
         case 'HR': return '/hr'
         case 'ZonalOps': return '/zonal-ops'
         case 'ZonalHK': return '/zonal-hk'
+        case 'Housekeeping': return '/housekeeping'
         default: return '/front-desk'
     }
 }

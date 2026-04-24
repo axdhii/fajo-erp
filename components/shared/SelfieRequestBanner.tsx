@@ -68,6 +68,25 @@ export function SelfieRequestBanner({ staffId, hotelId }: SelfieRequestBannerPro
                     }
                 }
             )
+            .on(
+                'postgres_changes',
+                {
+                    event: 'UPDATE',
+                    schema: 'public',
+                    table: 'selfie_requests',
+                    filter: `target_staff_id=eq.${staffId}`,
+                },
+                (payload) => {
+                    // If the request is no longer PENDING (admin cancelled it,
+                    // staff completed it, etc.), release the lock — otherwise
+                    // the dialog's onPointerDownOutside/onEscapeKeyDown traps
+                    // the staff with no way out.
+                    if (payload.new && payload.new.status !== 'PENDING') {
+                        setPendingRequest(null)
+                        stopCamera()
+                    }
+                }
+            )
             .subscribe()
 
         return () => {

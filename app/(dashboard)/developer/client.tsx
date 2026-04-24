@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase/client'
+import { useAuthStore } from '@/lib/store/auth-store'
 import {
     Wrench,
     Activity,
@@ -62,9 +63,10 @@ interface DevClientProps {
 }
 
 export function DevClient({ hotelId, staffId }: DevClientProps) {
+    const { activeHotelId, setActiveHotelId } = useAuthStore()
     const [tab, setTab] = useState<TabKey>('health')
     const [hotels, setHotels] = useState<{ id: string; name: string; city: string; status: string }[]>([])
-    const [selectedHotelId, setSelectedHotelId] = useState<string | null>(null)
+    const [selectedHotelId, setSelectedHotelId] = useState<string | null>(activeHotelId || null)
     const [loadingHotels, setLoadingHotels] = useState(true)
 
     useEffect(() => {
@@ -79,10 +81,17 @@ export function DevClient({ hotelId, staffId }: DevClientProps) {
         fetchHotels()
     }, [])
 
+    // Sync with global hotel switcher in the header
+    useEffect(() => {
+        if (activeHotelId) setSelectedHotelId(activeHotelId)
+    }, [activeHotelId])
+
     const selectorValue = selectedHotelId ?? 'all'
 
     const handleHotelChange = (value: string) => {
-        setSelectedHotelId(value === 'all' ? null : value)
+        const next = value === 'all' ? null : value
+        setSelectedHotelId(next)
+        if (next) setActiveHotelId(next)
     }
 
     const tabProps: DevTabProps = {

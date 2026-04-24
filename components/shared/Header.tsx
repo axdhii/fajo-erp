@@ -161,7 +161,7 @@ export function Header() {
                     </div>
                     {/* Show role badge on mobile only */}
                     <span className="sm:hidden text-xs font-medium text-slate-500">{profile.role}</span>
-                    <NotificationBell hotelId={profile.hotel_id} role={profile.role} staffId={profile.id} />
+                    <NotificationBell hotelId={(isAdminOrDev && activeHotelId) || profile.hotel_id} role={profile.role} staffId={profile.id} />
                     {/* Messaging */}
                     <button
                         onClick={() => setMessagingOpen(true)}
@@ -214,13 +214,13 @@ export function Header() {
                         open={messagingOpen}
                         onClose={() => { setMessagingOpen(false); fetch('/api/messages', { method: 'PATCH' }).finally(() => fetchUnreadMessages()) }}
                         staffId={profile.id}
-                        hotelId={profile.hotel_id}
+                        hotelId={(isAdminOrDev && activeHotelId) || profile.hotel_id}
                     />
                     <NotepadDrawer
                         open={notepadOpen}
                         onClose={() => setNotepadOpen(false)}
                         staffId={profile.id}
-                        hotelId={profile.hotel_id}
+                        hotelId={(isAdminOrDev && activeHotelId) || profile.hotel_id}
                     />
                 </>
             )}

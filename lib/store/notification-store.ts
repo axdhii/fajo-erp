@@ -105,11 +105,14 @@ export const useNotificationStore = create<NotificationState>((set, get) => ({
     },
 
     subscribe: (hotelId, role, staffId) => {
-        if (get().initialized) return () => {} // already subscribed
+        // No `initialized` guard — React strict-mode double-invokes are fine because
+        // the cleanup removes the channel between invocations. Previously this
+        // bailed out when hotelId changed (Admin/Dev switcher), leaving realtime
+        // pinned to the first-subscribed hotel.
         set({ initialized: true })
 
         const channel = supabase
-            .channel(`notif_${staffId.slice(0, 8)}`)
+            .channel(`notif_${staffId.slice(0, 8)}_${hotelId.slice(0, 8)}`)
             .on('postgres_changes', {
                 event: 'INSERT',
                 schema: 'public',
