@@ -5,7 +5,6 @@ import { Header } from '@/components/shared/Header'
 import { BottomNav } from '@/components/shared/BottomNav'
 import { ShiftReportModal } from '@/components/shared/ShiftReportModal'
 import { Toaster } from '@/components/ui/sonner'
-import { PushSubscriber } from '@/components/shared/PushSubscriber'
 import { SelfieRequestBanner } from '@/components/shared/SelfieRequestBanner'
 import { useAuthStore } from '@/lib/store/auth-store'
 
@@ -41,7 +40,6 @@ export default function DashboardLayout({
                 {children}
             </main>
             <ShiftReportModal />
-            <PushSubscriber />
             <Toaster position="bottom-center" richColors />
             <BottomNav />
         </div>

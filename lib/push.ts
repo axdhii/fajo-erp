@@ -1,3 +1,9 @@
+// Push notifications are DISABLED to eliminate unnecessary API calls.
+// To re-enable: set PUSH_ENABLED = true, restore the PushSubscriber mount in
+// app/(dashboard)/layout.tsx, and restore the DB trigger `trigger_push_notification`
+// on public.notifications.
+const PUSH_ENABLED = false
+
 // @ts-expect-error -- web-push has no type declarations
 import webpush from 'web-push'
 import { createClient } from '@/lib/supabase/server'
@@ -5,7 +11,7 @@ import { createClient } from '@/lib/supabase/server'
 const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || ''
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY || ''
 
-if (VAPID_PUBLIC && VAPID_PRIVATE) {
+if (PUSH_ENABLED && VAPID_PUBLIC && VAPID_PRIVATE) {
     webpush.setVapidDetails('mailto:admin@fajohotels.com', VAPID_PUBLIC, VAPID_PRIVATE)
 }
 
@@ -20,6 +26,7 @@ interface PushPayload {
  * Send push notification to a specific staff member (all their devices)
  */
 export async function sendPushToStaff(staffId: string, payload: PushPayload) {
+    if (!PUSH_ENABLED) return
     if (!VAPID_PUBLIC || !VAPID_PRIVATE) return
 
     const supabase = await createClient()
@@ -49,6 +56,7 @@ export async function sendPushToStaff(staffId: string, payload: PushPayload) {
  * Send push notification to all staff with a given role in a hotel
  */
 export async function sendPushToRole(hotelId: string, role: string, payload: PushPayload) {
+    if (!PUSH_ENABLED) return
     if (!VAPID_PUBLIC || !VAPID_PRIVATE) return
 
     const supabase = await createClient()

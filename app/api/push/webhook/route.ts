@@ -2,7 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 
 const WEBHOOK_SECRET = process.env.WEBHOOK_SECRET || process.env.CRON_SECRET || ''
 
+// Push notifications are DISABLED. This endpoint short-circuits before any
+// DB/webpush work to minimize compute cost if the Supabase trigger is still
+// active. The real cost elimination is dropping the `trigger_push_notification`
+// trigger on public.notifications — see docs/push-kill.md (or the git log).
+const PUSH_ENABLED = false
+
 export async function POST(request: NextRequest) {
+    if (!PUSH_ENABLED) {
+        return NextResponse.json({ ok: true, disabled: true })
+    }
     try {
         // Verify webhook authenticity
         const authHeader = request.headers.get('x-webhook-secret') || request.headers.get('authorization')
