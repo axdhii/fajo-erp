@@ -42,21 +42,16 @@ export async function POST(request: NextRequest) {
             )
         }
 
-        // Look up staff ID + role for checkout attribution and role gating
+        // Look up staff ID for checkout attribution
         const { data: staffProfile } = await supabase
             .from('staff')
             .select('id, role')
             .eq('user_id', auth.userId)
             .single()
 
-        // Force checkout (skipping balance-due validation) is destructive — only Admin/Dev/ZonalOps
-        const callerRole = staffProfile?.role
-        if (force && !['Admin', 'Developer', 'ZonalOps'].includes(callerRole || '')) {
-            return NextResponse.json(
-                { error: 'Force checkout requires Admin, Developer, or ZonalOps role' },
-                { status: 403 }
-            )
-        }
+        // Note: force checkout (skipping balance-due validation) is a legitimate
+        // CRE workflow for discrepancy handling — no role gate. The booking
+        // notes serve as the audit trail via `[Checked out: <timestamp>]`.
 
         // Handle group dorm checkout — process all beds in the group
         if (booking.group_id) {

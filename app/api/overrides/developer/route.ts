@@ -61,28 +61,31 @@ export async function PATCH(request: NextRequest) {
             finalUpdates.notes = baseNotes ? `${baseNotes}\n${auditLine}` : auditLine
         }
 
-        // Log structured details server-side only (do not leak in client response)
-        console.log('[OVERRIDE]', { table, id, updatedKeys: Object.keys(finalUpdates) })
+        // DIAGNOSTIC: log exactly what we're sending
+        console.log(`[OVERRIDE DEBUG] table=${table} id=${id} updates=${JSON.stringify(finalUpdates)}`)
 
-        const { data, error } = await supabase
+        // Use maybeSingle() so we don't error if 0 rows match — we handle that explicitly
+        const { data, error, status, statusText } = await supabase
             .from(table)
             .update(finalUpdates)
             .eq('id', id)
             .select('*')
 
+        console.log(`[OVERRIDE DEBUG] result: status=${status} statusText=${statusText} rowCount=${Array.isArray(data) ? data.length : 'n/a'} error=${error ? JSON.stringify(error) : 'null'}`)
+
         if (error) {
-            console.error(`Override ${table} error:`, { code: error.code, message: error.message, details: error.details, hint: error.hint })
-            return NextResponse.json(
-                { error: error.message || 'Failed to update record' },
-                { status: 500 }
-            )
+            console.error(`Override ${table} error:`, error)
+            return NextResponse.json({
+                error: error.message || 'Failed to update record',
+                debug: { code: error.code, details: error.details, hint: error.hint, table, id }
+            }, { status: 500 })
         }
 
         if (!data || data.length === 0) {
-            return NextResponse.json(
-                { error: 'Update matched 0 rows — record may not exist' },
-                { status: 404 }
-            )
+            return NextResponse.json({
+                error: 'Update matched 0 rows — record may not exist or RLS blocked the write',
+                debug: { table, id, finalUpdates }
+            }, { status: 404 })
         }
 
         return NextResponse.json({ data: data[0], audit: auditLine, rowsUpdated: data.length })

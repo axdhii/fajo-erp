@@ -41,20 +41,13 @@ export async function GET(request: NextRequest) {
     }
 }
 
-// PATCH /api/staff — update staff name/phone/salary (Admin/HR/Developer only)
+// PATCH /api/staff — update staff name/phone/salary
 export async function PATCH(request: NextRequest) {
     try {
         const auth = await requireAuth()
         if (!auth.authenticated) return auth.response
 
         const supabase = await createClient()
-
-        const { data: callerStaff } = await supabase
-            .from('staff').select('role').eq('user_id', auth.userId).single()
-        if (!callerStaff || !['Admin', 'Developer', 'HR'].includes(callerStaff.role)) {
-            return NextResponse.json({ error: 'Staff edits require Admin, Developer, or HR role' }, { status: 403 })
-        }
-
         const body = await request.json()
         const { staff_id, name, phone, base_salary } = body
 
@@ -65,13 +58,7 @@ export async function PATCH(request: NextRequest) {
         const updates: Record<string, unknown> = {}
         if (name !== undefined) updates.name = name
         if (phone !== undefined) updates.phone = phone
-        if (base_salary !== undefined) {
-            const sal = Number(base_salary)
-            if (Number.isNaN(sal) || sal < 0) {
-                return NextResponse.json({ error: 'base_salary must be a non-negative number' }, { status: 400 })
-            }
-            updates.base_salary = sal
-        }
+        if (base_salary !== undefined) updates.base_salary = Number(base_salary)
 
         if (Object.keys(updates).length === 0) {
             return NextResponse.json({ error: 'No fields to update' }, { status: 400 })

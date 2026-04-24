@@ -4,9 +4,8 @@ import { NextResponse } from 'next/server'
 // POST /api/migrate-dorms — Rename D01-D36 → A1-A36, set Lower/Upper pricing
 export async function POST() {
     try {
-        // Block on prod AND preview deployments (Vercel previews are internet-reachable)
-        if (process.env.NODE_ENV === 'production' || process.env.VERCEL_ENV === 'preview') {
-            return NextResponse.json({ error: 'Not available outside local development' }, { status: 403 })
+        if (process.env.NODE_ENV === 'production') {
+            return NextResponse.json({ error: 'Not available in production' }, { status: 403 })
         }
 
         const supabase = await createClient()
