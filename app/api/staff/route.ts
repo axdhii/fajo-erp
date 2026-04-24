@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { requireHotelScope } from '@/lib/hotel-scope'
 
 // GET /api/staff — list staff
 export async function GET(request: NextRequest) {
@@ -10,14 +11,15 @@ export async function GET(request: NextRequest) {
 
         const supabase = await createClient()
         const { searchParams } = new URL(request.url)
-        const hotelId = searchParams.get('hotel_id')
+
+        const scope = await requireHotelScope(supabase, auth.userId, searchParams.get('hotel_id'))
+        if (!scope.ok) return scope.response
 
         let query = supabase
             .from('staff')
             .select('id, user_id, hotel_id, role, name, phone, base_salary')
+            .eq('hotel_id', scope.hotelId)
             .order('name', { ascending: true })
-
-        if (hotelId) query = query.eq('hotel_id', hotelId)
 
         const excludeRole = searchParams.get('exclude_role')
         if (excludeRole) query = query.neq('role', excludeRole)

@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { requireHotelScope } from '@/lib/hotel-scope'
 
 // GET /api/booking-extras — list extras for a booking or hotel
 export async function GET(request: NextRequest) {
@@ -26,7 +27,10 @@ export async function GET(request: NextRequest) {
         if (bookingId) {
             query = query.eq('booking_id', bookingId)
         } else if (hotelId) {
-            query = query.eq('hotel_id', hotelId)
+            // Verify caller is allowed to see this hotel's extras
+            const scope = await requireHotelScope(supabase, auth.userId, hotelId)
+            if (!scope.ok) return scope.response
+            query = query.eq('hotel_id', scope.hotelId)
             const from = searchParams.get('from')
             const to = searchParams.get('to')
             if (from) query = query.gte('created_at', from)

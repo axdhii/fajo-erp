@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { requireHotelScope } from '@/lib/hotel-scope'
 import { getDevNow } from '@/lib/dev-time'
 
 const VALID_CATEGORIES = ['OBSERVATION', 'DAMAGE', 'SAFETY', 'MAINTENANCE', 'GUEST_COMPLAINT', 'OTHER'] as const
@@ -13,16 +14,13 @@ export async function GET(request: NextRequest) {
 
         const supabase = await createClient()
         const { searchParams } = new URL(request.url)
-        const hotelId = searchParams.get('hotel_id')
-
-        if (!hotelId) {
-            return NextResponse.json({ error: 'hotel_id is required' }, { status: 400 })
-        }
+        const scope = await requireHotelScope(supabase, auth.userId, searchParams.get('hotel_id'))
+        if (!scope.ok) return scope.response
 
         let query = supabase
             .from('property_reports')
             .select('*, reporter:reported_by(name, role), reviewer:reviewed_by(name)')
-            .eq('hotel_id', hotelId)
+            .eq('hotel_id', scope.hotelId)
             .order('created_at', { ascending: false })
 
         const status = searchParams.get('status')

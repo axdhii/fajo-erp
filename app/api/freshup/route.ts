@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { requireHotelScope } from '@/lib/hotel-scope'
 
 // GET /api/freshup — list freshup records by hotel_id + optional date range
 export async function GET(request: NextRequest) {
@@ -10,17 +11,14 @@ export async function GET(request: NextRequest) {
 
         const supabase = await createClient()
         const { searchParams } = new URL(request.url)
-        const hotelId = searchParams.get('hotel_id')
-
-        if (!hotelId) {
-            return NextResponse.json({ error: 'hotel_id is required' }, { status: 400 })
-        }
+        const scope = await requireHotelScope(supabase, auth.userId, searchParams.get('hotel_id'))
+        if (!scope.ok) return scope.response
 
         // Alias: DB column is `phone` but consumers expect `guest_phone`. Expose both.
         let query = supabase
             .from('freshup')
             .select('*, guest_phone:phone, staff:created_by(name)')
-            .eq('hotel_id', hotelId)
+            .eq('hotel_id', scope.hotelId)
             .order('created_at', { ascending: false })
 
         const from = searchParams.get('from')

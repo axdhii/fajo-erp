@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { requireHotelScope } from '@/lib/hotel-scope'
 import { getDevNow } from '@/lib/dev-time'
 
 // GET /api/payroll
@@ -11,15 +12,16 @@ export async function GET(request: NextRequest) {
 
         const supabase = await createClient()
         const { searchParams } = new URL(request.url)
-        const hotelId = searchParams.get('hotel_id')
         const month = searchParams.get('month') // YYYY-MM-01
+
+        const scope = await requireHotelScope(supabase, auth.userId, searchParams.get('hotel_id'))
+        if (!scope.ok) return scope.response
 
         let query = supabase
             .from('payroll')
             .select('*, staff(id, name, role, phone)')
+            .eq('hotel_id', scope.hotelId)
             .order('created_at', { ascending: false })
-
-        if (hotelId) query = query.eq('hotel_id', hotelId)
         if (month) {
             // Accept both YYYY-MM and YYYY-MM-01 formats
             const monthValue = month.length === 7 ? `${month}-01` : month
