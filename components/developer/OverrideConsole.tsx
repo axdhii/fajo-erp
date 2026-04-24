@@ -342,9 +342,10 @@ export function OverrideConsole() {
         const dayStart = `${freshupDate}T00:00:00+05:30`
         const dayEnd = new Date(new Date(dayStart).getTime() + 86400000).toISOString()
 
+        // DB column is `phone`, not `guest_phone` — alias so downstream `.guest_phone` reads work.
         const { data } = await supabase
             .from('freshup')
-            .select('*')
+            .select('*, guest_phone:phone')
             .gte('created_at', dayStart)
             .lt('created_at', dayEnd)
             .order('created_at', { ascending: false })

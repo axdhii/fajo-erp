@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { toast } from 'sonner'
 import { supabase } from '@/lib/supabase/client'
 import { User } from '@supabase/supabase-js'
 import type { ShiftReport } from '@/lib/types'
@@ -74,10 +75,20 @@ export const useAuthStore = create<AuthState>((set, get) => ({
                     set({ shiftReport: json.shiftReport })
                     return
                 }
-                // Log report errors but don't block sign-out
-                if (json.reportError) console.warn('Shift report:', json.reportError)
+                // Surface report errors to the user — silently swallowing these
+                // hid the shift_reports missing-column bug for days.
+                if (json.reportError) {
+                    const detail = json.debug?.message || json.debug?.code || json.reportError
+                    toast.error(`Shift report failed to save: ${detail}. Please inform admin.`)
+                }
+                // API itself failed (4xx/5xx) — show the message so the CRE knows their
+                // attendance may not have updated either.
+                if (!res.ok) {
+                    toast.error(`Clock-out failed: ${json.error || 'unknown error'}`)
+                }
             } catch (err) {
-                console.warn('Clock-out error:', err)
+                const msg = err instanceof Error ? err.message : 'network error'
+                toast.error(`Clock-out failed: ${msg}. Please retry.`)
                 // Don't block sign-out
             }
         }

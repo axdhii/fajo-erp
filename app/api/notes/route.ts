@@ -18,7 +18,7 @@ export async function GET() {
         }
 
         const { data, error } = await supabase
-            .from('notes')
+            .from('staff_notes')
             .select('*')
             .eq('staff_id', callerStaff.id)
             .order('updated_at', { ascending: false })
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
         const { content } = body
 
         const { data, error } = await supabase
-            .from('notes')
+            .from('staff_notes')
             .insert({
                 staff_id: callerStaff.id,
                 hotel_id: callerStaff.hotel_id,
@@ -102,7 +102,7 @@ export async function PATCH(request: NextRequest) {
         }
 
         const { data, error } = await supabase
-            .from('notes')
+            .from('staff_notes')
             .update({
                 content,
                 updated_at: new Date().toISOString(),
@@ -150,7 +150,7 @@ export async function DELETE(request: NextRequest) {
         }
 
         const { error } = await supabase
-            .from('notes')
+            .from('staff_notes')
             .delete()
             .eq('id', noteId)
             .eq('staff_id', callerStaff.id)
