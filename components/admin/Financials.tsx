@@ -23,6 +23,7 @@ import {
     Loader2,
 } from 'lucide-react'
 import type { AdminTabProps } from '@/app/(dashboard)/admin/client'
+import { getCurrentShiftWindow } from '@/lib/shift-window'
 
 interface PaymentRow {
     id: string
@@ -113,8 +114,10 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
     const [rptFromDisplay, setRptFromDisplay] = useState('')
     const [rptToDisplay, setRptToDisplay] = useState('')
 
-    // Revenue data
+    // Revenue data — "today" is the current 12-hour shift window (DAY 7am-7pm or NIGHT 7pm-7am IST),
+    // NOT the calendar day. This avoids midnight rollover for night-shift staff.
     const [todayRevenue, setTodayRevenue] = useState({ cash: 0, digital: 0, total: 0 })
+    const [shiftLabel, setShiftLabel] = useState<string>('Current shift')
     const [monthRevenue, setMonthRevenue] = useState({ cash: 0, digital: 0, total: 0 })
     const [rangeRevenue, setRangeRevenue] = useState({ cash: 0, digital: 0, total: 0 })
     const [hotelRevenues, setHotelRevenues] = useState<HotelRevenue[]>([])
@@ -132,14 +135,17 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
     const fetchRevenue = useCallback(async () => {
         setLoading(true)
         try {
-            const today = todayIST()
+            // "Today" = the CURRENT shift window (7am-7pm or 7pm-7am IST), not the calendar day
+            const shift = getCurrentShiftWindow()
+            setShiftLabel(shift.displayLabel)
             const monthStart = monthStartIST()
 
-            // Today's revenue
+            // Today's (shift-window) revenue
             const { data: todayPayments } = await supabase
                 .from('payments')
                 .select('amount_cash, amount_digital, total_paid, booking:bookings(unit_id, unit:units(hotel_id))')
-                .gte('created_at', today + 'T00:00:00+05:30')
+                .gte('created_at', shift.start)
+                .lte('created_at', shift.end)
 
             // Month revenue
             const { data: monthPayments } = await supabase
@@ -180,7 +186,7 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             // Query advance_amount from bookings for each date range (Rule #1)
             const advanceSelect = 'advance_amount, advance_type, unit:units(hotel_id)'
             const [todayAdvRes, monthAdvRes, rangeAdvRes] = await Promise.all([
-                supabase.from('bookings').select(advanceSelect).gte('created_at', today + 'T00:00:00+05:30').gt('advance_amount', 0),
+                supabase.from('bookings').select(advanceSelect).gte('created_at', shift.start).lte('created_at', shift.end).gt('advance_amount', 0),
                 supabase.from('bookings').select(advanceSelect).gte('created_at', monthStart + 'T00:00:00+05:30').gt('advance_amount', 0),
                 supabase.from('bookings').select(advanceSelect).gte('created_at', `${dateFrom}T${timeFrom}:00+05:30`).lte('created_at', `${dateTo}T${timeTo}:59+05:30`).gt('advance_amount', 0),
             ])
@@ -210,7 +216,7 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             // Query booking_extras for each date range
             const extrasSelect = 'amount, payment_method, hotel_id'
             const [todayExtrasRes, monthExtrasRes, rangeExtrasRes] = await Promise.all([
-                supabase.from('booking_extras').select(extrasSelect).gte('created_at', today + 'T00:00:00+05:30'),
+                supabase.from('booking_extras').select(extrasSelect).gte('created_at', shift.start).lte('created_at', shift.end),
                 supabase.from('booking_extras').select(extrasSelect).gte('created_at', monthStart + 'T00:00:00+05:30'),
                 supabase.from('booking_extras').select(extrasSelect).gte('created_at', `${dateFrom}T${timeFrom}:00+05:30`).lte('created_at', `${dateTo}T${timeTo}:59+05:30`),
             ])
@@ -234,7 +240,7 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
 
             // Query freshup for each date range
             const [todayFreshupRes, monthFreshupRes, rangeFreshupRes] = await Promise.all([
-                supabase.from('freshup').select(extrasSelect).gte('created_at', today + 'T00:00:00+05:30'),
+                supabase.from('freshup').select(extrasSelect).gte('created_at', shift.start).lte('created_at', shift.end),
                 supabase.from('freshup').select(extrasSelect).gte('created_at', monthStart + 'T00:00:00+05:30'),
                 supabase.from('freshup').select(extrasSelect).gte('created_at', `${dateFrom}T${timeFrom}:00+05:30`).lte('created_at', `${dateTo}T${timeTo}:59+05:30`),
             ])
@@ -616,7 +622,7 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                 <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-white overflow-hidden relative group">
                     <div className="absolute inset-x-0 bottom-0 h-1 bg-emerald-500 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-emerald-700">Today&apos;s Revenue</CardTitle>
+                        <CardTitle className="text-sm font-medium text-emerald-700">Current Shift Revenue</CardTitle>
                         <TrendingUp className="h-4 w-4 text-emerald-500" />
                     </CardHeader>
                     <CardContent>
@@ -625,6 +631,7 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                             <span className="flex items-center gap-1"><Banknote className="h-3 w-3" /> Cash: {formatINR(todayRevenue.cash)}</span>
                             <span className="flex items-center gap-1"><Smartphone className="h-3 w-3" /> Digital: {formatINR(todayRevenue.digital)}</span>
                         </div>
+                        <p className="text-[11px] text-emerald-600/70 mt-2 font-medium">{shiftLabel}</p>
                     </CardContent>
                 </Card>
 

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { getDevNow } from '@/lib/dev-time'
+import { getCurrentShiftWindow } from '@/lib/shift-window'
 
 // GET /api/zonal/overview — consolidated multi-hotel overview for Zonal Manager
 export async function GET() {
@@ -22,6 +23,9 @@ export async function GET() {
         const now = getDevNow()
         const todayIST = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
         const todayMidnightIST = `${todayIST}T00:00:00+05:30`
+        // Current 12-hour shift window — used for revenue KPIs so night-shift staff
+        // don't see their totals reset at midnight.
+        const shift = getCurrentShiftWindow(now)
         const sevenDaysAgoDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
         const sevenDaysAgoIST = sevenDaysAgoDate.toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
 
@@ -151,15 +155,18 @@ export async function GET() {
                 const dirtyUnits = units.filter(u => u.status === 'DIRTY').length
                 const maintenanceUnits = units.filter(u => u.status === 'MAINTENANCE').length
 
-                // Today's revenue from payments (actual collected amounts)
-                const todayBookingIds = todayBookings.map(b => b.id)
+                // Current shift revenue from payments (collected during DAY 7am-7pm or NIGHT 7pm-7am IST).
+                // Uses payment.created_at so the total reflects collections during the active shift,
+                // independent of when the booking was made.
                 let cashRevenue = 0
                 let digitalRevenue = 0
-                if (todayBookingIds.length > 0) {
+                if (unitIds.length > 0) {
                     const { data: payments } = await supabase
                         .from('payments')
-                        .select('amount_cash, amount_digital')
-                        .in('booking_id', todayBookingIds)
+                        .select('amount_cash, amount_digital, booking:bookings!inner(unit_id)')
+                        .gte('created_at', shift.start)
+                        .lte('created_at', shift.end)
+                        .in('booking.unit_id', unitIds)
                     if (payments) {
                         cashRevenue = payments.reduce((sum, p) => sum + Number(p.amount_cash || 0), 0)
                         digitalRevenue = payments.reduce((sum, p) => sum + Number(p.amount_digital || 0), 0)

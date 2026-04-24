@@ -21,16 +21,13 @@ import {
     ShieldAlert,
 } from 'lucide-react'
 import type { AdminTabProps } from '@/app/(dashboard)/admin/client'
+import { getCurrentShiftWindow } from '@/lib/shift-window'
 
 // ============================================================
 // Helpers
 // ============================================================
 function todayIST(): string {
     return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' })
-}
-
-function todayISTStart(): string {
-    return todayIST() + 'T00:00:00+05:30'
 }
 
 function nowISO(): string {
@@ -84,13 +81,16 @@ export function CommandCenter({ hotelId, hotels, staffId }: AdminTabProps) {
     const [alerts, setAlerts] = useState<AlertItem[]>([])
     const [hotelCards, setHotelCards] = useState<HotelCardData[]>([])
     const [loading, setLoading] = useState(true)
+    const [shiftLabel, setShiftLabel] = useState<string>('Current shift')
 
     // --------------------------------------------------------
     // Core data fetch
     // --------------------------------------------------------
     const fetchData = useCallback(async () => {
         try {
-            const today = todayISTStart()
+            // "Today's revenue" = the CURRENT shift window (7am-7pm or 7pm-7am IST)
+            const shift = getCurrentShiftWindow()
+            setShiftLabel(shift.displayLabel)
             const now = nowISO()
 
             // Determine which hotel IDs to query
@@ -150,17 +150,19 @@ export function CommandCenter({ hotelId, hotels, staffId }: AdminTabProps) {
                     .in('hotel_id', targetHotelIds)
                     .eq('status', 'PENDING'),
 
-                // Today's payments (via bookings created/checked-in today)
+                // Current shift's payments (via bookings created/checked-in this shift)
                 supabase
                     .from('payments')
                     .select('total_paid, booking:booking_id!inner(status, unit:units!inner(hotel_id))')
-                    .gte('created_at', today),
+                    .gte('created_at', shift.start)
+                    .lte('created_at', shift.end),
 
-                // Today's bookings with advance_amount (Rule #1)
+                // Current shift's bookings with advance_amount (Rule #1)
                 supabase
                     .from('bookings')
                     .select('advance_amount, advance_type, unit:units!inner(hotel_id)')
-                    .gte('created_at', today)
+                    .gte('created_at', shift.start)
+                    .lte('created_at', shift.end)
                     .gt('advance_amount', 0),
             ])
 
@@ -411,14 +413,14 @@ export function CommandCenter({ hotelId, hotels, staffId }: AdminTabProps) {
                 <Card className="border-violet-500/10 shadow-sm bg-white overflow-hidden relative group">
                     <div className="absolute inset-x-0 bottom-0 h-1 bg-violet-500 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-slate-500">Today&apos;s Revenue</CardTitle>
+                        <CardTitle className="text-sm font-medium text-slate-500">Current Shift Revenue</CardTitle>
                         <DollarSign className="h-4 w-4 text-violet-500" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-3xl font-bold text-slate-900">
                             {'\u20B9'}{kpi.todayRevenue.toLocaleString('en-IN')}
                         </div>
-                        <p className="text-xs text-slate-500 mt-1">Payments collected today</p>
+                        <p className="text-xs text-slate-500 mt-1">{shiftLabel}</p>
                     </CardContent>
                 </Card>
 
