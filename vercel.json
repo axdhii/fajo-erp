@@ -19,6 +19,10 @@
         {
             "path": "/api/cron/selfie-cleanup",
             "schedule": "0 4 * * *"
+        },
+        {
+            "path": "/api/cron/shift-reports-cleanup",
+            "schedule": "0 22 * * *"
         }
     ]
 }
