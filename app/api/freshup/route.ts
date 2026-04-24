@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
         const body = await request.json()
 
         const {
+            hotel_id: bodyHotelId,
             guest_name, guest_phone, guest_count, payment_method,
             aadhar_url, aadhar_url_front, aadhar_url_back, ac_type,
             guest_name_2, guest_phone_2, aadhar_url_front_2, aadhar_url_back_2,
@@ -75,10 +76,10 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Payment method must be CASH or DIGITAL' }, { status: 400 })
         }
 
-        // Look up staff profile for attribution
+        // Look up staff profile for attribution + role gating
         const { data: staffProfile } = await supabase
             .from('staff')
-            .select('id, hotel_id')
+            .select('id, hotel_id, role')
             .eq('user_id', auth.userId)
             .single()
 
@@ -86,14 +87,28 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Staff profile not found' }, { status: 403 })
         }
 
+        // Resolve target hotel id — Admin/Developer may record freshup for any hotel
+        // via the global hotel switcher (client sends `hotel_id`); other roles are
+        // pinned to their assigned hotel. This prevents a cross-hotel mode/price
+        // mismatch where the UI shows Aluva pricing but the server derives config
+        // from the staff's home hotel (e.g. Kaloor).
+        const isAdminOrDev = staffProfile.role === 'Admin' || staffProfile.role === 'Developer'
+        const targetHotelId = (isAdminOrDev && typeof bodyHotelId === 'string' && bodyHotelId)
+            ? bodyHotelId
+            : staffProfile.hotel_id
+
         // Fetch hotel freshup config for per-hotel pricing
         const { data: hotel } = await supabase
             .from('hotels')
             .select('freshup_mode, freshup_person_price, freshup_ac_price, freshup_nonac_price, freshup_max_guests')
-            .eq('id', staffProfile.hotel_id)
+            .eq('id', targetHotelId)
             .single()
 
-        const freshupMode = hotel?.freshup_mode || 'PERSON'
+        if (!hotel) {
+            return NextResponse.json({ error: 'Hotel not found' }, { status: 404 })
+        }
+
+        const freshupMode = hotel.freshup_mode || 'PERSON'
 
         let amount: number
         if (freshupMode === 'ROOM') {
@@ -103,10 +118,10 @@ export async function POST(request: NextRequest) {
             }
             // Room-based: price depends on AC type
             amount = ac_type === 'AC'
-                ? Number(hotel?.freshup_ac_price || 799)
-                : Number(hotel?.freshup_nonac_price || 699)
+                ? Number(hotel.freshup_ac_price || 799)
+                : Number(hotel.freshup_nonac_price || 699)
             // Enforce max guests
-            const maxGuests = hotel?.freshup_max_guests || 2
+            const maxGuests = hotel.freshup_max_guests || 2
             if (count > maxGuests) {
                 return NextResponse.json({ error: `Maximum ${maxGuests} guests allowed for room freshup` }, { status: 400 })
             }
@@ -114,14 +129,25 @@ export async function POST(request: NextRequest) {
             if (count >= 2 && !guest_name_2?.trim()) {
                 return NextResponse.json({ error: 'Guest 2 name is required for 2-guest room freshup' }, { status: 400 })
             }
+            // Reject Guest 2 fields when count === 1 — UI shouldn't send them
+            // but a stale form or direct API call could smuggle them in
+            if (count === 1 && (guest_name_2 || guest_phone_2 || aadhar_url_front_2 || aadhar_url_back_2)) {
+                return NextResponse.json({ error: 'Guest 2 fields are not valid for a 1-guest room freshup' }, { status: 400 })
+            }
         } else {
             // Person-based: price per guest
-            amount = count * Number(hotel?.freshup_person_price || 100)
+            amount = count * Number(hotel.freshup_person_price || 100)
         }
 
         // Guest 2 is only valid for ROOM mode. Reject in PERSON mode.
         if (freshupMode === 'PERSON' && (guest_name_2 || guest_phone_2 || aadhar_url_front_2 || aadhar_url_back_2)) {
             return NextResponse.json({ error: 'Guest 2 fields are not valid for person-mode freshup' }, { status: 400 })
+        }
+
+        // ac_type is only valid in ROOM mode. Reject in PERSON mode to prevent
+        // schema-CHECK violations and accidental ROOM pricing on PERSON hotels.
+        if (freshupMode === 'PERSON' && ac_type) {
+            return NextResponse.json({ error: 'ac_type is not valid for person-mode freshup' }, { status: 400 })
         }
 
         // Validate guest 2 if provided (ROOM mode with 2 guests)
@@ -139,7 +165,7 @@ export async function POST(request: NextRequest) {
         const { data, error } = await supabase
             .from('freshup')
             .insert({
-                hotel_id: staffProfile.hotel_id,
+                hotel_id: targetHotelId,
                 guest_name: guest_name.trim(),
                 // DB column is `phone`, not `guest_phone` — inserting into the wrong
                 // name silently fails with 42703 and leaves the table empty.
@@ -166,7 +192,7 @@ export async function POST(request: NextRequest) {
                 message: error.message,
                 details: (error as { details?: string }).details,
                 hint: (error as { hint?: string }).hint,
-                hotel_id: staffProfile.hotel_id,
+                hotel_id: targetHotelId,
             })
             return NextResponse.json({ error: error.message || 'Failed to create freshup record' }, { status: 500 })
         }

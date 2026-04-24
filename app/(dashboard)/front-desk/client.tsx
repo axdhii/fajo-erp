@@ -385,6 +385,11 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
+                    // Send the UI-targeted hotel so an Admin/Developer on the global
+                    // switcher records freshup against the hotel they're viewing
+                    // (matches pricing/mode shown in the form). Server ignores this
+                    // for non-Admin/Developer roles and pins to the assigned hotel.
+                    hotel_id: effectiveHotelId,
                     guest_name: freshupName.trim(),
                     guest_phone: digits,
                     guest_count: freshupCount,
