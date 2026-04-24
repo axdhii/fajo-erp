@@ -537,6 +537,7 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
 
     // Record Incident
     const handleRecordIncident = async () => {
+        if (loading) return
         if (!incidentStaffId) { toast.error('Select a staff member'); return }
         setLoading(true)
         try {

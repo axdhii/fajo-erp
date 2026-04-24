@@ -2,7 +2,7 @@
     "name": "FAJO ERP - Hotel Management",
     "short_name": "FAJO ERP",
     "description": "Real-time hotel operations management system",
-    "start_url": "/login",
+    "start_url": "/",
     "display": "standalone",
     "background_color": "#0f172a",
     "theme_color": "#0f172a",

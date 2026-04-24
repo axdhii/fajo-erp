@@ -66,6 +66,7 @@ export function ExtendSheet({ unit, open, onOpenChange, onSuccess }: ExtendSheet
 
     const handleSubmit = async () => {
         if (!booking) return
+        if (isSubmitting) return
 
         setIsSubmitting(true)
         setConflictError(null)

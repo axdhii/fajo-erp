@@ -42,6 +42,7 @@ export function MaintenanceSheet({
     const isInMaintenance = unit.status === 'MAINTENANCE'
 
     const handleSetMaintenance = async () => {
+        if (isProcessing) return
         if (!reason.trim()) {
             toast.error('Please provide a reason for maintenance')
             return
@@ -69,6 +70,7 @@ export function MaintenanceSheet({
     }
 
     const handleClearMaintenance = async () => {
+        if (isProcessing) return
         setIsProcessing(true)
         try {
             const res = await fetch('/api/overrides/force-status', {
