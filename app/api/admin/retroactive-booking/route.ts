@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { calculateBookingPrice } from '@/lib/pricing'
+import { checkConflict } from '@/lib/conflict'
 import type { UnitType } from '@/lib/types'
 
 interface GuestInput {
@@ -108,6 +109,24 @@ export async function POST(request: NextRequest) {
 
         const unitMaxGuests = unit.max_guests || 3
         const days = Math.max(1, Math.ceil((checkOutDate.getTime() - checkInDate.getTime()) / 86400000))
+
+        // Conflict check — even retroactively, two bookings can't occupy the same
+        // unit in overlapping windows. If admin's paper register conflicts with
+        // an existing system booking, return 409 so they can resolve manually.
+        const conflict = await checkConflict({
+            unitId,
+            checkIn: checkInDate,
+            checkOut: checkOutDate,
+        })
+        if (conflict.hasConflict) {
+            return NextResponse.json(
+                {
+                    error: `Conflicts with ${conflict.conflictingBookings.length} existing booking(s) for ${unit.unit_number}. Resolve those before retroactive entry.`,
+                    conflicts: conflict.conflictingBookings,
+                },
+                { status: 409 }
+            )
+        }
         const perDayBase = Number(unit.base_price)
         const totalBase = perDayBase * days
         const pricing = calculateBookingPrice(unit.type as UnitType, totalBase, guests.length, unitMaxGuests)

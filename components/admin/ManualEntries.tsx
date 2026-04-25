@@ -382,6 +382,22 @@ function RetroactiveBookingModal({ open, onClose, onSuccess, hotelId, hotelName 
             .then(({ data }) => setUnits((data as UnitOption[]) || []))
     }, [open, hotelId])
 
+    // Live preview of expected total. Server is the source of truth — this is
+    // a hint so admin can match cash+digital before submitting.
+    const selectedUnit = units.find(u => u.id === unitId)
+    const previewDays = (() => {
+        if (!checkInAt || !checkOutAt) return 0
+        const ci = new Date(checkInAt).getTime()
+        const co = new Date(checkOutAt).getTime()
+        if (Number.isNaN(ci) || Number.isNaN(co) || co <= ci) return 0
+        return Math.max(1, Math.ceil((co - ci) / 86400000))
+    })()
+    const previewTotal = selectedUnit && previewDays > 0
+        ? Number(selectedUnit.base_price) * previewDays
+        : 0
+    const enteredTotal = (Number(cash) || 0) + (Number(digital) || 0)
+    const totalsMatch = previewTotal > 0 && Math.abs(enteredTotal - previewTotal) < 0.01
+
     const reset = () => {
         setUnitId('')
         setCheckInAt(nowLocal())
@@ -488,9 +504,30 @@ function RetroactiveBookingModal({ open, onClose, onSuccess, hotelId, hotelName 
                             <Input type="number" min="0" step="1" value={digital} onChange={(e) => setDigital(e.target.value)} placeholder="0" className="mt-1" />
                         </div>
                     </div>
-                    <div className="text-xs text-slate-500 italic">
-                        Total payment must equal the booking grand total (calculated server-side from unit base price × days).
-                    </div>
+                    {selectedUnit && previewDays > 0 && (
+                        <div className={`rounded-md px-3 py-2 text-xs border ${totalsMatch ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-amber-50 border-amber-200 text-amber-800'}`}>
+                            <div className="flex justify-between">
+                                <span>{previewDays} day{previewDays === 1 ? '' : 's'} × ₹{selectedUnit.base_price}</span>
+                                <strong>{inr(previewTotal)}</strong>
+                            </div>
+                            <div className="flex justify-between mt-1">
+                                <span>You entered</span>
+                                <strong>{inr(enteredTotal)}</strong>
+                            </div>
+                            {!totalsMatch && enteredTotal > 0 && (
+                                <div className="mt-1 text-[10px]">
+                                    {enteredTotal < previewTotal
+                                        ? `Short by ${inr(previewTotal - enteredTotal)}`
+                                        : `Over by ${inr(enteredTotal - previewTotal)}`}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    {(!selectedUnit || previewDays === 0) && (
+                        <div className="text-xs text-slate-500 italic">
+                            Total payment must equal the booking grand total (calculated server-side from unit base price × days).
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex justify-end gap-2 mt-2">
