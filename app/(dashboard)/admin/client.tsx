@@ -37,6 +37,7 @@ import { HROverview } from '@/components/admin/HROverview'
 import { ReservationsOverview } from '@/components/admin/ReservationsOverview'
 import { AadharArchive } from '@/components/admin/AadharArchive'
 import { ReportsOverview } from '@/components/admin/ReportsOverview'
+import { ManualEntries } from '@/components/admin/ManualEntries'
 
 // ============================================================
 // Shared props interface for all admin tab components
@@ -50,7 +51,7 @@ export interface AdminTabProps {
 // ============================================================
 // Tab definitions
 // ============================================================
-type TabKey = 'command' | 'guests' | 'live' | 'staff' | 'financials' | 'ops' | 'hr' | 'reservations' | 'reports'
+type TabKey = 'command' | 'guests' | 'live' | 'staff' | 'financials' | 'manual' | 'ops' | 'hr' | 'reservations' | 'reports'
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
     { key: 'command',         label: 'Command Center',   icon: <LayoutDashboard className="h-4 w-4" /> },
@@ -58,6 +59,7 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode }[] = [
     { key: 'live',            label: 'Live Occupancy',   icon: <Eye className="h-4 w-4" /> },
     { key: 'staff',           label: 'Staff',            icon: <UserCog className="h-4 w-4" /> },
     { key: 'financials',      label: 'Financials',       icon: <DollarSign className="h-4 w-4" /> },
+    { key: 'manual',          label: 'Manual Entries',   icon: <ClipboardList className="h-4 w-4" /> },
     { key: 'ops',             label: 'Operations',       icon: <Wrench className="h-4 w-4" /> },
     { key: 'hr',              label: 'HR & Payroll',     icon: <Briefcase className="h-4 w-4" /> },
     { key: 'reservations',    label: 'Reservations',     icon: <Calendar className="h-4 w-4" /> },
@@ -200,6 +202,7 @@ export function AdminClient({ hotelId, staffId }: AdminClientProps) {
                 {tab === 'live'         && <LiveOccupancy {...tabProps} />}
                 {tab === 'staff'        && <StaffManager {...tabProps} />}
                 {tab === 'financials'   && <Financials {...tabProps} />}
+                {tab === 'manual'       && <ManualEntries {...tabProps} />}
                 {tab === 'ops'          && <OpsOverview {...tabProps} />}
                 {tab === 'hr'           && <HROverview {...tabProps} />}
                 {tab === 'reservations'    && <ReservationsOverview {...tabProps} />}

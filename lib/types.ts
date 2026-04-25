@@ -359,6 +359,26 @@ export interface StaffNote {
 }
 
 // ============================================================
+// Manual Revenue Entry (register reconciliation when CRE is on leave)
+// ============================================================
+
+export type ManualRevenueKind = 'CHECKIN' | 'CHECKOUT' | 'FRESHUP' | 'EXTRAS' | 'OTHER'
+
+export interface ManualRevenueEntry {
+    id: string
+    hotel_id: string
+    amount_cash: number
+    amount_digital: number
+    transaction_kind: ManualRevenueKind
+    description: string | null
+    transaction_at: string
+    entered_by: string | null
+    entered_at: string
+    created_at: string
+    staff?: { name: string | null } | null
+}
+
+// ============================================================
 // Property Reports Types
 // ============================================================
 

@@ -249,20 +249,45 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             const monthFreshup = sumCashDigital(monthFreshupRes.data as CashDigitalRow[])
             const rangeFreshup = sumCashDigital(rangeFreshupRes.data as CashDigitalRow[])
 
+            // Query manual_revenue_entries for each date range. Filter on
+            // `transaction_at` (when the money was collected per the paper
+            // register), not `created_at` (when admin typed it in).
+            const manualSelect = 'amount_cash, amount_digital, hotel_id, transaction_at'
+            const [todayManualRes, monthManualRes, rangeManualRes] = await Promise.all([
+                supabase.from('manual_revenue_entries').select(manualSelect).gte('transaction_at', shift.start).lte('transaction_at', shift.end),
+                supabase.from('manual_revenue_entries').select(manualSelect).gte('transaction_at', monthStart + 'T00:00:00+05:30'),
+                supabase.from('manual_revenue_entries').select(manualSelect).gte('transaction_at', `${dateFrom}T${timeFrom}:00+05:30`).lte('transaction_at', `${dateTo}T${timeTo}:59+05:30`),
+            ])
+
+            type ManualRow = { amount_cash: number; amount_digital: number; hotel_id: string }
+            const sumManual = (rows: ManualRow[] | null) => {
+                if (!rows) return { cash: 0, digital: 0, total: 0 }
+                const filtered = hotelId ? rows.filter(r => r.hotel_id === hotelId) : rows
+                let cash = 0, digital = 0
+                for (const r of filtered) {
+                    cash += Number(r.amount_cash || 0)
+                    digital += Number(r.amount_digital || 0)
+                }
+                return { cash, digital, total: cash + digital }
+            }
+            const todayManual = sumManual(todayManualRes.data as ManualRow[])
+            const monthManual = sumManual(monthManualRes.data as ManualRow[])
+            const rangeManual = sumManual(rangeManualRes.data as ManualRow[])
+
             setTodayRevenue({
-                cash: todayPay.cash + todayAdv.cash + todayExtras.cash + todayFreshup.cash,
-                digital: todayPay.digital + todayAdv.digital + todayExtras.digital + todayFreshup.digital,
-                total: todayPay.total + todayAdv.total + todayExtras.total + todayFreshup.total,
+                cash: todayPay.cash + todayAdv.cash + todayExtras.cash + todayFreshup.cash + todayManual.cash,
+                digital: todayPay.digital + todayAdv.digital + todayExtras.digital + todayFreshup.digital + todayManual.digital,
+                total: todayPay.total + todayAdv.total + todayExtras.total + todayFreshup.total + todayManual.total,
             })
             setMonthRevenue({
-                cash: monthPay.cash + monthAdv.cash + monthExtras.cash + monthFreshup.cash,
-                digital: monthPay.digital + monthAdv.digital + monthExtras.digital + monthFreshup.digital,
-                total: monthPay.total + monthAdv.total + monthExtras.total + monthFreshup.total,
+                cash: monthPay.cash + monthAdv.cash + monthExtras.cash + monthFreshup.cash + monthManual.cash,
+                digital: monthPay.digital + monthAdv.digital + monthExtras.digital + monthFreshup.digital + monthManual.digital,
+                total: monthPay.total + monthAdv.total + monthExtras.total + monthFreshup.total + monthManual.total,
             })
             setRangeRevenue({
-                cash: rangePay.cash + rangeAdv.cash + rangeExtras.cash + rangeFreshup.cash,
-                digital: rangePay.digital + rangeAdv.digital + rangeExtras.digital + rangeFreshup.digital,
-                total: rangePay.total + rangeAdv.total + rangeExtras.total + rangeFreshup.total,
+                cash: rangePay.cash + rangeAdv.cash + rangeExtras.cash + rangeFreshup.cash + rangeManual.cash,
+                digital: rangePay.digital + rangeAdv.digital + rangeExtras.digital + rangeFreshup.digital + rangeManual.digital,
+                total: rangePay.total + rangeAdv.total + rangeExtras.total + rangeFreshup.total + rangeManual.total,
             })
 
             // Per-hotel revenue breakdown (from range dates)
@@ -310,6 +335,17 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                     if (f.payment_method === 'DIGITAL') perHotel[hid].digital += amt
                     else perHotel[hid].cash += amt
                     perHotel[hid].total += amt
+                }
+            }
+            // Add manual revenue entries to per-hotel breakdown
+            for (const m of (rangeManualRes.data || []) as ManualRow[]) {
+                const hid = m.hotel_id
+                if (hid && perHotel[hid]) {
+                    const cashAmt = Number(m.amount_cash || 0)
+                    const digAmt = Number(m.amount_digital || 0)
+                    perHotel[hid].cash += cashAmt
+                    perHotel[hid].digital += digAmt
+                    perHotel[hid].total += cashAmt + digAmt
                 }
             }
             setHotelRevenues(Object.values(perHotel))
