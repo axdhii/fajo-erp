@@ -23,9 +23,8 @@ CREATE INDEX IF NOT EXISTS idx_manual_rev_entered_by
 
 ALTER TABLE public.manual_revenue_entries ENABLE ROW LEVEL SECURITY;
 
--- Permissive read+insert. Absence of UPDATE/DELETE policies makes the table
--- append-only at the RLS level. Corrections go through the Developer Override
--- Console (which uses the service-role key and bypasses RLS).
+-- SELECT + INSERT: permissive (matches the rest of the app's permissive RLS
+-- model — route-level role gates are the real enforcement).
 DROP POLICY IF EXISTS "manual_rev_select" ON public.manual_revenue_entries;
 CREATE POLICY "manual_rev_select" ON public.manual_revenue_entries
   FOR SELECT USING (true);
@@ -33,3 +32,19 @@ CREATE POLICY "manual_rev_select" ON public.manual_revenue_entries
 DROP POLICY IF EXISTS "manual_rev_insert" ON public.manual_revenue_entries;
 CREATE POLICY "manual_rev_insert" ON public.manual_revenue_entries
   FOR INSERT WITH CHECK (true);
+
+-- UPDATE + DELETE: gated to Developer role only. Provides a real correction
+-- path via the Developer Override Console (which goes through the cookie-auth
+-- client — RLS still applies — so we need an explicit policy that allows it).
+-- Front-desk / HR / etc. cannot edit or delete manual revenue rows; effectively
+-- append-only for everyone except the Developer.
+DROP POLICY IF EXISTS "manual_rev_update_dev" ON public.manual_revenue_entries;
+CREATE POLICY "manual_rev_update_dev" ON public.manual_revenue_entries
+  FOR UPDATE
+  USING (EXISTS (SELECT 1 FROM public.staff WHERE user_id = auth.uid() AND role = 'Developer'))
+  WITH CHECK (EXISTS (SELECT 1 FROM public.staff WHERE user_id = auth.uid() AND role = 'Developer'));
+
+DROP POLICY IF EXISTS "manual_rev_delete_dev" ON public.manual_revenue_entries;
+CREATE POLICY "manual_rev_delete_dev" ON public.manual_revenue_entries
+  FOR DELETE
+  USING (EXISTS (SELECT 1 FROM public.staff WHERE user_id = auth.uid() AND role = 'Developer'));

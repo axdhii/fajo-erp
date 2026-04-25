@@ -124,13 +124,19 @@ export async function POST(request: NextRequest) {
             .single()
 
         if (error) {
+            const e = error as { code?: string; message?: string; details?: string; hint?: string }
+            // Log full error server-side; surface a friendly message to the client.
+            // Special-case the "table not found" error so admins know to apply the
+            // migration rather than seeing a cryptic Postgres relation error.
             console.error('Manual revenue insert error:', {
-                code: (error as { code?: string }).code,
-                message: error.message,
-                details: (error as { details?: string }).details,
-                hint: (error as { hint?: string }).hint,
+                code: e.code, message: e.message, details: e.details, hint: e.hint,
             })
-            return NextResponse.json({ error: error.message || 'Failed to record manual revenue entry' }, { status: 500 })
+            if (e.code === '42P01') {
+                return NextResponse.json({
+                    error: 'Manual revenue table not yet created. Ask developer to apply db/manual_revenue_entries.sql migration.',
+                }, { status: 500 })
+            }
+            return NextResponse.json({ error: 'Failed to record manual revenue entry' }, { status: 500 })
         }
 
         return NextResponse.json({ data, success: true })

@@ -6,6 +6,7 @@ import { requireAuth } from '@/lib/auth'
 const ALLOWED_TABLES = [
     'bookings', 'payments', 'guests', 'attendance', 'freshup', 'booking_extras',
     'staff', 'payroll', 'staff_incidents', 'property_expenses',
+    'manual_revenue_entries',
 ] as const
 type AllowedTable = typeof ALLOWED_TABLES[number]
 

@@ -109,6 +109,9 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
     const [rptDormsSold, setRptDormsSold] = useState(0)
     const [rptDormsCash, setRptDormsCash] = useState(0)
     const [rptDormsDigital, setRptDormsDigital] = useState(0)
+    const [rptManualCount, setRptManualCount] = useState(0)
+    const [rptManualCash, setRptManualCash] = useState(0)
+    const [rptManualDigital, setRptManualDigital] = useState(0)
     const [rptNotes, setRptNotes] = useState('')
     const [rptHotelName, setRptHotelName] = useState('')
     const [rptFromDisplay, setRptFromDisplay] = useState('')
@@ -469,6 +472,25 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
 
             const roomRev = calcRev(rooms)
             const dormRev = calcRev(dorms)
+
+            // Manual revenue entries from the same window — register reconciliation
+            // money (CRE-on-leave) belongs in the report alongside booking revenue.
+            // Filter on `transaction_at` (when the money was collected) not
+            // `created_at` (when admin typed it in).
+            let manualQuery = supabase
+                .from('manual_revenue_entries')
+                .select('amount_cash, amount_digital, hotel_id')
+                .gte('transaction_at', fromIST)
+                .lte('transaction_at', toIST)
+            if (hotelId) manualQuery = manualQuery.eq('hotel_id', hotelId)
+            const { data: manualRows } = await manualQuery
+            type ManualRow = { amount_cash: number; amount_digital: number; hotel_id: string }
+            let manualCash = 0, manualDigital = 0
+            for (const r of (manualRows || []) as ManualRow[]) {
+                manualCash += Number(r.amount_cash || 0)
+                manualDigital += Number(r.amount_digital || 0)
+            }
+
             const hn = hotelId ? hotels.find(h => h.id === hotelId)?.name || 'Hotel' : 'ALL PROPERTIES'
             const fd = new Date(fromIST).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
             const td = new Date(toIST).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
@@ -480,6 +502,9 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             setRptDormsSold(dorms.length)
             setRptDormsCash(dormRev.cash)
             setRptDormsDigital(dormRev.digital)
+            setRptManualCount((manualRows || []).length)
+            setRptManualCash(manualCash)
+            setRptManualDigital(manualDigital)
             setRptHotelName(hn)
             setRptFromDisplay(fd)
             setRptToDisplay(td)
@@ -497,13 +522,15 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
     const handleDownloadFromModal = () => {
         const fmt = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
         const genAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
-        const grandCash = rptRoomsCash + rptDormsCash
-        const grandDigital = rptRoomsDigital + rptDormsDigital
+        const hasManual = rptManualCount > 0 || rptManualCash > 0 || rptManualDigital > 0
+        const grandCash = rptRoomsCash + rptDormsCash + rptManualCash
+        const grandDigital = rptRoomsDigital + rptDormsDigital + rptManualDigital
         const grandTotal = grandCash + grandDigital
         const notesHeight = rptNotes ? 40 : 0
+        const manualHeight = hasManual ? 100 : 0
 
         const canvas = document.createElement('canvas')
-        const W = 800, H = 600 + notesHeight
+        const W = 800, H = 600 + notesHeight + manualHeight
         canvas.width = W * 2
         canvas.height = H * 2
         const ctx = canvas.getContext('2d')!
@@ -544,20 +571,40 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
         drawCard(40, 145, 350, 140, 'Rooms', rptRoomsSold, 'units sold', rptRoomsCash, rptRoomsDigital, '#d1fae5', '#f0fdf4', '#059669')
         drawCard(410, 145, 350, 140, 'Dorms', rptDormsSold, 'beds sold', rptDormsCash, rptDormsDigital, '#dbeafe', '#eff6ff', '#2563eb')
 
-        ctx.fillStyle = '#f5f3ff'; ctx.beginPath(); ctx.roundRect(40, 310, 720, 150, 12); ctx.fill()
+        // Manual entries strip — only rendered when there's data to show.
+        let cursorY = 310
+        if (hasManual) {
+            ctx.fillStyle = '#fef3c7'; ctx.beginPath(); ctx.roundRect(40, cursorY, 720, 90, 12); ctx.fill()
+            ctx.strokeStyle = '#fcd34d'; ctx.lineWidth = 2; ctx.stroke()
+            ctx.textAlign = 'left'; ctx.fillStyle = '#92400e'; ctx.font = 'bold 11px system-ui, sans-serif'
+            ctx.fillText(`MANUAL ENTRIES (${rptManualCount} record${rptManualCount === 1 ? '' : 's'} from register)`, 60, cursorY + 22)
+            ctx.fillStyle = '#78350f'; ctx.font = '10px system-ui, sans-serif'
+            ctx.fillText('Reconciliation: paper-register transactions when CRE was on leave', 60, cursorY + 38)
+            ctx.font = 'bold 9px system-ui, sans-serif'
+            ctx.fillStyle = '#16a34a'; ctx.fillText('CASH', 200, cursorY + 62)
+            ctx.fillStyle = '#2563eb'; ctx.fillText('DIGITAL', 420, cursorY + 62)
+            ctx.fillStyle = '#7c2d12'; ctx.fillText('SUBTOTAL', 620, cursorY + 62)
+            ctx.font = 'bold 16px system-ui, sans-serif'
+            ctx.fillStyle = '#15803d'; ctx.fillText(fmt(rptManualCash), 200, cursorY + 80)
+            ctx.fillStyle = '#1d4ed8'; ctx.fillText(fmt(rptManualDigital), 420, cursorY + 80)
+            ctx.fillStyle = '#92400e'; ctx.fillText(fmt(rptManualCash + rptManualDigital), 620, cursorY + 80)
+            cursorY += 105
+        }
+
+        ctx.fillStyle = '#f5f3ff'; ctx.beginPath(); ctx.roundRect(40, cursorY, 720, 150, 12); ctx.fill()
         ctx.strokeStyle = '#c4b5fd'; ctx.lineWidth = 3; ctx.stroke()
         ctx.textAlign = 'center'; ctx.fillStyle = '#7c3aed'; ctx.font = 'bold 11px system-ui, sans-serif'
-        ctx.fillText('GRAND TOTAL', W / 2, 335)
+        ctx.fillText('GRAND TOTAL', W / 2, cursorY + 25)
         ctx.fillStyle = '#5b21b6'; ctx.font = 'bold 38px system-ui, sans-serif'
-        ctx.fillText(fmt(grandTotal), W / 2, 380)
+        ctx.fillText(fmt(grandTotal), W / 2, cursorY + 70)
         ctx.font = 'bold 10px system-ui, sans-serif'
-        ctx.fillStyle = '#16a34a'; ctx.fillText('TOTAL CASH', W / 2 - 120, 410)
-        ctx.fillStyle = '#2563eb'; ctx.fillText('TOTAL DIGITAL', W / 2 + 120, 410)
+        ctx.fillStyle = '#16a34a'; ctx.fillText('TOTAL CASH', W / 2 - 120, cursorY + 100)
+        ctx.fillStyle = '#2563eb'; ctx.fillText('TOTAL DIGITAL', W / 2 + 120, cursorY + 100)
         ctx.font = 'bold 18px system-ui, sans-serif'
-        ctx.fillStyle = '#15803d'; ctx.fillText(fmt(grandCash), W / 2 - 120, 435)
-        ctx.fillStyle = '#1d4ed8'; ctx.fillText(fmt(grandDigital), W / 2 + 120, 435)
+        ctx.fillStyle = '#15803d'; ctx.fillText(fmt(grandCash), W / 2 - 120, cursorY + 125)
+        ctx.fillStyle = '#1d4ed8'; ctx.fillText(fmt(grandDigital), W / 2 + 120, cursorY + 125)
 
-        let footerY = 490
+        let footerY = cursorY + 180
         if (rptNotes) {
             ctx.fillStyle = '#64748b'; ctx.font = '11px system-ui, sans-serif'; ctx.textAlign = 'center'
             ctx.fillText(rptNotes.substring(0, 80), W / 2, footerY + 5)
@@ -576,7 +623,7 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
         setReportModalOpen(false)
     }
 
-    const rptGrandTotal = rptRoomsCash + rptRoomsDigital + rptDormsCash + rptDormsDigital
+    const rptGrandTotal = rptRoomsCash + rptRoomsDigital + rptDormsCash + rptDormsDigital + rptManualCash + rptManualDigital
     const rptFmt = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
 
     // ── Effects ──
@@ -941,6 +988,17 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                             </div>
                         </div>
 
+                        {(rptManualCount > 0 || rptManualCash > 0 || rptManualDigital > 0) && (
+                            <div className="border border-amber-200 rounded-xl p-3 bg-amber-50/30">
+                                <p className="text-xs font-bold text-amber-700 mb-2">MANUAL ENTRIES (register reconciliation)</p>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div><Label className="text-[10px]">Records</Label><Input type="number" min={0} value={rptManualCount} onChange={e => setRptManualCount(Number(e.target.value) || 0)} className="h-8 text-sm" /></div>
+                                    <div><Label className="text-[10px]">Cash (₹)</Label><Input type="number" min={0} value={rptManualCash} onChange={e => setRptManualCash(Number(e.target.value) || 0)} className="h-8 text-sm" /></div>
+                                    <div><Label className="text-[10px]">Digital (₹)</Label><Input type="number" min={0} value={rptManualDigital} onChange={e => setRptManualDigital(Number(e.target.value) || 0)} className="h-8 text-sm" /></div>
+                                </div>
+                            </div>
+                        )}
+
                         <div>
                             <Label className="text-xs text-slate-600">Notes (optional)</Label>
                             <textarea value={rptNotes} onChange={e => setRptNotes(e.target.value)} maxLength={80} placeholder="Add notes to the report..." rows={2} className="w-full mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-400/20 resize-none" />
@@ -950,8 +1008,8 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                             <p className="text-xs font-bold text-violet-600 mb-1">GRAND TOTAL</p>
                             <p className="text-2xl font-black text-violet-800">{rptFmt(rptGrandTotal)}</p>
                             <div className="flex justify-center gap-4 mt-1 text-xs">
-                                <span className="text-green-700 font-semibold">Cash: {rptFmt(rptRoomsCash + rptDormsCash)}</span>
-                                <span className="text-blue-700 font-semibold">Digital: {rptFmt(rptRoomsDigital + rptDormsDigital)}</span>
+                                <span className="text-green-700 font-semibold">Cash: {rptFmt(rptRoomsCash + rptDormsCash + rptManualCash)}</span>
+                                <span className="text-blue-700 font-semibold">Digital: {rptFmt(rptRoomsDigital + rptDormsDigital + rptManualDigital)}</span>
                             </div>
                         </div>
 

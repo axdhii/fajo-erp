@@ -66,15 +66,21 @@ export function ManualEntries({ hotelId, hotels }: AdminTabProps) {
     const targetHotelId = hotelId || hotels[0]?.id || ''
     const targetHotel = hotels.find(h => h.id === targetHotelId)
 
+    const [fetchError, setFetchError] = useState<string | null>(null)
     const fetchEntries = useCallback(async () => {
         if (!targetHotelId) return
         setLoadingEntries(true)
+        setFetchError(null)
         try {
             const res = await fetch(`/api/manual-revenue?hotel_id=${targetHotelId}&limit=50`)
             const json = await res.json()
-            if (res.ok) setEntries(json.data || [])
-        } catch {
-            // silent
+            if (res.ok) {
+                setEntries(json.data || [])
+            } else {
+                setFetchError(json.error || `Failed to load entries (HTTP ${res.status})`)
+            }
+        } catch (err) {
+            setFetchError(err instanceof Error ? err.message : 'Network error loading entries')
         } finally {
             setLoadingEntries(false)
         }
@@ -272,7 +278,12 @@ export function ManualEntries({ hotelId, hotels }: AdminTabProps) {
                     </Button>
                 </div>
 
-                {loadingEntries && entries.length === 0 ? (
+                {fetchError ? (
+                    <div className="py-10 text-center text-rose-600 text-sm">
+                        <p className="font-semibold">Failed to load entries</p>
+                        <p className="text-xs text-rose-500 mt-1 px-4">{fetchError}</p>
+                    </div>
+                ) : loadingEntries && entries.length === 0 ? (
                     <div className="py-10 text-center text-slate-400">
                         <Loader2 className="h-6 w-6 animate-spin mx-auto" />
                     </div>
@@ -374,6 +385,10 @@ function RetroactiveBookingModal({ open, onClose, onSuccess, hotelId, hotelName 
 
     useEffect(() => {
         if (!open || !hotelId) return
+        // Reset unitId whenever the hotel context changes — the previous unit
+        // belongs to the previous hotel, so submitting it would land in the
+        // wrong property. Server only validates unit existence, not hotel.
+        setUnitId('')
         supabase
             .from('units')
             .select('id, unit_number, type, base_price, max_guests')
