@@ -119,10 +119,23 @@ export function OverrideConsole() {
     const [expenseList, setExpenseList] = useState<Array<{ id: string; description: string; amount: number; category: string | null; status: string; created_at: string; rejection_reason: string | null }>>([])
 
     // ===== Recent bookings list =====
-    const [recentBookings, setRecentBookings] = useState<Array<{ id: string; status: string; check_in: string; grand_total: number; unit?: { unit_number: string } | null; guests?: Array<{ name: string }> | null }>>([])
+    // Same shape as ResultRow below — declared inline because TS can't forward-ref a type alias here.
+    const [recentBookings, setRecentBookings] = useState<Array<{
+        id: string; status: string; check_in: string; grand_total: number;
+        unit?: { unit_number: string; hotel?: { name: string } | null } | null;
+        guests?: Array<{ name: string; phone: string | null }> | null
+    }>>([])
 
     // ===== Search-result state — list of candidate bookings (one or many) =====
-    const [searchResults, setSearchResults] = useState<Array<{ id: string; status: string; check_in: string; grand_total: number; unit?: { unit_number: string } | null; guests?: Array<{ name: string }> | null }>>([])
+    type ResultRow = {
+        id: string
+        status: string
+        check_in: string
+        grand_total: number
+        unit?: { unit_number: string; hotel?: { name: string } | null } | null
+        guests?: Array<{ name: string; phone: string | null }> | null
+    }
+    const [searchResults, setSearchResults] = useState<ResultRow[]>([])
 
     // ===== Load a specific booking into the editor by id =====
     const loadBookingById = useCallback(async (id: string) => {
@@ -188,9 +201,10 @@ export function OverrideConsole() {
             return
         }
 
-        type ResultRow = { id: string; status: string; check_in: string; grand_total: number; unit?: { unit_number: string } | null; guests?: Array<{ name: string }> | null }
         const matches = new Map<string, ResultRow>()
-        const selectFields = 'id, status, check_in, grand_total, unit:units(unit_number), guests(name)'
+        // Fetch enough columns to disambiguate duplicates (e.g. multiple guests
+        // named "Habeeb"): check-in date, phone, hotel name, all guest names.
+        const selectFields = 'id, status, check_in, grand_total, unit:units(unit_number, hotel:hotels(name)), guests(name, phone)'
 
         // 1. UUID match — direct hit
         if (q.length >= 30) {
@@ -498,10 +512,14 @@ export function OverrideConsole() {
     const loadRecentBookings = useCallback(async () => {
         const { data } = await supabase
             .from('bookings')
-            .select('id, status, check_in, grand_total, unit:units(unit_number), guests(name)')
+            .select('id, status, check_in, grand_total, unit:units(unit_number, hotel:hotels(name)), guests(name, phone)')
             .order('created_at', { ascending: false })
             .limit(500)
-        setRecentBookings((data as unknown as Array<{ id: string; status: string; check_in: string; grand_total: number; unit?: { unit_number: string } | null; guests?: Array<{ name: string }> | null }>) || [])
+        setRecentBookings((data as unknown as Array<{
+            id: string; status: string; check_in: string; grand_total: number;
+            unit?: { unit_number: string; hotel?: { name: string } | null } | null;
+            guests?: Array<{ name: string; phone: string | null }> | null
+        }>) || [])
     }, [])
 
     // ===== Staff search =====
@@ -750,66 +768,85 @@ export function OverrideConsole() {
                         <p className="text-[10px] text-slate-400">Searches by partial name match (case-insensitive), exact 10-digit phone, exact unit number, or full booking UUID.</p>
                     </div>
 
-                    {/* Search results — multi-match picker */}
+                    {/* Search results — multi-match picker. Two-row layout: top row
+                        shows status / hotel·unit / check-in date / amount; bottom row
+                        shows ALL guests with their phones so duplicate names like
+                        "Habeeb Rahman" can be told apart by phone or stay date. */}
                     {!booking && searchResults.length > 0 && (
                         <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 space-y-2">
                             <div className="flex items-center justify-between mb-1">
                                 <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">{searchResults.length} matches — pick one</p>
                                 <Button size="sm" variant="ghost" onClick={() => setSearchResults([])} className="h-7 text-[10px]">Clear</Button>
                             </div>
-                            {searchResults.map(b => (
-                                <button
-                                    key={b.id}
-                                    onClick={() => loadBookingById(b.id)}
-                                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-white border border-amber-100 transition-colors text-left"
-                                >
-                                    <div className="flex items-center gap-3 min-w-0">
-                                        <span className="font-bold text-sm shrink-0">Unit {b.unit?.unit_number || '?'}</span>
-                                        <span className="text-xs text-slate-700 truncate">
-                                            {(b.guests || []).map(g => g.name).join(', ') || 'Unknown'}
-                                        </span>
-                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
-                                            b.status === 'CHECKED_IN' ? 'bg-emerald-100 text-emerald-700' :
-                                            b.status === 'CHECKED_OUT' ? 'bg-slate-200 text-slate-700' :
-                                            b.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
-                                            b.status === 'CONFIRMED' ? 'bg-blue-100 text-blue-700' :
-                                            'bg-red-100 text-red-700'
-                                        }`}>{b.status}</span>
-                                    </div>
-                                    <span className="text-xs text-slate-500 shrink-0 ml-2">₹{Number(b.grand_total).toLocaleString('en-IN')}</span>
-                                </button>
-                            ))}
+                            <div className="max-h-[480px] overflow-y-auto space-y-1.5 pr-1">
+                                {searchResults.map(b => (
+                                    <button
+                                        key={b.id}
+                                        onClick={() => loadBookingById(b.id)}
+                                        className="w-full px-3 py-2 rounded-lg hover:bg-white border border-amber-100 transition-colors text-left"
+                                    >
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
+                                                    b.status === 'CHECKED_IN' ? 'bg-emerald-100 text-emerald-700' :
+                                                    b.status === 'CHECKED_OUT' ? 'bg-slate-200 text-slate-700' :
+                                                    b.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
+                                                    b.status === 'CONFIRMED' ? 'bg-blue-100 text-blue-700' :
+                                                    'bg-red-100 text-red-700'
+                                                }`}>{b.status}</span>
+                                                <span className="text-[11px] font-bold text-slate-800 shrink-0">{b.unit?.hotel?.name ? `${b.unit.hotel.name} · ` : ''}Unit {b.unit?.unit_number || '?'}</span>
+                                                <span className="text-[10px] text-slate-500 shrink-0">
+                                                    {new Date(b.check_in).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })}
+                                                </span>
+                                            </div>
+                                            <span className="text-xs text-slate-700 font-semibold shrink-0">₹{Number(b.grand_total).toLocaleString('en-IN')}</span>
+                                        </div>
+                                        <div className="text-[11px] text-slate-700 mt-0.5 truncate">
+                                            {(b.guests && b.guests.length > 0)
+                                                ? b.guests.map(g => `${g.name}${g.phone ? ` (${g.phone})` : ''}`).join(' · ')
+                                                : <span className="text-slate-400 italic">No guest details</span>}
+                                        </div>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     )}
 
-                    {/* Recent Bookings list */}
+                    {/* Recent Bookings list — same two-row layout for consistency. */}
                     {!booking && searchResults.length === 0 && recentBookings.length > 0 && (
                         <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
                             <div className="flex items-center justify-between mb-1">
                                 <p className="text-xs font-bold text-slate-600 uppercase tracking-wider">Recent Bookings ({recentBookings.length})</p>
                                 <Button size="sm" variant="ghost" onClick={loadRecentBookings} className="h-7 text-[10px]">Refresh</Button>
                             </div>
-                            <div className="max-h-[420px] overflow-y-auto space-y-1.5 pr-1">
+                            <div className="max-h-[480px] overflow-y-auto space-y-1.5 pr-1">
                                 {recentBookings.map(b => (
                                     <button
                                         key={b.id}
                                         onClick={() => loadBookingById(b.id)}
-                                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 border border-slate-100 transition-colors text-left"
+                                        className="w-full px-3 py-2 rounded-lg hover:bg-slate-50 border border-slate-100 transition-colors text-left"
                                     >
-                                        <div className="flex items-center gap-3 min-w-0">
-                                            <span className="font-bold text-sm shrink-0">Unit {b.unit?.unit_number || '?'}</span>
-                                            <span className="text-xs text-slate-700 truncate">
-                                                {(b.guests || []).map(g => g.name).join(', ') || 'Unknown'}
-                                            </span>
-                                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
-                                                b.status === 'CHECKED_IN' ? 'bg-emerald-100 text-emerald-700' :
-                                                b.status === 'CHECKED_OUT' ? 'bg-slate-200 text-slate-700' :
-                                                b.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
-                                                b.status === 'CONFIRMED' ? 'bg-blue-100 text-blue-700' :
-                                                'bg-red-100 text-red-700'
-                                            }`}>{b.status}</span>
+                                        <div className="flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
+                                                    b.status === 'CHECKED_IN' ? 'bg-emerald-100 text-emerald-700' :
+                                                    b.status === 'CHECKED_OUT' ? 'bg-slate-200 text-slate-700' :
+                                                    b.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
+                                                    b.status === 'CONFIRMED' ? 'bg-blue-100 text-blue-700' :
+                                                    'bg-red-100 text-red-700'
+                                                }`}>{b.status}</span>
+                                                <span className="text-[11px] font-bold text-slate-800 shrink-0">{b.unit?.hotel?.name ? `${b.unit.hotel.name} · ` : ''}Unit {b.unit?.unit_number || '?'}</span>
+                                                <span className="text-[10px] text-slate-500 shrink-0">
+                                                    {new Date(b.check_in).toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric' })}
+                                                </span>
+                                            </div>
+                                            <span className="text-xs text-slate-700 font-semibold shrink-0">₹{Number(b.grand_total).toLocaleString('en-IN')}</span>
                                         </div>
-                                        <span className="text-xs text-slate-500 shrink-0 ml-2">₹{Number(b.grand_total).toLocaleString('en-IN')}</span>
+                                        <div className="text-[11px] text-slate-700 mt-0.5 truncate">
+                                            {(b.guests && b.guests.length > 0)
+                                                ? b.guests.map(g => `${g.name}${g.phone ? ` (${g.phone})` : ''}`).join(' · ')
+                                                : <span className="text-slate-400 italic">No guest details</span>}
+                                        </div>
                                     </button>
                                 ))}
                             </div>
