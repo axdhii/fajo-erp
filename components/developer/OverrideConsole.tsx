@@ -121,55 +121,23 @@ export function OverrideConsole() {
     // ===== Recent bookings list =====
     const [recentBookings, setRecentBookings] = useState<Array<{ id: string; status: string; check_in: string; grand_total: number; unit?: { unit_number: string } | null; guests?: Array<{ name: string }> | null }>>([])
 
-    // ===== Booking search =====
-    // Accepts an optional explicit query (for direct clicks); falls back to searchQuery state
-    const searchBooking = useCallback(async (explicitQuery?: string) => {
-        const q = (explicitQuery ?? searchQuery).trim()
-        if (!q) {
-            toast.error('Enter booking ID or unit number')
-            return
-        }
+    // ===== Search-result state — list of candidate bookings (one or many) =====
+    const [searchResults, setSearchResults] = useState<Array<{ id: string; status: string; check_in: string; grand_total: number; unit?: { unit_number: string } | null; guests?: Array<{ name: string }> | null }>>([])
 
-        // Try to find by booking id first, then by unit_number (search recent bookings for that unit)
-        let found: BookingRow | null = null
-
-        if (q.length >= 30) {
-            // UUID-like — try direct booking id lookup
-            const { data } = await supabase
-                .from('bookings')
-                .select('*, unit:units(unit_number, hotel_id)')
-                .eq('id', q)
-                .maybeSingle()
-            found = data as BookingRow | null
-        }
-
-        if (!found) {
-            // Search by unit number — find the most recent booking for that unit
-            const { data: unit } = await supabase
-                .from('units')
-                .select('id')
-                .eq('unit_number', q)
-                .maybeSingle()
-
-            if (unit) {
-                const { data } = await supabase
-                    .from('bookings')
-                    .select('*, unit:units(unit_number, hotel_id)')
-                    .eq('unit_id', unit.id)
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-                    .maybeSingle()
-                found = data as BookingRow | null
-            }
-        }
-
+    // ===== Load a specific booking into the editor by id =====
+    const loadBookingById = useCallback(async (id: string) => {
+        const { data } = await supabase
+            .from('bookings')
+            .select('*, unit:units(unit_number, hotel_id)')
+            .eq('id', id)
+            .maybeSingle()
+        const found = data as BookingRow | null
         if (!found) {
             toast.error('Booking not found')
-            setBooking(null)
             return
         }
-
         setBooking(found)
+        setSearchResults([]) // clear search list when a booking is loaded
         setBookingForm({
             check_in: found.check_in,
             check_out: found.check_out,
@@ -210,7 +178,81 @@ export function OverrideConsole() {
         setGuests((gs as GuestRow[]) || [])
 
         toast.success('Booking loaded')
-    }, [searchQuery])
+    }, [])
+
+    // ===== Booking search — accepts UUID, unit_number, 10-digit phone, or name fragment =====
+    const searchBooking = useCallback(async (explicitQuery?: string) => {
+        const q = (explicitQuery ?? searchQuery).trim()
+        if (!q) {
+            toast.error('Enter name, phone, unit number, or booking ID')
+            return
+        }
+
+        type ResultRow = { id: string; status: string; check_in: string; grand_total: number; unit?: { unit_number: string } | null; guests?: Array<{ name: string }> | null }
+        const matches = new Map<string, ResultRow>()
+        const selectFields = 'id, status, check_in, grand_total, unit:units(unit_number), guests(name)'
+
+        // 1. UUID match — direct hit
+        if (q.length >= 30) {
+            const { data } = await supabase
+                .from('bookings').select(selectFields).eq('id', q).maybeSingle()
+            if (data) {
+                const row = data as unknown as ResultRow
+                matches.set(row.id, row)
+            }
+        }
+
+        // 2. Unit number — return ALL bookings on that unit (recent first), not just the latest
+        const { data: unit } = await supabase
+            .from('units').select('id').eq('unit_number', q).maybeSingle()
+        if (unit) {
+            const { data } = await supabase
+                .from('bookings').select(selectFields)
+                .eq('unit_id', (unit as { id: string }).id)
+                .order('created_at', { ascending: false })
+                .limit(50)
+            for (const b of ((data || []) as unknown as ResultRow[])) matches.set(b.id, b)
+        }
+
+        // 3. 10-digit phone match
+        const phoneDigits = q.replace(/\D/g, '')
+        if (phoneDigits.length === 10) {
+            const { data: pgs } = await supabase
+                .from('guests').select('booking_id').eq('phone', phoneDigits).limit(100)
+            const ids = [...new Set(((pgs || []) as Array<{ booking_id: string }>).map(g => g.booking_id))]
+            if (ids.length > 0) {
+                const { data } = await supabase
+                    .from('bookings').select(selectFields).in('id', ids)
+                    .order('created_at', { ascending: false }).limit(50)
+                for (const b of ((data || []) as unknown as ResultRow[])) matches.set(b.id, b)
+            }
+        }
+
+        // 4. Name (case-insensitive contains)
+        const { data: ngs } = await supabase
+            .from('guests').select('booking_id').ilike('name', `%${q}%`).limit(200)
+        const nameIds = [...new Set(((ngs || []) as Array<{ booking_id: string }>).map(g => g.booking_id))]
+        if (nameIds.length > 0) {
+            const { data } = await supabase
+                .from('bookings').select(selectFields).in('id', nameIds)
+                .order('created_at', { ascending: false }).limit(100)
+            for (const b of ((data || []) as unknown as ResultRow[])) matches.set(b.id, b)
+        }
+
+        const results = Array.from(matches.values())
+        if (results.length === 0) {
+            toast.error('No bookings match your search')
+            setSearchResults([])
+            return
+        }
+        if (results.length === 1) {
+            setSearchResults([])
+            await loadBookingById(results[0].id)
+            return
+        }
+        setSearchResults(results)
+        toast.success(`Found ${results.length} bookings — pick one below`)
+    }, [searchQuery, loadBookingById])
 
     const saveBooking = async () => {
         if (!booking) return
@@ -451,12 +493,14 @@ export function OverrideConsole() {
     }
 
     // ===== Recent bookings (auto-load) =====
+    // Pulls a generous slice (500 rows) so older bookings stay reachable. Override
+    // Console is Developer-only and called rarely; the larger list is fine.
     const loadRecentBookings = useCallback(async () => {
         const { data } = await supabase
             .from('bookings')
             .select('id, status, check_in, grand_total, unit:units(unit_number), guests(name)')
             .order('created_at', { ascending: false })
-            .limit(30)
+            .limit(500)
         setRecentBookings((data as unknown as Array<{ id: string; status: string; check_in: string; grand_total: number; unit?: { unit_number: string } | null; guests?: Array<{ name: string }> | null }>) || [])
     }, [])
 
@@ -690,12 +734,12 @@ export function OverrideConsole() {
             {section === 'bookings' && (
                 <div className="space-y-4">
                     <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
-                        <Label className="text-xs font-semibold">Search by Booking ID or Unit Number</Label>
+                        <Label className="text-xs font-semibold">Search by guest name, phone, unit number, or booking ID</Label>
                         <div className="flex gap-2">
                             <Input
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
-                                placeholder="e.g. 101 or booking UUID"
+                                placeholder="e.g. Habeeb Rahman / 9876543210 / A12 / booking UUID"
                                 onKeyDown={(e) => { if (e.key === 'Enter') searchBooking() }}
                                 className="h-9 text-sm"
                             />
@@ -703,25 +747,28 @@ export function OverrideConsole() {
                                 <Search className="h-4 w-4" /> Search
                             </Button>
                         </div>
+                        <p className="text-[10px] text-slate-400">Searches by partial name match (case-insensitive), exact 10-digit phone, exact unit number, or full booking UUID.</p>
                     </div>
 
-                    {/* Recent Bookings list */}
-                    {!booking && recentBookings.length > 0 && (
-                        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
+                    {/* Search results — multi-match picker */}
+                    {!booking && searchResults.length > 0 && (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50/50 p-4 space-y-2">
                             <div className="flex items-center justify-between mb-1">
-                                <p className="text-xs font-bold text-slate-600 uppercase tracking-wider">Recent Bookings</p>
-                                <Button size="sm" variant="ghost" onClick={loadRecentBookings} className="h-7 text-[10px]">Refresh</Button>
+                                <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">{searchResults.length} matches — pick one</p>
+                                <Button size="sm" variant="ghost" onClick={() => setSearchResults([])} className="h-7 text-[10px]">Clear</Button>
                             </div>
-                            {recentBookings.map(b => (
+                            {searchResults.map(b => (
                                 <button
                                     key={b.id}
-                                    onClick={() => { setSearchQuery(b.id); searchBooking(b.id) }}
-                                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 border border-slate-100 transition-colors text-left"
+                                    onClick={() => loadBookingById(b.id)}
+                                    className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-white border border-amber-100 transition-colors text-left"
                                 >
-                                    <div className="flex items-center gap-3">
-                                        <span className="font-bold text-sm">Unit {b.unit?.unit_number || '?'}</span>
-                                        <span className="text-xs text-slate-500">{b.guests?.[0]?.name || 'Unknown'}</span>
-                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                                    <div className="flex items-center gap-3 min-w-0">
+                                        <span className="font-bold text-sm shrink-0">Unit {b.unit?.unit_number || '?'}</span>
+                                        <span className="text-xs text-slate-700 truncate">
+                                            {(b.guests || []).map(g => g.name).join(', ') || 'Unknown'}
+                                        </span>
+                                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
                                             b.status === 'CHECKED_IN' ? 'bg-emerald-100 text-emerald-700' :
                                             b.status === 'CHECKED_OUT' ? 'bg-slate-200 text-slate-700' :
                                             b.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
@@ -729,9 +776,43 @@ export function OverrideConsole() {
                                             'bg-red-100 text-red-700'
                                         }`}>{b.status}</span>
                                     </div>
-                                    <span className="text-xs text-slate-500">₹{Number(b.grand_total).toLocaleString('en-IN')}</span>
+                                    <span className="text-xs text-slate-500 shrink-0 ml-2">₹{Number(b.grand_total).toLocaleString('en-IN')}</span>
                                 </button>
                             ))}
+                        </div>
+                    )}
+
+                    {/* Recent Bookings list */}
+                    {!booking && searchResults.length === 0 && recentBookings.length > 0 && (
+                        <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-2">
+                            <div className="flex items-center justify-between mb-1">
+                                <p className="text-xs font-bold text-slate-600 uppercase tracking-wider">Recent Bookings ({recentBookings.length})</p>
+                                <Button size="sm" variant="ghost" onClick={loadRecentBookings} className="h-7 text-[10px]">Refresh</Button>
+                            </div>
+                            <div className="max-h-[420px] overflow-y-auto space-y-1.5 pr-1">
+                                {recentBookings.map(b => (
+                                    <button
+                                        key={b.id}
+                                        onClick={() => loadBookingById(b.id)}
+                                        className="w-full flex items-center justify-between px-3 py-2 rounded-lg hover:bg-slate-50 border border-slate-100 transition-colors text-left"
+                                    >
+                                        <div className="flex items-center gap-3 min-w-0">
+                                            <span className="font-bold text-sm shrink-0">Unit {b.unit?.unit_number || '?'}</span>
+                                            <span className="text-xs text-slate-700 truncate">
+                                                {(b.guests || []).map(g => g.name).join(', ') || 'Unknown'}
+                                            </span>
+                                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full shrink-0 ${
+                                                b.status === 'CHECKED_IN' ? 'bg-emerald-100 text-emerald-700' :
+                                                b.status === 'CHECKED_OUT' ? 'bg-slate-200 text-slate-700' :
+                                                b.status === 'PENDING' ? 'bg-amber-100 text-amber-700' :
+                                                b.status === 'CONFIRMED' ? 'bg-blue-100 text-blue-700' :
+                                                'bg-red-100 text-red-700'
+                                            }`}>{b.status}</span>
+                                        </div>
+                                        <span className="text-xs text-slate-500 shrink-0 ml-2">₹{Number(b.grand_total).toLocaleString('en-IN')}</span>
+                                    </button>
+                                ))}
+                            </div>
                         </div>
                     )}
 

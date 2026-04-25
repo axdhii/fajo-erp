@@ -80,11 +80,17 @@ export async function POST(request: NextRequest) {
             return NextResponse.json({ error: 'Invalid payment_at timestamp' }, { status: 400 })
         }
 
-        // Sanity-bound timestamps (no >1 year backdate, no >1 day future)
+        // Sanity-bound timestamps. check_in must not be more than 1 year in the
+        // past; check_out can be up to 30 days in the future to support entering
+        // a still-active stay (e.g. guest checked in 2 days ago, leaving 3 days
+        // from now, but admin is only entering the record now).
         const oneYearAgo = new Date(Date.now() - 365 * 86400000)
-        const oneDayAhead = new Date(Date.now() + 86400000)
-        if (checkInDate < oneYearAgo || checkOutDate > oneDayAhead) {
-            return NextResponse.json({ error: 'Booking timestamps must be within 1 year past and not more than 1 day in future' }, { status: 400 })
+        const thirtyDaysAhead = new Date(Date.now() + 30 * 86400000)
+        if (checkInDate < oneYearAgo) {
+            return NextResponse.json({ error: 'check_in_at cannot be more than 1 year in the past' }, { status: 400 })
+        }
+        if (checkOutDate > thirtyDaysAhead) {
+            return NextResponse.json({ error: 'check_out_at cannot be more than 30 days in the future' }, { status: 400 })
         }
 
         // Validate each guest has name + 10-digit phone
