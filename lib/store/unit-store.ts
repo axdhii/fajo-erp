@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { supabase } from '@/lib/supabase/client'
 import type { Unit, UnitStatus, Booking } from '@/lib/types'
+import { freshupLockWindowStart } from '@/lib/freshup'
 
 // Natural sort: 101 < 108 < A1 < A2 < A10 < A13 < A14 < A36
 function naturalSort(a: string, b: string): number {
@@ -16,6 +17,8 @@ function naturalSort(a: string, b: string): number {
 
 export interface UnitWithBooking extends Unit {
     active_booking?: Booking | null
+    /** Most recent freshup row that's still inside its 3-hour lock window. */
+    active_freshup?: { id: string; created_at: string; guest_name: string } | null
 }
 
 interface UnitState {
@@ -75,17 +78,36 @@ export const useUnitStore = create<UnitState>((set, get) => ({
         // Fetch active bookings with guests (filtered to this hotel's units)
         const unitIds = (unitsData || []).map((u: { id: string }) => u.id)
         const bookingsByUnit: Record<string, Booking> = {}
+        const freshupByUnit: Record<string, { id: string; created_at: string; guest_name: string }> = {}
 
         if (unitIds.length > 0) {
-            const { data: bookingsData } = await supabase
-                .from('bookings')
-                .select('*, guests(*)')
-                .eq('status', 'CHECKED_IN')
-                .in('unit_id', unitIds)
+            const [bookingsRes, freshupRes] = await Promise.all([
+                supabase
+                    .from('bookings')
+                    .select('*, guests(*)')
+                    .eq('status', 'CHECKED_IN')
+                    .in('unit_id', unitIds),
+                // Active freshup locks (within last 3 hours, ROOM-mode hotels)
+                supabase
+                    .from('freshup')
+                    .select('id, unit_id, created_at, guest_name')
+                    .eq('hotel_id', hotelId)
+                    .gte('created_at', freshupLockWindowStart())
+                    .not('unit_id', 'is', null)
+                    .order('created_at', { ascending: false }),
+            ])
 
-            if (bookingsData) {
-                for (const b of bookingsData) {
+            if (bookingsRes.data) {
+                for (const b of bookingsRes.data) {
                     bookingsByUnit[b.unit_id] = b as Booking
+                }
+            }
+            if (freshupRes.data) {
+                // Pick the most recent freshup per unit (already ordered desc)
+                for (const f of freshupRes.data as Array<{ id: string; unit_id: string; created_at: string; guest_name: string }>) {
+                    if (!freshupByUnit[f.unit_id]) {
+                        freshupByUnit[f.unit_id] = { id: f.id, created_at: f.created_at, guest_name: f.guest_name }
+                    }
                 }
             }
         }
@@ -93,6 +115,7 @@ export const useUnitStore = create<UnitState>((set, get) => ({
         const unitsWithBookings = (unitsData || []).map((unit) => ({
             ...unit,
             active_booking: bookingsByUnit[unit.id] || null,
+            active_freshup: freshupByUnit[unit.id] || null,
         })) as UnitWithBooking[]
 
         unitsWithBookings.sort((a, b) => naturalSort(a.unit_number, b.unit_number))
@@ -164,6 +187,22 @@ export const useUnitStore = create<UnitState>((set, get) => ({
                                 (u) => u.id !== payload.old.id
                             ),
                         }))
+                    }
+                }
+            )
+            // Listen for freshup inserts so the unit grid lights up the locked
+            // unit immediately (and competing freshup forms can react).
+            .on(
+                'postgres_changes',
+                {
+                    event: 'INSERT',
+                    schema: 'public',
+                    table: 'freshup',
+                    filter: `hotel_id=eq.${hotelId}`,
+                },
+                () => {
+                    if (withBookings) {
+                        get().fetchUnitsWithBookings(hotelId)
                     }
                 }
             )

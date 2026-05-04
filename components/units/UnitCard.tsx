@@ -14,7 +14,9 @@ import {
     BedSingle,
     Wrench,
     Clock,
+    Droplets,
 } from 'lucide-react'
+import { freshupEndsAt } from '@/lib/freshup'
 
 interface UnitCardProps {
     unit: UnitWithBooking
@@ -115,6 +117,15 @@ export function UnitCard({ unit, onClick, now }: UnitCardProps) {
     const guestName = unit.active_booking?.guests?.[0]?.name
     const dormLabel = isDorm ? getDormBedLabel(unit) : null
 
+    // Active freshup overlay — when present, the unit is locked for 3 hours
+    // even if its DB status is AVAILABLE (or anything other than CHECKED_IN).
+    // Display takes precedence over default sublabels but doesn't change the
+    // status colour for AVAILABLE / DIRTY / etc., to keep consistency.
+    const activeFreshup = unit.active_freshup
+    const freshupEndsLabel = activeFreshup
+        ? freshupEndsAt(activeFreshup).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true })
+        : null
+
     // Calculate checkout alert for occupied units
     const checkoutAlert: CheckoutAlert | null =
         unit.status === 'OCCUPIED' && unit.active_booking?.check_out && now
@@ -162,11 +173,13 @@ export function UnitCard({ unit, onClick, now }: UnitCardProps) {
             </CardHeader>
             <CardContent className="px-4 pb-4 pt-1">
                 <p className="text-[11px] text-muted-foreground font-medium">
-                    {unit.status === 'OCCUPIED' && guestName
-                        ? guestName
-                        : unit.status === 'MAINTENANCE' && unit.maintenance_reason
-                            ? unit.maintenance_reason
-                            : config.sublabel}
+                    {activeFreshup
+                        ? <span className="inline-flex items-center gap-1 text-cyan-700"><Droplets className="h-3 w-3" /> Freshup until {freshupEndsLabel}</span>
+                        : unit.status === 'OCCUPIED' && guestName
+                            ? guestName
+                            : unit.status === 'MAINTENANCE' && unit.maintenance_reason
+                                ? unit.maintenance_reason
+                                : config.sublabel}
                 </p>
 
                 {/* Checkout Alert Badge */}

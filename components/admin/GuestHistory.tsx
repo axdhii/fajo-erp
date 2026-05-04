@@ -41,6 +41,21 @@ import type { AdminTabProps } from '@/app/(dashboard)/admin/client'
 // Types
 // ============================================================
 
+interface FreshupHistoryRow {
+    id: string
+    guest_name: string
+    guest_name_2: string | null
+    phone: string | null
+    guest_phone_2: string | null
+    guest_count: number
+    amount: number
+    payment_method: 'CASH' | 'DIGITAL' | string
+    ac_type: string | null
+    created_at: string
+    unit: { unit_number: string } | null
+    staff: { name: string | null } | null
+}
+
 interface BookingRow {
     id: string
     check_in: string
@@ -174,6 +189,7 @@ function PaymentMethodIcon({ method }: { method: string }) {
 
 export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
     const [bookings, setBookings] = useState<BookingRow[]>([])
+    const [freshups, setFreshups] = useState<FreshupHistoryRow[]>([])
     const [totalCount, setTotalCount] = useState(0)
     const [page, setPage] = useState(0)
     const [loading, setLoading] = useState(false)
@@ -325,6 +341,27 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
 
             setBookings((data || []) as unknown as BookingRow[])
             setTotalCount(count || 0)
+
+            // Parallel: fetch freshup rows in the same window (page 0 only, since
+            // freshups are typically <50 per day per hotel — no separate paging).
+            if (page === 0) {
+                let fq = supabase
+                    .from('freshup')
+                    .select('id, guest_name, guest_name_2, phone, guest_phone_2, guest_count, amount, payment_method, ac_type, created_at, unit:units(unit_number), staff:created_by(name)')
+                    .order('created_at', { ascending: false })
+                    .limit(100)
+                if (hotelId) fq = fq.eq('hotel_id', hotelId)
+                if (dateFrom) fq = fq.gte('created_at', dateFrom + 'T00:00:00+05:30')
+                if (dateTo) fq = fq.lte('created_at', dateTo + 'T23:59:59+05:30')
+                if (debouncedSearch) {
+                    const term = debouncedSearch.toLowerCase()
+                    fq = fq.or(`guest_name.ilike.%${term}%,phone.ilike.%${term}%,guest_name_2.ilike.%${term}%,guest_phone_2.ilike.%${term}%`)
+                }
+                const { data: freshupData } = await fq
+                setFreshups((freshupData || []) as unknown as FreshupHistoryRow[])
+            } else {
+                setFreshups([])
+            }
         } finally {
             setLoading(false)
         }
@@ -422,18 +459,58 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
                 </Select>
             </div>
 
+            {/* ==================== Freshup history (page 0 only) ==================== */}
+            {!loading && freshups.length > 0 && (
+                <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Freshups in this period</span>
+                        <span className="text-[10px] text-slate-400">{freshups.length} record{freshups.length === 1 ? '' : 's'}</span>
+                    </div>
+                    {freshups.map(f => {
+                        const guestNames = [f.guest_name, f.guest_name_2].filter(Boolean).join(', ')
+                        const guestPhones = [f.phone, f.guest_phone_2].filter(Boolean).join(', ')
+                        return (
+                            <div key={`f-${f.id}`} className="bg-amber-50/40 rounded-xl border border-amber-200 px-4 py-3">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                    <Badge variant="outline" className="text-[9px] font-bold px-1.5 py-0 bg-amber-100 text-amber-700 border-amber-300">FRESHUP</Badge>
+                                    <span className="font-bold text-sm text-slate-900">{f.unit?.unit_number || '—'}</span>
+                                    {f.ac_type && (
+                                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${f.ac_type === 'AC' ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-600'}`}>{f.ac_type === 'AC' ? 'AC' : 'Non-AC'}</span>
+                                    )}
+                                    <span className="text-[11px] text-slate-400 ml-auto">{formatDateIST(f.created_at)}</span>
+                                </div>
+                                <div className="flex items-center gap-3 mt-1.5 text-[11px] text-slate-600 flex-wrap">
+                                    <span className="flex items-center gap-1 truncate"><User className="h-3 w-3 text-slate-400 shrink-0" />{guestNames || '—'}</span>
+                                    <span className="flex items-center gap-1 text-slate-400 shrink-0"><Phone className="h-3 w-3" />{guestPhones || '—'}</span>
+                                    <span className="ml-auto font-semibold text-slate-700">₹{Number(f.amount).toLocaleString('en-IN')} {f.payment_method}</span>
+                                </div>
+                                {f.staff?.name && (
+                                    <div className="mt-1 text-[10px] text-slate-400">Recorded by {f.staff.name}</div>
+                                )}
+                            </div>
+                        )
+                    })}
+                    <div className="border-t border-slate-200 my-3" />
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Bookings</div>
+                </div>
+            )}
+
             {/* ==================== Results ==================== */}
             {loading ? (
                 <div className="flex items-center justify-center py-20">
                     <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
                     <span className="ml-2 text-sm text-slate-400">Loading bookings...</span>
                 </div>
-            ) : bookings.length === 0 ? (
+            ) : bookings.length === 0 && freshups.length === 0 ? (
                 <div className="text-center py-20">
                     <User className="h-10 w-10 mx-auto text-slate-300 mb-3" />
                     <p className="text-sm text-slate-400">
-                        {debouncedSearch ? 'No bookings match your search.' : 'No booking records found.'}
+                        {debouncedSearch ? 'No bookings or freshups match your search.' : 'No records found.'}
                     </p>
+                </div>
+            ) : bookings.length === 0 ? (
+                <div className="text-center py-10">
+                    <p className="text-sm text-slate-400">No booking records (freshups shown above).</p>
                 </div>
             ) : (
                 <div className="space-y-2">

@@ -31,11 +31,21 @@ interface PaymentRow {
     amount_digital: number
     total_paid: number
     created_at: string
-    booking: {
+    /** 'booking' for the regular payments ledger row, 'freshup' for a freshup
+     * payment merged from the freshup table. */
+    _source?: 'booking' | 'freshup'
+    booking?: {
         unit_id: string
         guests: { name: string }[]
         unit: { unit_number: string; hotel_id: string }
-    }
+    } | null
+    /** Populated on freshup-source rows: derived guest name + unit + payment method. */
+    freshup?: {
+        guest_name: string
+        guest_name_2: string | null
+        payment_method: string
+        unit: { unit_number: string } | null
+    } | null
 }
 
 interface OutstandingRow {
@@ -112,6 +122,9 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
     const [rptManualCount, setRptManualCount] = useState(0)
     const [rptManualCash, setRptManualCash] = useState(0)
     const [rptManualDigital, setRptManualDigital] = useState(0)
+    const [rptFreshupCount, setRptFreshupCount] = useState(0)
+    const [rptFreshupCash, setRptFreshupCash] = useState(0)
+    const [rptFreshupDigital, setRptFreshupDigital] = useState(0)
     const [rptNotes, setRptNotes] = useState('')
     const [rptHotelName, setRptHotelName] = useState('')
     const [rptFromDisplay, setRptFromDisplay] = useState('')
@@ -506,16 +519,65 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             query = query.eq('booking.unit.hotel_id', hotelId)
         }
 
-        const { data, error } = await query
+        // Parallel: freshup rows in the same window. Only included on page 0
+        // (freshups are typically <50/day; merging into per-page bookings
+        // pagination would require interleaved server queries).
+        const freshupPromise = page === 0
+            ? (async () => {
+                let fq = supabase
+                    .from('freshup')
+                    .select('id, guest_name, guest_name_2, amount, payment_method, created_at, unit:units(unit_number, hotel_id)')
+                    .order('created_at', { ascending: false })
+                    .gte('created_at', fromIso)
+                    .lte('created_at', toIso)
+                    .limit(100)
+                if (hotelId) fq = fq.eq('hotel_id', hotelId)
+                const { data } = await fq
+                return data || []
+            })()
+            : Promise.resolve([])
+
+        const [{ data, error }, freshupRows] = await Promise.all([query, freshupPromise])
 
         if (error) {
             console.error('Payments fetch error:', error)
             return
         }
 
-        const rows = (data || []) as unknown as PaymentRow[]
-        setPayments(rows)
-        setHasMore(rows.length === PAGE_SIZE)
+        const bookingRows = ((data || []) as unknown as PaymentRow[]).map(r => ({ ...r, _source: 'booking' as const }))
+        type FreshupRowRaw = {
+            id: string
+            guest_name: string
+            guest_name_2: string | null
+            amount: number
+            payment_method: string
+            created_at: string
+            unit: { unit_number: string; hotel_id: string } | null
+        }
+        const freshupAsLedger: PaymentRow[] = (freshupRows as unknown as FreshupRowRaw[]).map((f) => {
+            const isCash = f.payment_method !== 'DIGITAL'
+            return {
+                id: `f-${f.id}`,
+                amount_cash: isCash ? Number(f.amount || 0) : 0,
+                amount_digital: !isCash ? Number(f.amount || 0) : 0,
+                total_paid: Number(f.amount || 0),
+                created_at: f.created_at,
+                _source: 'freshup' as const,
+                booking: null,
+                freshup: {
+                    guest_name: f.guest_name,
+                    guest_name_2: f.guest_name_2,
+                    payment_method: f.payment_method,
+                    unit: f.unit ? { unit_number: f.unit.unit_number } : null,
+                },
+            }
+        })
+
+        const merged = [...bookingRows, ...freshupAsLedger].sort((a, b) =>
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+        )
+        setPayments(merged)
+        setHasMore(bookingRows.length === PAGE_SIZE)
     }, [hotelId, dateFrom, dateTo, timeFrom, timeTo, page])
 
     // ── Step 1: Generate Report (query data, open preview modal) ──
@@ -584,6 +646,22 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                 manualDigital += Number(r.amount_digital || 0)
             }
 
+            // Freshup totals for the same window — owner wants this on the PNG.
+            let freshupQuery = supabase
+                .from('freshup')
+                .select('amount, payment_method, hotel_id')
+                .gte('created_at', fromIST)
+                .lte('created_at', toIST)
+            if (hotelId) freshupQuery = freshupQuery.eq('hotel_id', hotelId)
+            const { data: freshupRows } = await freshupQuery
+            type FreshupRowRaw = { amount: number; payment_method: string; hotel_id: string }
+            let freshupCash = 0, freshupDigital = 0
+            for (const r of (freshupRows || []) as FreshupRowRaw[]) {
+                const amt = Number(r.amount || 0)
+                if (r.payment_method === 'DIGITAL') freshupDigital += amt
+                else freshupCash += amt
+            }
+
             const hn = hotelId ? hotels.find(h => h.id === hotelId)?.name || 'Hotel' : 'ALL PROPERTIES'
             const fd = new Date(fromIST).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
             const td = new Date(toIST).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
@@ -598,6 +676,9 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             setRptManualCount((manualRows || []).length)
             setRptManualCash(manualCash)
             setRptManualDigital(manualDigital)
+            setRptFreshupCount((freshupRows || []).length)
+            setRptFreshupCash(freshupCash)
+            setRptFreshupDigital(freshupDigital)
             setRptHotelName(hn)
             setRptFromDisplay(fd)
             setRptToDisplay(td)
@@ -616,14 +697,16 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
         const fmt = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
         const genAt = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: true })
         const hasManual = rptManualCount > 0 || rptManualCash > 0 || rptManualDigital > 0
-        const grandCash = rptRoomsCash + rptDormsCash + rptManualCash
-        const grandDigital = rptRoomsDigital + rptDormsDigital + rptManualDigital
+        const hasFreshup = rptFreshupCount > 0 || rptFreshupCash > 0 || rptFreshupDigital > 0
+        const grandCash = rptRoomsCash + rptDormsCash + rptManualCash + rptFreshupCash
+        const grandDigital = rptRoomsDigital + rptDormsDigital + rptManualDigital + rptFreshupDigital
         const grandTotal = grandCash + grandDigital
         const notesHeight = rptNotes ? 40 : 0
         const manualHeight = hasManual ? 100 : 0
+        const freshupHeight = hasFreshup ? 100 : 0
 
         const canvas = document.createElement('canvas')
-        const W = 800, H = 600 + notesHeight + manualHeight
+        const W = 800, H = 600 + notesHeight + manualHeight + freshupHeight
         canvas.width = W * 2
         canvas.height = H * 2
         const ctx = canvas.getContext('2d')!
@@ -684,6 +767,25 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             cursorY += 105
         }
 
+        // Freshup strip — same layout as manual entries, cyan tint.
+        if (hasFreshup) {
+            ctx.fillStyle = '#cffafe'; ctx.beginPath(); ctx.roundRect(40, cursorY, 720, 90, 12); ctx.fill()
+            ctx.strokeStyle = '#67e8f9'; ctx.lineWidth = 2; ctx.stroke()
+            ctx.textAlign = 'left'; ctx.fillStyle = '#155e75'; ctx.font = 'bold 11px system-ui, sans-serif'
+            ctx.fillText(`FRESHUP (${rptFreshupCount} record${rptFreshupCount === 1 ? '' : 's'})`, 60, cursorY + 22)
+            ctx.fillStyle = '#0e7490'; ctx.font = '10px system-ui, sans-serif'
+            ctx.fillText('Walk-in transit-room freshups', 60, cursorY + 38)
+            ctx.font = 'bold 9px system-ui, sans-serif'
+            ctx.fillStyle = '#16a34a'; ctx.fillText('CASH', 200, cursorY + 62)
+            ctx.fillStyle = '#2563eb'; ctx.fillText('DIGITAL', 420, cursorY + 62)
+            ctx.fillStyle = '#155e75'; ctx.fillText('SUBTOTAL', 620, cursorY + 62)
+            ctx.font = 'bold 16px system-ui, sans-serif'
+            ctx.fillStyle = '#15803d'; ctx.fillText(fmt(rptFreshupCash), 200, cursorY + 80)
+            ctx.fillStyle = '#1d4ed8'; ctx.fillText(fmt(rptFreshupDigital), 420, cursorY + 80)
+            ctx.fillStyle = '#155e75'; ctx.fillText(fmt(rptFreshupCash + rptFreshupDigital), 620, cursorY + 80)
+            cursorY += 105
+        }
+
         ctx.fillStyle = '#f5f3ff'; ctx.beginPath(); ctx.roundRect(40, cursorY, 720, 150, 12); ctx.fill()
         ctx.strokeStyle = '#c4b5fd'; ctx.lineWidth = 3; ctx.stroke()
         ctx.textAlign = 'center'; ctx.fillStyle = '#7c3aed'; ctx.font = 'bold 11px system-ui, sans-serif'
@@ -716,7 +818,7 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
         setReportModalOpen(false)
     }
 
-    const rptGrandTotal = rptRoomsCash + rptRoomsDigital + rptDormsCash + rptDormsDigital + rptManualCash + rptManualDigital
+    const rptGrandTotal = rptRoomsCash + rptRoomsDigital + rptDormsCash + rptDormsDigital + rptManualCash + rptManualDigital + rptFreshupCash + rptFreshupDigital
     const rptFmt = (n: number) => new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
 
     // ── Effects ──
@@ -1026,6 +1128,7 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                                     <thead>
                                         <tr className="border-b border-slate-200 bg-slate-50">
                                             <th className="text-left py-2 px-4 font-medium text-slate-600">Date (IST)</th>
+                                            <th className="text-left py-2 px-4 font-medium text-slate-600">Source</th>
                                             <th className="text-left py-2 px-4 font-medium text-slate-600">Unit</th>
                                             <th className="text-left py-2 px-4 font-medium text-slate-600">Guest</th>
                                             <th className="text-right py-2 px-4 font-medium text-slate-600">Cash</th>
@@ -1034,28 +1137,40 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {payments.map(p => (
-                                            <tr key={p.id} className="border-b border-slate-100 hover:bg-slate-50/50">
-                                                <td className="py-2 px-4 text-slate-500 text-xs whitespace-nowrap">
-                                                    {formatDateIST(p.created_at)}
-                                                </td>
-                                                <td className="py-2 px-4 font-mono text-slate-800">
-                                                    {p.booking?.unit?.unit_number || '-'}
-                                                </td>
-                                                <td className="py-2 px-4 text-slate-700">
-                                                    {p.booking?.guests?.[0]?.name || '-'}
-                                                </td>
-                                                <td className="py-2 px-4 text-right text-slate-600">
-                                                    {Number(p.amount_cash) > 0 ? formatINR(Number(p.amount_cash)) : '-'}
-                                                </td>
-                                                <td className="py-2 px-4 text-right text-slate-600">
-                                                    {Number(p.amount_digital) > 0 ? formatINR(Number(p.amount_digital)) : '-'}
-                                                </td>
-                                                <td className="py-2 px-4 text-right font-semibold text-emerald-700">
-                                                    {formatINR(Number(p.total_paid))}
-                                                </td>
-                                            </tr>
-                                        ))}
+                                        {payments.map(p => {
+                                            const isFreshup = p._source === 'freshup'
+                                            const unitNumber = isFreshup
+                                                ? (p.freshup?.unit?.unit_number || '—')
+                                                : (p.booking?.unit?.unit_number || '-')
+                                            const guestName = isFreshup
+                                                ? [p.freshup?.guest_name, p.freshup?.guest_name_2].filter(Boolean).join(', ') || '—'
+                                                : (p.booking?.guests?.[0]?.name || '-')
+                                            return (
+                                                <tr key={p.id} className={`border-b border-slate-100 hover:bg-slate-50/50 ${isFreshup ? 'bg-amber-50/40' : ''}`}>
+                                                    <td className="py-2 px-4 text-slate-500 text-xs whitespace-nowrap">
+                                                        {formatDateIST(p.created_at)}
+                                                    </td>
+                                                    <td className="py-2 px-4">
+                                                        {isFreshup ? (
+                                                            <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700">freshup</span>
+                                                        ) : (
+                                                            <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600">booking</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="py-2 px-4 font-mono text-slate-800">{unitNumber}</td>
+                                                    <td className="py-2 px-4 text-slate-700">{guestName}</td>
+                                                    <td className="py-2 px-4 text-right text-slate-600">
+                                                        {Number(p.amount_cash) > 0 ? formatINR(Number(p.amount_cash)) : '-'}
+                                                    </td>
+                                                    <td className="py-2 px-4 text-right text-slate-600">
+                                                        {Number(p.amount_digital) > 0 ? formatINR(Number(p.amount_digital)) : '-'}
+                                                    </td>
+                                                    <td className="py-2 px-4 text-right font-semibold text-emerald-700">
+                                                        {formatINR(Number(p.total_paid))}
+                                                    </td>
+                                                </tr>
+                                            )
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
@@ -1129,6 +1244,17 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                             </div>
                         )}
 
+                        {(rptFreshupCount > 0 || rptFreshupCash > 0 || rptFreshupDigital > 0) && (
+                            <div className="border border-cyan-200 rounded-xl p-3 bg-cyan-50/30">
+                                <p className="text-xs font-bold text-cyan-700 mb-2">FRESHUP (transit-room walk-ins)</p>
+                                <div className="grid grid-cols-3 gap-2">
+                                    <div><Label className="text-[10px]">Records</Label><Input type="number" min={0} value={rptFreshupCount} onChange={e => setRptFreshupCount(Number(e.target.value) || 0)} className="h-8 text-sm" /></div>
+                                    <div><Label className="text-[10px]">Cash (₹)</Label><Input type="number" min={0} value={rptFreshupCash} onChange={e => setRptFreshupCash(Number(e.target.value) || 0)} className="h-8 text-sm" /></div>
+                                    <div><Label className="text-[10px]">Digital (₹)</Label><Input type="number" min={0} value={rptFreshupDigital} onChange={e => setRptFreshupDigital(Number(e.target.value) || 0)} className="h-8 text-sm" /></div>
+                                </div>
+                            </div>
+                        )}
+
                         <div>
                             <Label className="text-xs text-slate-600">Notes (optional)</Label>
                             <textarea value={rptNotes} onChange={e => setRptNotes(e.target.value)} maxLength={80} placeholder="Add notes to the report..." rows={2} className="w-full mt-1 rounded-lg border border-slate-200 px-3 py-2 text-sm outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-400/20 resize-none" />
@@ -1138,8 +1264,8 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                             <p className="text-xs font-bold text-violet-600 mb-1">GRAND TOTAL</p>
                             <p className="text-2xl font-black text-violet-800">{rptFmt(rptGrandTotal)}</p>
                             <div className="flex justify-center gap-4 mt-1 text-xs">
-                                <span className="text-green-700 font-semibold">Cash: {rptFmt(rptRoomsCash + rptDormsCash + rptManualCash)}</span>
-                                <span className="text-blue-700 font-semibold">Digital: {rptFmt(rptRoomsDigital + rptDormsDigital + rptManualDigital)}</span>
+                                <span className="text-green-700 font-semibold">Cash: {rptFmt(rptRoomsCash + rptDormsCash + rptManualCash + rptFreshupCash)}</span>
+                                <span className="text-blue-700 font-semibold">Digital: {rptFmt(rptRoomsDigital + rptDormsDigital + rptManualDigital + rptFreshupDigital)}</span>
                             </div>
                         </div>
 

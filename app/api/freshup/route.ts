@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
 import { requireHotelScope } from '@/lib/hotel-scope'
+import { freshupLockWindowStart, freshupEndsAt } from '@/lib/freshup'
 
 // GET /api/freshup — list freshup records by hotel_id + optional date range
 export async function GET(request: NextRequest) {
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
         // Alias: DB column is `phone` but consumers expect `guest_phone`. Expose both.
         let query = supabase
             .from('freshup')
-            .select('*, guest_phone:phone, staff:created_by(name)')
+            .select('*, guest_phone:phone, staff:created_by(name), unit:units(unit_number, ac_type)')
             .eq('hotel_id', scope.hotelId)
             .order('created_at', { ascending: false })
 
@@ -54,6 +55,7 @@ export async function POST(request: NextRequest) {
 
         const {
             hotel_id: bodyHotelId,
+            unit_id,
             guest_name, guest_phone, guest_count, payment_method,
             aadhar_url, aadhar_url_front, aadhar_url_back, ac_type,
             guest_name_2, guest_phone_2, aadhar_url_front_2, aadhar_url_back_2,
@@ -163,10 +165,59 @@ export async function POST(request: NextRequest) {
             }
         }
 
+        // Unit assignment + conflict checks. Aluva (ROOM mode) requires a unit;
+        // Kaloor (PERSON mode) ignores unit_id and stores NULL.
+        let resolvedUnitId: string | null = null
+        if (freshupMode === 'ROOM') {
+            if (!unit_id || typeof unit_id !== 'string') {
+                return NextResponse.json({ error: 'unit_id is required for room freshup — pick a room' }, { status: 400 })
+            }
+            // Verify unit belongs to this hotel
+            const { data: unitRow } = await supabase
+                .from('units')
+                .select('id, hotel_id, unit_number')
+                .eq('id', unit_id)
+                .single()
+            if (!unitRow || unitRow.hotel_id !== targetHotelId) {
+                return NextResponse.json({ error: 'Unit not found or does not belong to this hotel' }, { status: 400 })
+            }
+            // Reject if another freshup already locks this unit
+            const { data: activeFreshup } = await supabase
+                .from('freshup')
+                .select('id, created_at')
+                .eq('unit_id', unit_id)
+                .gte('created_at', freshupLockWindowStart())
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle()
+            if (activeFreshup) {
+                const endsAt = freshupEndsAt(activeFreshup as { created_at: string })
+                const endsStr = endsAt.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true })
+                return NextResponse.json({
+                    error: `Unit ${unitRow.unit_number} is already in a freshup until ${endsStr}.`,
+                }, { status: 409 })
+            }
+            // Reject if unit has an active CHECKED_IN booking
+            const { data: activeBooking } = await supabase
+                .from('bookings')
+                .select('id')
+                .eq('unit_id', unit_id)
+                .eq('status', 'CHECKED_IN')
+                .limit(1)
+                .maybeSingle()
+            if (activeBooking) {
+                return NextResponse.json({
+                    error: `Unit ${unitRow.unit_number} has an active check-in. Cannot record freshup on an occupied room.`,
+                }, { status: 409 })
+            }
+            resolvedUnitId = unit_id
+        }
+
         const { data, error } = await supabase
             .from('freshup')
             .insert({
                 hotel_id: targetHotelId,
+                unit_id: resolvedUnitId,
                 guest_name: guest_name.trim(),
                 // DB column is `phone`, not `guest_phone` — inserting into the wrong
                 // name silently fails with 42703 and leaves the table empty.

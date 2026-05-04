@@ -4,6 +4,7 @@ import { calculateBookingPrice } from '@/lib/pricing'
 import { checkConflict, calculateCheckOut } from '@/lib/conflict'
 import { getDevNow } from '@/lib/dev-time'
 import { requireAuth } from '@/lib/auth'
+import { freshupLockWindowStart, freshupEndsAt } from '@/lib/freshup'
 import type { UnitType, GuestInput } from '@/lib/types'
 
 // POST /api/bookings — Walk-in Check-in (with conflict check)
@@ -106,6 +107,24 @@ export async function POST(request: NextRequest) {
                     },
                     { status: 409 }
                 )
+            }
+
+            // Block check-in if a freshup is currently locking this unit (same
+            // 3-hour window guard the freshup API uses on insert).
+            const { data: activeFreshup } = await supabase
+                .from('freshup')
+                .select('id, created_at')
+                .eq('unit_id', unitId)
+                .gte('created_at', freshupLockWindowStart())
+                .order('created_at', { ascending: false })
+                .limit(1)
+                .maybeSingle()
+            if (activeFreshup) {
+                const endsAt = freshupEndsAt(activeFreshup as { created_at: string })
+                const endsStr = endsAt.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true })
+                return NextResponse.json({
+                    error: `Unit ${unit.unit_number} is in a freshup until ${endsStr}; check-in blocked.`,
+                }, { status: 409 })
             }
         } else {
             // Auto-cancel conflicting reservations when bypass is enabled

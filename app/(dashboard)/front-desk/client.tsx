@@ -42,6 +42,7 @@ import {
     Camera,
 } from 'lucide-react'
 import type { AadharMatch } from '@/lib/utils/merge-aadhar'
+import { freshupEndsAt } from '@/lib/freshup'
 import { RestockSheet as RestockForm } from '@/components/units/RestockSheet'
 
 interface FrontDeskClientProps {
@@ -102,6 +103,7 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
     const [freshupNonacPrice, setFreshupNonacPrice] = useState(699)
     const [freshupMaxGuests, setFreshupMaxGuests] = useState<number | null>(null)
     const [freshupAcType, setFreshupAcType] = useState<'AC' | 'NON_AC'>('AC')
+    const [freshupUnitId, setFreshupUnitId] = useState<string>('')
 
     // Freshup Aadhar state (Guest 1)
     const [freshupAadharFront, setFreshupAadharFront] = useState<Blob | null>(null)
@@ -366,6 +368,12 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
             return
         }
 
+        // ROOM mode (Aluva) — must pick a unit. The unit will be locked for 3h.
+        if (freshupMode === 'ROOM' && !freshupUnitId) {
+            toast.error('Please pick a room — it will be locked for the next 3 hours')
+            return
+        }
+
         // For ROOM mode with 2 guests, validate guest 2 details
         const needsGuest2 = freshupMode === 'ROOM' && freshupCount >= 2
         let digits2 = ''
@@ -397,6 +405,7 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                     aadhar_url_front: freshupAadharUrlFront || null,
                     aadhar_url_back: freshupAadharUrlBack || null,
                     ac_type: freshupMode === 'ROOM' ? freshupAcType : undefined,
+                    unit_id: freshupMode === 'ROOM' ? freshupUnitId : undefined,
                     guest_name_2: needsGuest2 ? freshupName2.trim() : null,
                     guest_phone_2: needsGuest2 ? digits2 : null,
                     aadhar_url_front_2: needsGuest2 ? (freshupAadharUrlFront2 || null) : null,
@@ -411,6 +420,7 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
             setFreshupCount(1)
             setFreshupPayment('CASH')
             setFreshupAcType('AC')
+            setFreshupUnitId('')
             setFreshupAadharFront(null)
             setFreshupAadharBack(null)
             Object.values(freshupAadharPreviews).forEach(url => { try { URL.revokeObjectURL(url) } catch {} })
@@ -995,6 +1005,58 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                                         >
                                             Non-AC — {formatCurrency(freshupNonacPrice)}
                                         </button>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Unit picker (ROOM mode) — pick the room being used.
+                                Filtered to the chosen AC type. Booked / freshup-locked
+                                units are visible but disabled with a reason. */}
+                            {freshupMode === 'ROOM' && (
+                                <div>
+                                    <Label className="text-xs text-slate-600">Pick Room <span className="text-rose-500">*</span></Label>
+                                    <p className="text-[10px] text-slate-400 mt-0.5 mb-1.5">Room will be locked for the next 3 hours.</p>
+                                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 max-h-48 overflow-y-auto pr-1">
+                                        {units
+                                            .filter(u => {
+                                                if (u.type !== 'ROOM') return false
+                                                const wantAC = freshupAcType === 'AC'
+                                                if (wantAC && u.ac_type !== 'AC') return false
+                                                if (!wantAC && u.ac_type !== 'NON_AC') return false
+                                                return true
+                                            })
+                                            .map(u => {
+                                                const isCheckedIn = u.active_booking?.status === 'CHECKED_IN'
+                                                const lockedFreshup = u.active_freshup
+                                                const isMaintenance = u.status === 'MAINTENANCE'
+                                                const disabled = isCheckedIn || !!lockedFreshup || isMaintenance
+                                                const reason = isCheckedIn
+                                                    ? 'Booked'
+                                                    : lockedFreshup
+                                                        ? `Freshup until ${freshupEndsAt(lockedFreshup).toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true })}`
+                                                        : isMaintenance
+                                                            ? 'Maintenance'
+                                                            : ''
+                                                const selected = freshupUnitId === u.id
+                                                return (
+                                                    <button
+                                                        key={u.id}
+                                                        type="button"
+                                                        disabled={disabled}
+                                                        onClick={() => setFreshupUnitId(u.id)}
+                                                        className={`text-left px-2 py-1.5 rounded-md text-xs font-semibold transition-all border ${
+                                                            selected
+                                                                ? 'bg-cyan-100 border-cyan-400 text-cyan-800'
+                                                                : disabled
+                                                                    ? 'bg-slate-100 border-slate-200 text-slate-400 cursor-not-allowed'
+                                                                    : 'bg-white border-slate-200 text-slate-700 hover:bg-slate-50 hover:border-cyan-300'
+                                                        }`}
+                                                    >
+                                                        <div>{u.unit_number}</div>
+                                                        {reason && <div className="text-[9px] font-normal text-slate-400 truncate">{reason}</div>}
+                                                    </button>
+                                                )
+                                            })}
                                     </div>
                                 </div>
                             )}

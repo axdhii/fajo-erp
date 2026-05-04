@@ -312,6 +312,7 @@ export interface ShiftReport {
 export interface FreshupRecord {
     id: string
     hotel_id: string
+    unit_id: string | null
     guest_name: string
     guest_phone: string
     guest_count: number
@@ -328,6 +329,7 @@ export interface FreshupRecord {
     created_by: string | null
     created_at: string
     staff?: { name: string | null }
+    unit?: { unit_number: string; ac_type?: string | null } | null
 }
 
 // ============================================================

@@ -160,9 +160,14 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
         if (report.restock_requests_count > 0) badges.push(`${report.restock_requests_count} restocks`)
         if (report.customer_issues_count > 0) badges.push(`${report.customer_issues_count} issues`)
         if (report.expense_requests_count > 0) badges.push(`${report.expense_requests_count} expenses`)
+        const freshupCount = report.freshup_count ?? 0
+        const freshupCash = report.freshup_revenue_cash ?? 0
+        const freshupDigital = report.freshup_revenue_digital ?? 0
+        const showFreshupRow = freshupCount > 0
 
         // Calculate dynamic height
         let H = 520
+        if (showFreshupRow) H += 32
         if (badges.length > 0) H += 30
         if (checkInUnits.length > 0) H += 20 + Math.ceil(checkInUnits.length / 3) * 22
         if (checkOutUnits.length > 0) H += 20 + Math.ceil(checkOutUnits.length / 3) * 22
@@ -310,6 +315,26 @@ export function HRClient({ hotelId, staffId, hotelName }: HRClientProps) {
             ctx.font = 'bold 22px system-ui, sans-serif'
             ctx.fillText(fmt(report.revenue_total), W / 2, y + 122)
             y += 150
+
+            // Freshup strip (renders inside the Revenue area only if there's freshup activity).
+            if (showFreshupRow) {
+                ctx.fillStyle = '#fffbeb'
+                ctx.beginPath()
+                ctx.roundRect(30, y, W - 60, 26, 8)
+                ctx.fill()
+                ctx.strokeStyle = '#fde68a'
+                ctx.lineWidth = 1
+                ctx.stroke()
+                ctx.textAlign = 'left'
+                ctx.fillStyle = '#92400e'
+                ctx.font = 'bold 10px system-ui, sans-serif'
+                ctx.fillText(`FRESHUP: ${freshupCount} record${freshupCount === 1 ? '' : 's'}`, 42, y + 17)
+                ctx.textAlign = 'right'
+                ctx.font = '600 10px system-ui, sans-serif'
+                ctx.fillStyle = '#78350f'
+                ctx.fillText(`Cash ${fmt(freshupCash)}  ·  Digital ${fmt(freshupDigital)}  ·  ${fmt(freshupCash + freshupDigital)}`, W - 42, y + 17)
+                y += 32
+            }
 
             // Badges
             if (badges.length > 0) {

@@ -69,6 +69,8 @@ interface FreshupRow {
     payment_method: string
     ac_type: string | null
     created_at: string
+    unit_id: string | null
+    unit?: { unit_number: string } | null
 }
 
 interface ExtraRow {
@@ -401,7 +403,7 @@ export function OverrideConsole() {
         // DB column is `phone`, not `guest_phone` — alias so downstream `.guest_phone` reads work.
         const { data } = await supabase
             .from('freshup')
-            .select('*, guest_phone:phone')
+            .select('*, guest_phone:phone, unit:units(unit_number)')
             .gte('created_at', dayStart)
             .lt('created_at', dayEnd)
             .order('created_at', { ascending: false })
@@ -1292,7 +1294,13 @@ function FreshupEditor({ fr, onSave, onDelete }: {
     return (
         <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-3">
             <div className="flex items-center justify-between">
-                <p className="text-sm font-bold">{fr.guest_name} <span className="text-xs text-slate-400 ml-2">{fr.guest_phone}</span></p>
+                <p className="text-sm font-bold">
+                    {fr.unit?.unit_number && (
+                        <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 mr-2">Unit {fr.unit.unit_number}</span>
+                    )}
+                    {fr.guest_name}
+                    <span className="text-xs text-slate-400 ml-2">{fr.guest_phone}</span>
+                </p>
                 <Button size="sm" variant="ghost" onClick={() => onDelete(fr.id)} className="text-red-600 hover:text-red-700">
                     <Trash2 className="h-4 w-4" />
                 </Button>
