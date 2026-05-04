@@ -1,78 +1,94 @@
-// Shift window helper — computes the start and end of the *current* hotel
-// operational day, which runs 07:00 IST → 07:00 IST the next morning.
+// Shift window helpers — compute time bounds for the current hotel day and its
+// two operational sub-shifts.
 //
-// "Today's revenue" therefore means "revenue collected from 7 AM this morning
-// through 7 AM tomorrow morning". A staff working a night shift past midnight
-// continues to see today's revenue accumulating until 7 AM, when the new
-// hotel-day starts.
+// The hotel operational day runs 07:00 IST → 07:00 IST the next morning.
+// Inside that day, staff work two 12-hour shifts:
+//   - DAY shift   : 07:00 IST → 19:00 IST  (same calendar date)
+//   - NIGHT shift : 19:00 IST → 07:00 IST  (next calendar date)
 //
-// Rationale: midnight-to-midnight filters cause rollover confusion for night
-// shift — their collected revenue "resets" at midnight even though guests
-// are still arriving. Anchoring the window to 7 AM matches the operational
-// shift handover.
+// `getCurrentShiftWindow()` returns the full 24-hour bounds (used as
+// "today's revenue" — the combined card). `getDayShiftWindow()` and
+// `getNightShiftWindow()` return the two halves so the Financials KPI
+// can show DAY / NIGHT / TOTAL stacked.
+//
+// All three helpers anchor to the *operational date* — the calendar date
+// the 07:00-anchored window starts on. Calling at 03:00 IST on Apr-27
+// returns the operational date Apr-26 (because the night shift is still
+// running through early morning of the next calendar day).
 
-export type ShiftLabel = 'DAY'
+export type ShiftLabel = 'DAY' | 'NIGHT' | 'TOTAL'
 
 export interface ShiftWindow {
-    /** ISO timestamp (with +05:30 offset) marking the start of the current 24-hour hotel day. */
+    /** ISO timestamp (with +05:30 offset) marking the start of the window. */
     start: string
-    /** ISO timestamp (with +05:30 offset) marking the end of the current 24-hour hotel day. */
+    /** ISO timestamp (with +05:30 offset) marking the end of the window. */
     end: string
-    /** Always 'DAY' — kept for backward compat with consumers still expecting a label field. */
     label: ShiftLabel
     /** Human-readable label, e.g. "Today (7 AM – 7 AM)" */
     displayLabel: string
 }
 
-/**
- * Returns the current 24-hour hotel-day window bounds in IST. Window starts
- * at 07:00 IST on the *operational* date and ends at 07:00 IST the next morning.
- *
- * Uses a fixed +05:30 offset (IST has no DST), so the output is correct
- * regardless of the server's local timezone (important: Vercel runs UTC).
- *
- * Examples:
- *   At 10:00 IST on 26-Apr → window is 26-Apr 07:00 → 27-Apr 07:00
- *   At 23:30 IST on 26-Apr → window is 26-Apr 07:00 → 27-Apr 07:00
- *   At 03:00 IST on 27-Apr → window is 26-Apr 07:00 → 27-Apr 07:00
- *   At 07:00 IST on 27-Apr → window is 27-Apr 07:00 → 28-Apr 07:00
- *
- * @param at Optional reference time; defaults to now. Useful for testing.
- */
-export function getCurrentShiftWindow(at: Date = new Date()): ShiftWindow {
-    const IST_OFFSET_MS = 330 * 60 * 1000 // +05:30
+const IST_OFFSET_MS = 330 * 60 * 1000 // +05:30
+const pad = (n: number) => String(n).padStart(2, '0')
+const isoDate = (y: number, m: number, d: number) => `${y}-${pad(m + 1)}-${pad(d)}`
+
+/** The operational date for the current hotel-day window. */
+function operationalDate(at: Date = new Date()): { year: number; month: number; date: number } {
     const istWall = new Date(at.getTime() + IST_OFFSET_MS)
     const istHour = istWall.getUTCHours()
-    const istYear = istWall.getUTCFullYear()
-    const istMonth = istWall.getUTCMonth() // 0-indexed
-    const istDate = istWall.getUTCDate()
-
-    const pad = (n: number) => String(n).padStart(2, '0')
-    const isoDate = (y: number, m: number, d: number) =>
-        `${y}-${pad(m + 1)}-${pad(d)}`
-
-    // The "operational date" is today's calendar date if it's already past
-    // 07:00 IST, otherwise yesterday's calendar date (because the night-shift
-    // staff is still working through the early hours of the previous day).
-    let opYear = istYear, opMonth = istMonth, opDate = istDate
+    let y = istWall.getUTCFullYear(), m = istWall.getUTCMonth(), d = istWall.getUTCDate()
     if (istHour < 7) {
         const yesterday = new Date(istWall.getTime() - 24 * 60 * 60 * 1000)
-        opYear = yesterday.getUTCFullYear()
-        opMonth = yesterday.getUTCMonth()
-        opDate = yesterday.getUTCDate()
+        y = yesterday.getUTCFullYear()
+        m = yesterday.getUTCMonth()
+        d = yesterday.getUTCDate()
     }
+    return { year: y, month: m, date: d }
+}
 
-    const startStr = isoDate(opYear, opMonth, opDate)
-    // End = start + 24h
+/**
+ * Returns the current 24-hour hotel-day window bounds in IST.
+ * 07:00 IST on the operational date → 07:00 IST the next morning.
+ */
+export function getCurrentShiftWindow(at: Date = new Date()): ShiftWindow {
+    const { year, month, date } = operationalDate(at)
+    const startStr = isoDate(year, month, date)
     const startMs = new Date(`${startStr}T07:00:00+05:30`).getTime()
     const endMs = startMs + 24 * 60 * 60 * 1000
     const endIst = new Date(endMs + IST_OFFSET_MS)
     const endStr = isoDate(endIst.getUTCFullYear(), endIst.getUTCMonth(), endIst.getUTCDate())
-
     return {
         start: `${startStr}T07:00:00+05:30`,
         end: `${endStr}T07:00:00+05:30`,
+        label: 'TOTAL',
+        displayLabel: 'Today (7 AM – 7 AM next day)',
+    }
+}
+
+/** DAY shift bounds for the current hotel day: 07:00 IST → 19:00 IST same date. */
+export function getDayShiftWindow(at: Date = new Date()): ShiftWindow {
+    const { year, month, date } = operationalDate(at)
+    const ds = isoDate(year, month, date)
+    return {
+        start: `${ds}T07:00:00+05:30`,
+        end: `${ds}T19:00:00+05:30`,
         label: 'DAY',
-        displayLabel: "Today (7 AM – 7 AM next day)",
+        displayLabel: 'Day shift (7 AM – 7 PM)',
+    }
+}
+
+/** NIGHT shift bounds for the current hotel day: 19:00 IST → 07:00 IST next date. */
+export function getNightShiftWindow(at: Date = new Date()): ShiftWindow {
+    const { year, month, date } = operationalDate(at)
+    const startStr = isoDate(year, month, date)
+    const startMs = new Date(`${startStr}T19:00:00+05:30`).getTime()
+    const endMs = startMs + 12 * 60 * 60 * 1000
+    const endIst = new Date(endMs + IST_OFFSET_MS)
+    const endStr = isoDate(endIst.getUTCFullYear(), endIst.getUTCMonth(), endIst.getUTCDate())
+    return {
+        start: `${startStr}T19:00:00+05:30`,
+        end: `${endStr}T07:00:00+05:30`,
+        label: 'NIGHT',
+        displayLabel: 'Night shift (7 PM – 7 AM)',
     }
 }

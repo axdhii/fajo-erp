@@ -165,7 +165,7 @@ export async function GET() {
                         .from('payments')
                         .select('amount_cash, amount_digital, booking:bookings!inner(unit_id)')
                         .gte('created_at', shift.start)
-                        .lte('created_at', shift.end)
+                        .lt('created_at', shift.end)
                         .in('booking.unit_id', unitIds)
                     if (payments) {
                         cashRevenue = payments.reduce((sum, p) => sum + Number(p.amount_cash || 0), 0)

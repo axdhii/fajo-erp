@@ -21,7 +21,7 @@ import {
     ShieldAlert,
 } from 'lucide-react'
 import type { AdminTabProps } from '@/app/(dashboard)/admin/client'
-import { getCurrentShiftWindow } from '@/lib/shift-window'
+import { getCurrentShiftWindow, getDayShiftWindow } from '@/lib/shift-window'
 
 // ============================================================
 // Helpers
@@ -41,6 +41,8 @@ interface KPIData {
     totalUnits: number
     occupiedUnits: number
     todayRevenue: number
+    dayShiftRevenue: number
+    nightShiftRevenue: number
     staffOnDuty: number
     overdueCount: number
     urgentTickets: number
@@ -74,6 +76,8 @@ export function CommandCenter({ hotelId, hotels, staffId }: AdminTabProps) {
         totalUnits: 0,
         occupiedUnits: 0,
         todayRevenue: 0,
+        dayShiftRevenue: 0,
+        nightShiftRevenue: 0,
         staffOnDuty: 0,
         overdueCount: 0,
         urgentTickets: 0,
@@ -81,16 +85,17 @@ export function CommandCenter({ hotelId, hotels, staffId }: AdminTabProps) {
     const [alerts, setAlerts] = useState<AlertItem[]>([])
     const [hotelCards, setHotelCards] = useState<HotelCardData[]>([])
     const [loading, setLoading] = useState(true)
-    const [shiftLabel, setShiftLabel] = useState<string>('Current shift')
 
     // --------------------------------------------------------
     // Core data fetch
     // --------------------------------------------------------
     const fetchData = useCallback(async () => {
         try {
-            // "Today's revenue" = the CURRENT shift window (7am-7pm or 7pm-7am IST)
+            // "Today's revenue" = the full 24-hour hotel-day (7 AM IST → 7 AM next day).
+            // We also break it into DAY (7 AM – 7 PM) and NIGHT (7 PM – 7 AM next day)
+            // for the per-shift display the owner expects to see.
             const shift = getCurrentShiftWindow()
-            setShiftLabel(shift.displayLabel)
+            const dayShift = getDayShiftWindow()
             const now = nowISO()
 
             // Determine which hotel IDs to query
@@ -155,14 +160,14 @@ export function CommandCenter({ hotelId, hotels, staffId }: AdminTabProps) {
                     .from('payments')
                     .select('total_paid, booking:booking_id!inner(status, unit:units!inner(hotel_id))')
                     .gte('created_at', shift.start)
-                    .lte('created_at', shift.end),
+                    .lt('created_at', shift.end),
 
                 // Current shift's bookings with advance_amount (Rule #1)
                 supabase
                     .from('bookings')
                     .select('advance_amount, advance_type, unit:units!inner(hotel_id)')
                     .gte('created_at', shift.start)
-                    .lte('created_at', shift.end)
+                    .lt('created_at', shift.end)
                     .gt('advance_amount', 0),
             ])
 
@@ -187,6 +192,38 @@ export function CommandCenter({ hotelId, hotels, staffId }: AdminTabProps) {
             const totalAdvanceRevenue = scopedAdvances.reduce((sum, b) => sum + Number(b.advance_amount || 0), 0)
             const totalRevenue = totalPaymentRevenue + totalAdvanceRevenue
 
+            // Compute DAY vs NIGHT split. We need created_at on the rows; the
+            // existing payments/advances queries don't include it, so re-fetch
+            // light versions just for the partition. Two extra round-trips,
+            // acceptable on this admin-only dashboard.
+            const cutoffMs = new Date(dayShift.end).getTime()
+            const [dayNightPayRes, dayNightAdvRes] = await Promise.all([
+                supabase
+                    .from('payments')
+                    .select('total_paid, created_at, booking:booking_id!inner(unit:units!inner(hotel_id))')
+                    .gte('created_at', shift.start).lt('created_at', shift.end),
+                supabase
+                    .from('bookings')
+                    .select('advance_amount, created_at, unit:units!inner(hotel_id)')
+                    .gte('created_at', shift.start).lt('created_at', shift.end).gt('advance_amount', 0)
+                    .in('unit.hotel_id', targetHotelIds),
+            ])
+            type DayNightPayRow = { total_paid: number; created_at: string; booking: { unit: { hotel_id: string } } }
+            type DayNightAdvRow = { advance_amount: number; created_at: string; unit: { hotel_id: string } }
+            let dayShiftRevenue = 0, nightShiftRevenue = 0
+            for (const p of (dayNightPayRes.data || []) as unknown as DayNightPayRow[]) {
+                const hid = p.booking?.unit?.hotel_id
+                if (!hid || !targetHotelIds.includes(hid)) continue
+                const amt = Number(p.total_paid || 0)
+                if (new Date(p.created_at).getTime() < cutoffMs) dayShiftRevenue += amt
+                else nightShiftRevenue += amt
+            }
+            for (const b of (dayNightAdvRes.data || []) as unknown as DayNightAdvRow[]) {
+                const amt = Number(b.advance_amount || 0)
+                if (new Date(b.created_at).getTime() < cutoffMs) dayShiftRevenue += amt
+                else nightShiftRevenue += amt
+            }
+
             // ------ KPI ------
             const totalUnits = units.length
             const occupiedUnits = units.filter(u => u.status === 'OCCUPIED').length
@@ -195,6 +232,8 @@ export function CommandCenter({ hotelId, hotels, staffId }: AdminTabProps) {
                 totalUnits,
                 occupiedUnits,
                 todayRevenue: totalRevenue,
+                dayShiftRevenue,
+                nightShiftRevenue,
                 staffOnDuty: attendance.length,
                 overdueCount: overdueBookings.length,
                 urgentTickets: tickets.length,
@@ -409,18 +448,28 @@ export function CommandCenter({ hotelId, hotels, staffId }: AdminTabProps) {
                     </CardContent>
                 </Card>
 
-                {/* Revenue */}
+                {/* Revenue \u2014 total + DAY/NIGHT split */}
                 <Card className="border-violet-500/10 shadow-sm bg-white overflow-hidden relative group">
                     <div className="absolute inset-x-0 bottom-0 h-1 bg-violet-500 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-slate-500">Current Shift Revenue</CardTitle>
+                        <CardTitle className="text-sm font-medium text-slate-500">Today's Revenue</CardTitle>
                         <DollarSign className="h-4 w-4 text-violet-500" />
                     </CardHeader>
                     <CardContent>
                         <div className="text-3xl font-bold text-slate-900">
                             {'\u20B9'}{kpi.todayRevenue.toLocaleString('en-IN')}
                         </div>
-                        <p className="text-xs text-slate-500 mt-1">{shiftLabel}</p>
+                        <p className="text-[11px] text-slate-500 mt-1">7 AM \u2013 7 AM next day</p>
+                        <div className="grid grid-cols-2 gap-2 mt-2 text-xs">
+                            <div className="rounded-md border border-amber-100 bg-amber-50/40 px-2 py-1">
+                                <p className="text-[9px] uppercase tracking-wider font-bold text-amber-700">Day 7-7pm</p>
+                                <p className="font-semibold text-amber-800">{'\u20B9'}{kpi.dayShiftRevenue.toLocaleString('en-IN')}</p>
+                            </div>
+                            <div className="rounded-md border border-indigo-100 bg-indigo-50/40 px-2 py-1">
+                                <p className="text-[9px] uppercase tracking-wider font-bold text-indigo-700">Night 7-7am</p>
+                                <p className="font-semibold text-indigo-800">{'\u20B9'}{kpi.nightShiftRevenue.toLocaleString('en-IN')}</p>
+                            </div>
+                        </div>
                     </CardContent>
                 </Card>
 

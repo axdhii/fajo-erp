@@ -23,7 +23,7 @@ import {
     Loader2,
 } from 'lucide-react'
 import type { AdminTabProps } from '@/app/(dashboard)/admin/client'
-import { getCurrentShiftWindow } from '@/lib/shift-window'
+import { getCurrentShiftWindow, getDayShiftWindow, getNightShiftWindow } from '@/lib/shift-window'
 
 interface PaymentRow {
     id: string
@@ -117,10 +117,14 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
     const [rptFromDisplay, setRptFromDisplay] = useState('')
     const [rptToDisplay, setRptToDisplay] = useState('')
 
-    // Revenue data — "today" is the current 12-hour shift window (DAY 7am-7pm or NIGHT 7pm-7am IST),
-    // NOT the calendar day. This avoids midnight rollover for night-shift staff.
+    // Revenue data — three buckets covering the current hotel-day:
+    //   - dayRevenue   : DAY shift 7 AM – 7 PM IST
+    //   - nightRevenue : NIGHT shift 7 PM – 7 AM IST (next day)
+    //   - todayRevenue : 24-hour total (DAY + NIGHT)
+    // This gives the owner per-shift visibility while preserving the combined total.
+    const [dayRevenue, setDayRevenue] = useState({ cash: 0, digital: 0, total: 0 })
+    const [nightRevenue, setNightRevenue] = useState({ cash: 0, digital: 0, total: 0 })
     const [todayRevenue, setTodayRevenue] = useState({ cash: 0, digital: 0, total: 0 })
-    const [shiftLabel, setShiftLabel] = useState<string>('Current shift')
     const [monthRevenue, setMonthRevenue] = useState({ cash: 0, digital: 0, total: 0 })
     const [rangeRevenue, setRangeRevenue] = useState({ cash: 0, digital: 0, total: 0 })
     const [hotelRevenues, setHotelRevenues] = useState<HotelRevenue[]>([])
@@ -138,9 +142,12 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
     const fetchRevenue = useCallback(async () => {
         setLoading(true)
         try {
-            // "Today" = the CURRENT shift window (7am-7pm or 7pm-7am IST), not the calendar day
+            // 24-hour hotel-day window + its DAY (7-7) and NIGHT (7-7) sub-shifts.
+            // We fetch once for the 24-hour window then partition client-side
+            // into DAY / NIGHT / TOTAL — saves three round-trips per source.
             const shift = getCurrentShiftWindow()
-            setShiftLabel(shift.displayLabel)
+            const dayShift = getDayShiftWindow()
+            const nightShift = getNightShiftWindow()
             const monthStart = monthStartIST()
 
             // Today's (shift-window) revenue
@@ -148,7 +155,7 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                 .from('payments')
                 .select('amount_cash, amount_digital, total_paid, booking:bookings(unit_id, unit:units(hotel_id))')
                 .gte('created_at', shift.start)
-                .lte('created_at', shift.end)
+                .lt('created_at', shift.end)
 
             // Month revenue
             const { data: monthPayments } = await supabase
@@ -189,7 +196,7 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             // Query advance_amount from bookings for each date range (Rule #1)
             const advanceSelect = 'advance_amount, advance_type, unit:units(hotel_id)'
             const [todayAdvRes, monthAdvRes, rangeAdvRes] = await Promise.all([
-                supabase.from('bookings').select(advanceSelect).gte('created_at', shift.start).lte('created_at', shift.end).gt('advance_amount', 0),
+                supabase.from('bookings').select(advanceSelect).gte('created_at', shift.start).lt('created_at', shift.end).gt('advance_amount', 0),
                 supabase.from('bookings').select(advanceSelect).gte('created_at', monthStart + 'T00:00:00+05:30').gt('advance_amount', 0),
                 supabase.from('bookings').select(advanceSelect).gte('created_at', `${dateFrom}T${timeFrom}:00+05:30`).lte('created_at', `${dateTo}T${timeTo}:59+05:30`).gt('advance_amount', 0),
             ])
@@ -216,10 +223,79 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             const monthPay = sumRevenue(monthPayments as unknown as PaymentWithBooking[])
             const rangePay = sumRevenue(rangePayments as unknown as PaymentWithBooking[])
 
+            // Partition the 24-hour payments + advances arrays into DAY (before
+            // 19:00 IST) and NIGHT (>= 19:00 IST) buckets via created_at.
+            // The boundary is dayShift.end === nightShift.start, used as a
+            // strict `<` cutoff so a row landing exactly at 19:00:00 IST
+            // counts as NIGHT.
+            const partitionByCreatedAt = <T extends { created_at?: string }>(rows: T[] | null | undefined) => {
+                const all = rows || []
+                const dayRows: T[] = []
+                const nightRows: T[] = []
+                const cutoff = dayShift.end // e.g. 2026-04-26T19:00:00+05:30
+                const cutoffMs = new Date(cutoff).getTime()
+                for (const r of all) {
+                    if (!r.created_at) continue
+                    if (new Date(r.created_at).getTime() < cutoffMs) dayRows.push(r)
+                    else nightRows.push(r)
+                }
+                return { dayRows, nightRows }
+            }
+
+            // We already have payments + advances for the 24h window. Re-fetch
+            // them with created_at column included for partitioning.
+            const { data: dayNightPayRows } = await supabase
+                .from('payments')
+                .select('amount_cash, amount_digital, total_paid, created_at, booking:bookings(unit_id, unit:units(hotel_id))')
+                .gte('created_at', shift.start).lt('created_at', shift.end)
+            const { data: dayNightAdvRows } = await supabase
+                .from('bookings')
+                .select('advance_amount, advance_type, created_at, unit:units(hotel_id)')
+                .gte('created_at', shift.start).lt('created_at', shift.end).gt('advance_amount', 0)
+            const { data: dayNightExtrasRows } = await supabase
+                .from('booking_extras')
+                .select('amount, payment_method, hotel_id, created_at')
+                .gte('created_at', shift.start).lt('created_at', shift.end)
+            const { data: dayNightFreshupRows } = await supabase
+                .from('freshup')
+                .select('amount, payment_method, hotel_id, created_at')
+                .gte('created_at', shift.start).lt('created_at', shift.end)
+            const { data: dayNightManualRows } = await supabase
+                .from('manual_revenue_entries')
+                .select('amount_cash, amount_digital, hotel_id, transaction_at')
+                .gte('transaction_at', shift.start).lt('transaction_at', shift.end)
+
+            type PayRow = PaymentWithBooking & { created_at: string }
+            type AdvRowWithDate = AdvRow & { created_at: string }
+            type CashDigitalRowWithDate = CashDigitalRow & { created_at: string }
+            type ManualRowWithDate = ManualRow & { transaction_at: string }
+
+            const payParts = partitionByCreatedAt(dayNightPayRows as unknown as PayRow[])
+            const advParts = partitionByCreatedAt(dayNightAdvRows as unknown as AdvRowWithDate[])
+            const extrasParts = partitionByCreatedAt(dayNightExtrasRows as unknown as CashDigitalRowWithDate[])
+            const freshupParts = partitionByCreatedAt(dayNightFreshupRows as unknown as CashDigitalRowWithDate[])
+            // Manual revenue uses transaction_at, not created_at — adapter:
+            const manualPartition = (() => {
+                const all = (dayNightManualRows || []) as ManualRowWithDate[]
+                const cutoffMs = new Date(dayShift.end).getTime()
+                const dayRows: ManualRowWithDate[] = []
+                const nightRows: ManualRowWithDate[] = []
+                for (const r of all) {
+                    if (new Date(r.transaction_at).getTime() < cutoffMs) dayRows.push(r)
+                    else nightRows.push(r)
+                }
+                return { dayRows, nightRows }
+            })()
+
+            const dayPay = sumRevenue(payParts.dayRows)
+            const nightPay = sumRevenue(payParts.nightRows)
+            const dayAdv = sumAdvances(advParts.dayRows)
+            const nightAdv = sumAdvances(advParts.nightRows)
+
             // Query booking_extras for each date range
             const extrasSelect = 'amount, payment_method, hotel_id'
             const [todayExtrasRes, monthExtrasRes, rangeExtrasRes] = await Promise.all([
-                supabase.from('booking_extras').select(extrasSelect).gte('created_at', shift.start).lte('created_at', shift.end),
+                supabase.from('booking_extras').select(extrasSelect).gte('created_at', shift.start).lt('created_at', shift.end),
                 supabase.from('booking_extras').select(extrasSelect).gte('created_at', monthStart + 'T00:00:00+05:30'),
                 supabase.from('booking_extras').select(extrasSelect).gte('created_at', `${dateFrom}T${timeFrom}:00+05:30`).lte('created_at', `${dateTo}T${timeTo}:59+05:30`),
             ])
@@ -243,7 +319,7 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
 
             // Query freshup for each date range
             const [todayFreshupRes, monthFreshupRes, rangeFreshupRes] = await Promise.all([
-                supabase.from('freshup').select(extrasSelect).gte('created_at', shift.start).lte('created_at', shift.end),
+                supabase.from('freshup').select(extrasSelect).gte('created_at', shift.start).lt('created_at', shift.end),
                 supabase.from('freshup').select(extrasSelect).gte('created_at', monthStart + 'T00:00:00+05:30'),
                 supabase.from('freshup').select(extrasSelect).gte('created_at', `${dateFrom}T${timeFrom}:00+05:30`).lte('created_at', `${dateTo}T${timeTo}:59+05:30`),
             ])
@@ -257,7 +333,7 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             // register), not `created_at` (when admin typed it in).
             const manualSelect = 'amount_cash, amount_digital, hotel_id, transaction_at'
             const [todayManualRes, monthManualRes, rangeManualRes] = await Promise.all([
-                supabase.from('manual_revenue_entries').select(manualSelect).gte('transaction_at', shift.start).lte('transaction_at', shift.end),
+                supabase.from('manual_revenue_entries').select(manualSelect).gte('transaction_at', shift.start).lt('transaction_at', shift.end),
                 supabase.from('manual_revenue_entries').select(manualSelect).gte('transaction_at', monthStart + 'T00:00:00+05:30'),
                 supabase.from('manual_revenue_entries').select(manualSelect).gte('transaction_at', `${dateFrom}T${timeFrom}:00+05:30`).lte('transaction_at', `${dateTo}T${timeTo}:59+05:30`),
             ])
@@ -277,6 +353,23 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
             const monthManual = sumManual(monthManualRes.data as ManualRow[])
             const rangeManual = sumManual(rangeManualRes.data as ManualRow[])
 
+            const dayExtras = sumCashDigital(extrasParts.dayRows)
+            const nightExtras = sumCashDigital(extrasParts.nightRows)
+            const dayFreshup = sumCashDigital(freshupParts.dayRows)
+            const nightFreshup = sumCashDigital(freshupParts.nightRows)
+            const dayManual = sumManual(manualPartition.dayRows)
+            const nightManual = sumManual(manualPartition.nightRows)
+
+            setDayRevenue({
+                cash: dayPay.cash + dayAdv.cash + dayExtras.cash + dayFreshup.cash + dayManual.cash,
+                digital: dayPay.digital + dayAdv.digital + dayExtras.digital + dayFreshup.digital + dayManual.digital,
+                total: dayPay.total + dayAdv.total + dayExtras.total + dayFreshup.total + dayManual.total,
+            })
+            setNightRevenue({
+                cash: nightPay.cash + nightAdv.cash + nightExtras.cash + nightFreshup.cash + nightManual.cash,
+                digital: nightPay.digital + nightAdv.digital + nightExtras.digital + nightFreshup.digital + nightManual.digital,
+                total: nightPay.total + nightAdv.total + nightExtras.total + nightFreshup.total + nightManual.total,
+            })
             setTodayRevenue({
                 cash: todayPay.cash + todayAdv.cash + todayExtras.cash + todayFreshup.cash + todayManual.cash,
                 digital: todayPay.digital + todayAdv.digital + todayExtras.digital + todayFreshup.digital + todayManual.digital,
@@ -708,13 +801,47 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                 </CardContent>
             </Card>
 
-            {/* ── Section 1: Revenue Summary Cards ── */}
+            {/* ── Section 1: Today's Revenue split by shift ── */}
             <div className="grid gap-4 md:grid-cols-3">
-                {/* Today */}
+                {/* DAY shift 7 AM – 7 PM */}
+                <Card className="border-amber-200 bg-gradient-to-br from-amber-50 to-white overflow-hidden relative group">
+                    <div className="absolute inset-x-0 bottom-0 h-1 bg-amber-500 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-sm font-medium text-amber-700">Day Shift Revenue</CardTitle>
+                        <TrendingUp className="h-4 w-4 text-amber-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold text-amber-800">{formatINR(dayRevenue.total)}</div>
+                        <div className="flex items-center gap-3 mt-2 text-xs text-amber-700">
+                            <span className="flex items-center gap-1"><Banknote className="h-3 w-3" /> Cash: {formatINR(dayRevenue.cash)}</span>
+                            <span className="flex items-center gap-1"><Smartphone className="h-3 w-3" /> Digital: {formatINR(dayRevenue.digital)}</span>
+                        </div>
+                        <p className="text-[11px] text-amber-600/70 mt-2 font-medium">7 AM – 7 PM IST</p>
+                    </CardContent>
+                </Card>
+
+                {/* NIGHT shift 7 PM – 7 AM */}
+                <Card className="border-indigo-200 bg-gradient-to-br from-indigo-50 to-white overflow-hidden relative group">
+                    <div className="absolute inset-x-0 bottom-0 h-1 bg-indigo-500 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
+                    <CardHeader className="flex flex-row items-center justify-between pb-2">
+                        <CardTitle className="text-sm font-medium text-indigo-700">Night Shift Revenue</CardTitle>
+                        <TrendingUp className="h-4 w-4 text-indigo-500" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-3xl font-bold text-indigo-800">{formatINR(nightRevenue.total)}</div>
+                        <div className="flex items-center gap-3 mt-2 text-xs text-indigo-700">
+                            <span className="flex items-center gap-1"><Banknote className="h-3 w-3" /> Cash: {formatINR(nightRevenue.cash)}</span>
+                            <span className="flex items-center gap-1"><Smartphone className="h-3 w-3" /> Digital: {formatINR(nightRevenue.digital)}</span>
+                        </div>
+                        <p className="text-[11px] text-indigo-600/70 mt-2 font-medium">7 PM – 7 AM IST (next day)</p>
+                    </CardContent>
+                </Card>
+
+                {/* TODAY total — combined hotel-day 7 AM → 7 AM */}
                 <Card className="border-emerald-200 bg-gradient-to-br from-emerald-50 to-white overflow-hidden relative group">
                     <div className="absolute inset-x-0 bottom-0 h-1 bg-emerald-500 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
                     <CardHeader className="flex flex-row items-center justify-between pb-2">
-                        <CardTitle className="text-sm font-medium text-emerald-700">Current Shift Revenue</CardTitle>
+                        <CardTitle className="text-sm font-medium text-emerald-700">Today's Total Revenue</CardTitle>
                         <TrendingUp className="h-4 w-4 text-emerald-500" />
                     </CardHeader>
                     <CardContent>
@@ -723,10 +850,13 @@ export function Financials({ hotelId, hotels }: AdminTabProps) {
                             <span className="flex items-center gap-1"><Banknote className="h-3 w-3" /> Cash: {formatINR(todayRevenue.cash)}</span>
                             <span className="flex items-center gap-1"><Smartphone className="h-3 w-3" /> Digital: {formatINR(todayRevenue.digital)}</span>
                         </div>
-                        <p className="text-[11px] text-emerald-600/70 mt-2 font-medium">{shiftLabel}</p>
+                        <p className="text-[11px] text-emerald-600/70 mt-2 font-medium">7 AM – 7 AM next day (DAY + NIGHT)</p>
                     </CardContent>
                 </Card>
+            </div>
 
+            {/* ── Section 1b: Month + Range cards ── */}
+            <div className="grid gap-4 md:grid-cols-2">
                 {/* This Month */}
                 <Card className="border-emerald-100 bg-white overflow-hidden relative group">
                     <div className="absolute inset-x-0 bottom-0 h-1 bg-emerald-400 transform scale-x-0 group-hover:scale-x-100 transition-transform origin-left" />
