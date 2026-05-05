@@ -16,7 +16,7 @@ function clearAllStores() {
 interface StaffProfile {
     id: string
     hotel_id: string
-    role: 'Admin' | 'FrontDesk' | 'HR' | 'ZonalOps' | 'ZonalHK' | 'Developer' | 'Housekeeping'
+    role: 'Admin' | 'FrontDesk' | 'HR' | 'ZonalOps' | 'ZonalHK' | 'Developer' | 'Housekeeping' | 'Accounts'
     name: string | null
 }
 

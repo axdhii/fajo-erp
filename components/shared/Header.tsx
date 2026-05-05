@@ -1,6 +1,6 @@
 "use client"
 import { useState, useEffect, useCallback } from 'react'
-import { BookOpen, Calendar, Clock, ClipboardList, LayoutDashboard, LogOut, MapPin, Menu, MessageSquare, Sparkles, StickyNote, Users, Wrench, X } from 'lucide-react'
+import { BookOpen, Calendar, Clock, ClipboardList, DollarSign, LayoutDashboard, LogOut, MapPin, Menu, MessageSquare, Sparkles, StickyNote, Users, Wrench, X } from 'lucide-react'
 import Link from 'next/link'
 import { useAuthStore } from '@/lib/store/auth-store'
 import { usePathname } from 'next/navigation'
@@ -83,6 +83,7 @@ export function Header() {
     const canSeeZonalOps = isAdminOrDev || profile.role === 'ZonalOps'
     const canSeeZonalHK = isAdminOrDev || profile.role === 'ZonalHK'
     const canSeeDev = profile.role === 'Developer'
+    const canSeeAccounts = isAdminOrDev || profile.role === 'Accounts'
 
     // Build nav links array to avoid duplication between desktop and mobile
     const navLinks = [
@@ -93,6 +94,7 @@ export function Header() {
         canSeeZonalOps && { href: '/zonal-ops', label: 'Zonal Ops', icon: <ClipboardList className="h-4 w-4" />, activeClass: 'bg-orange-50 text-orange-700' },
         canSeeZonalHK && { href: '/zonal-hk', label: 'Zonal HK', icon: <Sparkles className="h-4 w-4" />, activeClass: 'bg-teal-50 text-teal-700' },
         canSeeAdmin && { href: '/admin', label: 'Admin', icon: <LayoutDashboard className="h-4 w-4" />, activeClass: 'bg-emerald-50 text-emerald-700' },
+        canSeeAccounts && { href: '/accounts', label: 'Accounts', icon: <DollarSign className="h-4 w-4" />, activeClass: 'bg-amber-50 text-amber-700' },
         canSeeDev && { href: '/developer', label: 'Dev Tools', icon: <Wrench className="h-4 w-4" />, activeClass: 'bg-red-50 text-red-700' },
     ].filter(Boolean) as { href: string; label: string; icon: React.ReactNode; activeClass: string }[]
 
@@ -100,7 +102,7 @@ export function Header() {
         <header className="sticky top-0 z-50 w-full border-b border-slate-200 bg-white/80 backdrop-blur-xl dark:border-slate-800 dark:bg-slate-950/80">
             <div className="container mx-auto flex h-16 items-center justify-between px-4">
                 <div className="flex items-center gap-4 md:gap-6">
-                    <Link href={`/${profile.role === 'Developer' ? 'developer' : profile.role === 'Admin' ? 'admin' : profile.role === 'ZonalOps' ? 'zonal-ops' : profile.role === 'ZonalHK' ? 'zonal-hk' : profile.role === 'HR' ? 'hr' : 'front-desk'}`} className="flex items-center gap-2">
+                    <Link href={`/${profile.role === 'Developer' ? 'developer' : profile.role === 'Admin' ? 'admin' : profile.role === 'ZonalOps' ? 'zonal-ops' : profile.role === 'ZonalHK' ? 'zonal-hk' : profile.role === 'HR' ? 'hr' : profile.role === 'Accounts' ? 'accounts' : 'front-desk'}`} className="flex items-center gap-2">
                         <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-600 text-white shadow-sm">
                             <span className="font-bold text-lg leading-none">F</span>
                         </div>

@@ -27,6 +27,7 @@ import {
     CheckCircle2,
     Code2,
     Upload,
+    Calculator,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -48,6 +49,7 @@ type RoleKey =
     | 'ZonalOps'
     | 'ZonalHK'
     | 'Developer'
+    | 'Accounts'
 
 interface RoleInfo {
     label: string
@@ -90,6 +92,11 @@ const ROLE_META: Record<RoleKey, RoleInfo> = {
         description: 'System Developer',
         icon: Code2,
     },
+    Accounts: {
+        label: 'Accounts',
+        description: 'Books & Reports',
+        icon: Calculator,
+    },
 }
 
 /* ------------------------------------------------------------------ */
@@ -109,6 +116,7 @@ const ROLE_ROUTE: Record<RoleKey, string> = {
     ZonalOps: '/zonal-ops',
     ZonalHK: '/zonal-hk',
     FrontDesk: '/front-desk',
+    Accounts: '/accounts',
 }
 
 /* ------------------------------------------------------------------ */
@@ -221,6 +229,7 @@ export default function LoginPage() {
                 'Admin',
                 'ZonalOps',
                 'ZonalHK',
+                'Accounts',
             ]
             const sorted = order.filter((r) => uniqueRoles.includes(r))
             setAvailableRoles(sorted)

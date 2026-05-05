@@ -6,13 +6,14 @@ const publicRoutes = ['/login', '/']
 
 // Role -> allowed path prefixes
 const ROLE_ROUTES: Record<string, string[]> = {
-    Developer: ['/developer', '/admin', '/front-desk', '/reservations', '/housekeeping', '/hr', '/zonal-ops', '/zonal-hk'],
-    Admin: ['/admin', '/front-desk', '/reservations', '/housekeeping', '/hr', '/zonal-ops', '/zonal-hk'],
+    Developer: ['/developer', '/admin', '/front-desk', '/reservations', '/housekeeping', '/hr', '/zonal-ops', '/zonal-hk', '/accounts'],
+    Admin: ['/admin', '/front-desk', '/reservations', '/housekeeping', '/hr', '/zonal-ops', '/zonal-hk', '/accounts'],
     FrontDesk: ['/front-desk', '/reservations', '/housekeeping'],
     Housekeeping: ['/housekeeping'],
     HR: ['/hr'],
     ZonalOps: ['/zonal-ops'],
     ZonalHK: ['/zonal-hk'],
+    Accounts: ['/accounts'],
 }
 
 // Where to redirect a user who tries to access a route they can't
@@ -24,6 +25,7 @@ function defaultPathForRole(role: string): string {
         case 'ZonalOps': return '/zonal-ops'
         case 'ZonalHK': return '/zonal-hk'
         case 'Housekeeping': return '/housekeeping'
+        case 'Accounts': return '/accounts'
         default: return '/front-desk'
     }
 }

@@ -8,6 +8,7 @@ const ROLE_ROUTE: Record<string, string> = {
   ZonalOps: '/zonal-ops',
   ZonalHK: '/zonal-hk',
   FrontDesk: '/front-desk',
+  Accounts: '/accounts',
 }
 
 export default async function Home() {
