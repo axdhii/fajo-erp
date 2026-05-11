@@ -44,6 +44,7 @@ import {
 import type { AadharMatch } from '@/lib/utils/merge-aadhar'
 import { freshupEndsAt } from '@/lib/freshup'
 import { RestockSheet as RestockForm } from '@/components/units/RestockSheet'
+import { BulkCheckInSheet } from '@/components/units/BulkCheckInSheet'
 
 interface FrontDeskClientProps {
     hotelId: string
@@ -62,6 +63,10 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
     const [typeFilter, setTypeFilter] = useState<TypeFilter>('ALL')
     const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL')
     const { units } = useUnitStore()
+
+    // Bulk dorm check-in (Kaloor only, when dorm inventory exists)
+    const [bulkOpen, setBulkOpen] = useState(false)
+    const [hotelName, setHotelName] = useState<string | null>(null)
 
     // Restock state
     const [restockOpen, setRestockOpen] = useState(false)
@@ -211,6 +216,21 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
     useEffect(() => {
         fetchShiftRevenue()
     }, [fetchShiftRevenue])
+
+    // Fetch the active hotel's name once — used to gate the Bulk
+    // Dorm Check-in button to FAJO Rooms Kaloor only.
+    useEffect(() => {
+        let cancelled = false
+        ;(async () => {
+            const { data } = await supabase
+                .from('hotels')
+                .select('name')
+                .eq('id', effectiveHotelId)
+                .maybeSingle()
+            if (!cancelled) setHotelName(data?.name ?? null)
+        })()
+        return () => { cancelled = true }
+    }, [effectiveHotelId])
 
     // Realtime: refresh payment counter when payments change
     useEffect(() => {
@@ -699,6 +719,17 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
 
     const formatCurrency = (n: number) =>
         new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 0 }).format(n)
+
+    // Show Bulk Dorm Check-In only at Kaloor (the only property with dorms today).
+    // hasDormInventory guards against showing the button on a hotel that lost
+    // its dorm beds — Aluva might add dorms in the future and we don't want it
+    // to silently inherit Kaloor's flow.
+    const hasDormInventory = useMemo(() => units.some(u => u.type === 'DORM'), [units])
+    const availableDormCount = useMemo(
+        () => units.filter(u => u.type === 'DORM' && u.status === 'AVAILABLE').length,
+        [units],
+    )
+    const canBulkCheckIn = hotelName === 'FAJO Rooms Kaloor' && hasDormInventory
 
     return (
         <div className="space-y-6 animate-in fade-in duration-500">
@@ -1624,6 +1655,21 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                     </p>
                 </div>
 
+                {/* Bulk Check-in (Kaloor + dorm inventory only) */}
+                {canBulkCheckIn && (
+                    <Button
+                        onClick={() => setBulkOpen(true)}
+                        className="h-11 w-full sm:w-auto bg-violet-600 hover:bg-violet-700 text-white shadow-md shadow-violet-600/20"
+                        disabled={availableDormCount < 2}
+                    >
+                        <Users className="h-4 w-4 mr-1.5" />
+                        Bulk Check-in
+                        <span className="ml-2 px-1.5 py-0.5 rounded-full bg-white/20 text-[10px] font-bold">
+                            {availableDormCount} free
+                        </span>
+                    </Button>
+                )}
+
                 {/* Type Filter Tabs */}
                 <div className="flex bg-white rounded-xl p-1 border border-slate-200 shadow-sm">
                     {typeFilters.map((f) => (
@@ -1678,6 +1724,25 @@ export function FrontDeskClient({ hotelId, staffId, role }: FrontDeskClientProps
                 now={now}
                 role={role}
             />
+
+            {/* Bulk Dorm Check-In wizard (Kaloor only). Reuses the units
+                already in the store — no re-fetch on open. */}
+            {canBulkCheckIn && (
+                <BulkCheckInSheet
+                    hotelId={effectiveHotelId}
+                    units={units}
+                    open={bulkOpen}
+                    onOpenChange={setBulkOpen}
+                    onSuccess={() => {
+                        // Refresh the unit grid after a successful bulk check-in.
+                        // fetchUnitsWithBookings is called by the UnitGrid's
+                        // subscription as soon as the bookings/units change
+                        // events propagate, but trigger a manual fetch to be
+                        // safe across slow realtime channels.
+                        useUnitStore.getState().fetchUnitsWithBookings(effectiveHotelId)
+                    }}
+                />
+            )}
         </div>
     )
 }

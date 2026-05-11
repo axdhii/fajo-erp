@@ -91,6 +91,44 @@ export interface CheckOutRequest {
     bookingId: string
 }
 
+// ── Bulk Dorm Check-In ───────────────────────────────────────
+// Used by POST /api/bookings/bulk and the BulkCheckInSheet
+// wizard. Every guest is keyed to a specific unitId so the
+// server can pair them deterministically. Either `aadhar` or
+// `bypass` must be present per guest.
+
+export interface BulkCheckInGuest {
+    unitId: string
+    name: string
+    phone: string
+    aadhar?: {
+        stitchedUrl: string
+        aadharNumber?: string | null
+    }
+    bypass?: {
+        reason: string
+    }
+}
+
+export interface BulkCheckInRequest {
+    hotelId: string
+    unitIds: string[]
+    numberOfDays: number
+    checkOutOverride?: string | null
+    guests: BulkCheckInGuest[]
+    amountCash: number
+    amountDigital: number
+    payLater?: boolean
+    clientRequestId?: string
+}
+
+export interface BulkCheckInResponse {
+    success: true
+    groupId: string
+    bookingIds: string[]
+    totalPaid: number
+}
+
 // Reservation form types
 export interface ReservationRequest {
     unitId?: string

@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { NextRequest, NextResponse } from 'next/server'
 import { getDevNow } from '@/lib/dev-time'
 import { requireAuth } from '@/lib/auth'
+import { distributePayment } from '@/lib/distribute-payment'
 
 // POST /api/reservations/convert — Convert a CONFIRMED reservation to CHECKED_IN
 // Supports group bookings: if the booking has a group_id, all bookings in the group are converted
@@ -184,28 +185,34 @@ export async function POST(request: NextRequest) {
         // CONFIRMED so we don't have CHECKED_IN beds with missing payment records
         // (money lost). Use upsert on booking_id in case the check-in flow already
         // inserted a payment row for the same booking (UNIQUE constraint).
+        //
+        // Proportional split logic is shared with /api/bookings/bulk via
+        // lib/distribute-payment.ts — the last booking absorbs the rounding
+        // remainder so the sum exactly matches the collected amount.
         const paymentErrors: string[] = []
         if (isGroup && allBookings.length > 1) {
-            for (const b of allBookings) {
-                const proportion = finalGrandTotal > 0
-                    ? Number(b.grand_total) / finalGrandTotal
-                    : 1 / allBookings.length
-                const bCash = Math.round(cashAmount * proportion * 100) / 100
-                const bDigital = Math.round(digitalAmount * proportion * 100) / 100
-                const bTotal = Math.round(totalPaid * proportion * 100) / 100
+            const splits = distributePayment(
+                allBookings.map((b: { id: string; grand_total: number | string }) => ({
+                    bookingId: b.id,
+                    grandTotal: Number(b.grand_total),
+                })),
+                cashAmount,
+                digitalAmount,
+            )
 
+            for (const split of splits) {
                 const { error: paymentError } = await supabase
                     .from('payments')
                     .upsert({
-                        booking_id: b.id,
-                        amount_cash: bCash,
-                        amount_digital: bDigital,
-                        total_paid: bTotal,
+                        booking_id: split.bookingId,
+                        amount_cash: split.amountCash,
+                        amount_digital: split.amountDigital,
+                        total_paid: split.totalPaid,
                     }, { onConflict: 'booking_id' })
 
                 if (paymentError) {
-                    console.error(`Payment insert error for booking ${b.id}:`, paymentError)
-                    paymentErrors.push(b.id)
+                    console.error(`Payment insert error for booking ${split.bookingId}:`, paymentError)
+                    paymentErrors.push(split.bookingId)
                 }
             }
         } else {
