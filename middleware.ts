@@ -4,6 +4,25 @@ import { NextResponse, type NextRequest } from 'next/server'
 // Routes that don't require authentication
 const publicRoutes = ['/login', '/']
 
+// Hard timeout on every Supabase call inside middleware so that an upstream
+// auth-service outage cannot hang the request long enough to trigger Vercel's
+// MIDDLEWARE_INVOCATION_TIMEOUT (504) at the edge. On timeout we treat the
+// user as logged-out and fall through to the normal "redirect to /login" path.
+const AUTH_TIMEOUT_MS = 3000
+
+function withTimeout<T>(promise: PromiseLike<T>, ms: number, label: string): Promise<T> {
+    return new Promise((resolve, reject) => {
+        const timer = setTimeout(
+            () => reject(new Error(`timeout: ${label} after ${ms}ms`)),
+            ms,
+        )
+        Promise.resolve(promise).then(
+            (value) => { clearTimeout(timer); resolve(value) },
+            (err) => { clearTimeout(timer); reject(err) },
+        )
+    })
+}
+
 // Role -> allowed path prefixes
 const ROLE_ROUTES: Record<string, string[]> = {
     Developer: ['/developer', '/admin', '/front-desk', '/reservations', '/housekeeping', '/hr', '/zonal-ops', '/zonal-hk', '/accounts'],
@@ -59,9 +78,21 @@ export async function middleware(request: NextRequest) {
         return res
     }
 
-    // Use getSession() to read JWT locally — no network call (saves 100-300ms per navigation)
-    const { data: { session } } = await supabase.auth.getSession()
-    const user = session?.user
+    // Use getSession() to read JWT locally — no network call (saves 100-300ms per navigation).
+    // Wrapped in withTimeout because @supabase/ssr can auto-refresh through /token, which
+    // hangs (15s+) during Supabase auth-service degradation and would 504 the page.
+    let user: { id: string } | null = null
+    try {
+        const { data: { session } } = await withTimeout(
+            supabase.auth.getSession(),
+            AUTH_TIMEOUT_MS,
+            'auth.getSession',
+        )
+        user = session?.user ?? null
+    } catch (err) {
+        console.error('[middleware] getSession failed:', (err as Error).message)
+        // Treat as unauthenticated; protected routes below will bounce to /login.
+    }
 
     const { pathname } = request.nextUrl
 
@@ -91,12 +122,24 @@ export async function middleware(request: NextRequest) {
         return applyCookies(NextResponse.redirect(new URL('/login', request.url)))
     }
 
-    // ── Fetch staff profile ONCE ───────────────────────────────────
-    const { data: profile } = await supabase
-        .from('staff')
-        .select('id, hotel_id, role')
-        .eq('user_id', user.id)
-        .single()
+    // ── Fetch staff profile ONCE (with timeout so a degraded DB cannot 504 us) ─
+    type StaffProfile = { id: string; hotel_id: string; role: string }
+    let profile: StaffProfile | null = null
+    try {
+        const { data } = await withTimeout(
+            supabase
+                .from('staff')
+                .select('id, hotel_id, role')
+                .eq('user_id', user.id)
+                .single(),
+            AUTH_TIMEOUT_MS,
+            'staff lookup',
+        )
+        profile = data as StaffProfile | null
+    } catch (err) {
+        console.error('[middleware] staff lookup failed:', (err as Error).message)
+        return applyCookies(NextResponse.redirect(new URL('/login', request.url)))
+    }
 
     if (!profile) {
         return applyCookies(NextResponse.redirect(new URL('/login', request.url)))
