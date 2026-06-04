@@ -47,20 +47,35 @@ export const useAuthStore = create<AuthState>((set, get) => ({
             set({ isLoading: true })
             const { data: { session } } = await supabase.auth.getSession()
 
-            if (session?.user) {
-                // Fetch the staff profile to know their role and hotel
-                const { data: staffData } = await supabase
-                    .from('staff')
-                    .select('*')
-                    .eq('user_id', session.user.id)
-                    .single()
-
-                set({ user: session.user, profile: staffData as StaffProfile, activeHotelId: (staffData as StaffProfile).hotel_id })
-            } else {
-                set({ user: null, profile: null })
+            if (!session?.user) {
+                set({ user: null, profile: null, activeHotelId: null })
+                return
             }
+
+            // Fetch the staff profile to know their role and hotel
+            const { data: staffData, error: staffError } = await supabase
+                .from('staff')
+                .select('*')
+                .eq('user_id', session.user.id)
+                .single()
+
+            // Defensive: if the session is valid but the staff row can't be loaded
+            // (RLS error, stale session pointing to a deleted/edited row, transient
+            // network failure), sign the user out cleanly instead of dereferencing
+            // null. Previously this would throw and trip React's error boundary —
+            // user saw "Application error: a client-side exception has occurred".
+            if (staffError || !staffData) {
+                console.error('[auth-store] staff lookup failed:', staffError?.message || 'no staff row for user_id')
+                try { await supabase.auth.signOut() } catch { /* swallow */ }
+                set({ user: null, profile: null, activeHotelId: null })
+                return
+            }
+
+            const profile = staffData as StaffProfile
+            set({ user: session.user, profile, activeHotelId: profile.hotel_id })
         } catch (e) {
-            console.error(e)
+            console.error('[auth-store] checkAuth error:', e)
+            set({ user: null, profile: null, activeHotelId: null })
         } finally {
             set({ isLoading: false })
         }
