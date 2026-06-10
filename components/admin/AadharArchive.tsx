@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase } from '@/lib/supabase/client'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -12,8 +12,39 @@ import {
     FileImage,
     X,
     AlertTriangle,
+    Lock,
+    Layers,
 } from 'lucide-react'
 import JSZip from 'jszip'
+
+// Keep in sync with RETENTION_MONTHS in app/api/admin/aadhar-archive/route.ts.
+// This client check is UX-only; the server guard is authoritative.
+const RETENTION_MONTHS = 6
+
+/**
+ * Mirror of the server-side retention guard. A `YYYY-MM` month is purgeable only
+ * if the LAST day of that month is strictly before `(now - RETENTION_MONTHS)`.
+ */
+function isMonthProtected(month: string): boolean {
+    const m = /^(\d{4})-(\d{2})$/.exec(month)
+    if (!m) return true // treat malformed as protected (fail safe)
+    const year = Number(m[1])
+    const monthNum = Number(m[2])
+    if (monthNum < 1 || monthNum > 12) return true
+
+    const lastInstantOfMonth = new Date(Date.UTC(year, monthNum, 1) - 1)
+    const now = new Date()
+    const cutoff = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth() - RETENTION_MONTHS,
+        now.getUTCDate(),
+        now.getUTCHours(),
+        now.getUTCMinutes(),
+        now.getUTCSeconds(),
+    ))
+    // Protected when NOT strictly older than the cutoff.
+    return !(lastInstantOfMonth.getTime() < cutoff.getTime())
+}
 
 // ============================================================
 // Types
@@ -50,6 +81,14 @@ export function AadharArchive({ open, onClose }: AadharArchiveProps) {
     const [clearing, setClearing] = useState(false)
     const [confirmClear, setConfirmClear] = useState(false)
     const [clearResult, setClearResult] = useState<string | null>(null)
+
+    // "Export all" (every month folder) state
+    const [exportingAll, setExportingAll] = useState(false)
+    const [exportAllProgress, setExportAllProgress] = useState({ current: 0, total: 0 })
+    const [exportAllStatus, setExportAllStatus] = useState<string | null>(null)
+    const cancelExportRef = useRef(false)
+
+    const protectedMonth = isMonthProtected(month)
 
     // Fetch files for the selected month
     const fetchFiles = useCallback(async () => {
@@ -145,6 +184,120 @@ export function AadharArchive({ open, onClose }: AadharArchiveProps) {
             console.error('ZIP download error:', err)
         } finally {
             setDownloading(false)
+        }
+    }
+
+    // --------------------------------------------------------
+    // Export ALL months — discover every month folder, paginate
+    // each past the 1000-item limit, download, and ZIP together.
+    // Pure Storage read (no Postgres) — safe during DB incidents.
+    // --------------------------------------------------------
+    const listAllInFolder = async (folder: string): Promise<string[]> => {
+        const names: string[] = []
+        const PAGE = 1000
+        let offset = 0
+        // Loop past the 1000-item ceiling using offset pagination so nothing
+        // is silently dropped.
+        for (;;) {
+            const { data, error } = await supabase.storage
+                .from('aadhars')
+                .list(folder, { limit: PAGE, offset, sortBy: { column: 'name', order: 'asc' } })
+            if (error) {
+                console.error(`Failed to list ${folder} (offset ${offset}):`, error)
+                break
+            }
+            const batch = (data || []).filter(
+                f => f.name && f.name !== '.emptyFolderPlaceholder' && (f as { id?: string | null }).id
+            )
+            for (const f of batch) names.push(`${folder}/${f.name}`)
+            if (!data || data.length < PAGE) break
+            offset += PAGE
+        }
+        return names
+    }
+
+    const handleExportAll = async () => {
+        if (exportingAll) return
+        cancelExportRef.current = false
+        setExportingAll(true)
+        setExportAllStatus('Discovering month folders...')
+        setExportAllProgress({ current: 0, total: 0 })
+
+        try {
+            // Step 1: discover all top-level month folders (id is null for folders)
+            const { data: rootEntries, error: rootErr } = await supabase.storage
+                .from('aadhars')
+                .list('', { limit: 1000, sortBy: { column: 'name', order: 'asc' } })
+
+            if (rootErr) {
+                console.error('Failed to list bucket root:', rootErr)
+                setExportAllStatus('Error: could not list storage bucket')
+                setExportingAll(false)
+                return
+            }
+
+            const monthFolders = (rootEntries || [])
+                .filter(e => e.name && /^\d{4}-\d{2}$/.test(e.name))
+                .map(e => e.name)
+                .sort()
+
+            if (monthFolders.length === 0) {
+                setExportAllStatus('No Aadhaar month folders found')
+                setExportingAll(false)
+                return
+            }
+
+            // Step 2: gather all object paths across every month (paginated)
+            setExportAllStatus('Listing images across all months...')
+            const allPaths: string[] = []
+            for (const folder of monthFolders) {
+                if (cancelExportRef.current) { setExportAllStatus('Cancelled'); setExportingAll(false); return }
+                const paths = await listAllInFolder(folder)
+                allPaths.push(...paths)
+            }
+
+            if (allPaths.length === 0) {
+                setExportAllStatus('No images to export')
+                setExportingAll(false)
+                return
+            }
+
+            // Step 3: download every object into a ZIP, mirroring month folders
+            const zip = new JSZip()
+            setExportAllProgress({ current: 0, total: allPaths.length })
+
+            for (let i = 0; i < allPaths.length; i++) {
+                if (cancelExportRef.current) { setExportAllStatus('Cancelled'); setExportingAll(false); return }
+                setExportAllProgress({ current: i + 1, total: allPaths.length })
+
+                const { data, error } = await supabase.storage
+                    .from('aadhars')
+                    .download(allPaths[i])
+
+                if (error) {
+                    console.error(`Failed to download ${allPaths[i]}:`, error)
+                    continue
+                }
+                if (data) zip.file(allPaths[i], data) // path includes "YYYY-MM/..."
+            }
+
+            setExportAllStatus('Building ZIP file...')
+            const blob = await zip.generateAsync({ type: 'blob' })
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            const from = monthFolders[0]
+            const to = monthFolders[monthFolders.length - 1]
+            a.href = url
+            a.download = `aadhars-all_${from}_to_${to}.zip`
+            a.click()
+            URL.revokeObjectURL(url)
+
+            setExportAllStatus(`Exported ${allPaths.length} images across ${monthFolders.length} month(s)`)
+        } catch (err) {
+            console.error('Export-all error:', err)
+            setExportAllStatus('Error: export failed')
+        } finally {
+            setExportingAll(false)
         }
     }
 
@@ -281,11 +434,62 @@ export function AadharArchive({ open, onClose }: AadharArchiveProps) {
                         )}
                     </Button>
 
-                    {/* Clear Month */}
-                    {!confirmClear ? (
+                    {/* Export ALL months */}
+                    <div className="space-y-1.5">
                         <Button
                             variant="outline"
-                            className="w-full border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
+                            className="w-full h-11 border-violet-200 text-violet-700 hover:bg-violet-50"
+                            disabled={exportingAll || loading}
+                            onClick={handleExportAll}
+                        >
+                            {exportingAll ? (
+                                <>
+                                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                    {exportAllProgress.total > 0
+                                        ? `Downloading ${exportAllProgress.current} / ${exportAllProgress.total}...`
+                                        : 'Preparing...'}
+                                </>
+                            ) : (
+                                <>
+                                    <Layers className="h-4 w-4 mr-2" />
+                                    Export ALL Aadhaar images (every month)
+                                </>
+                            )}
+                        </Button>
+                        {exportingAll && (
+                            <button
+                                onClick={() => { cancelExportRef.current = true }}
+                                className="text-[11px] text-slate-400 hover:text-red-600 w-full text-center cursor-pointer"
+                            >
+                                Cancel
+                            </button>
+                        )}
+                        {exportAllStatus && (
+                            <p className={`text-[11px] text-center ${exportAllStatus.startsWith('Error') ? 'text-red-600' : exportingAll ? 'text-slate-400' : 'text-slate-500'}`}>
+                                {exportAllStatus}
+                            </p>
+                        )}
+                    </div>
+
+                    {/* Clear Month — blocked inside the 6-month retention window */}
+                    {protectedMonth ? (
+                        <div className="space-y-1.5">
+                            <Button
+                                variant="outline"
+                                className="w-full h-11 border-slate-200 text-slate-400 cursor-not-allowed"
+                                disabled
+                            >
+                                <Lock className="h-4 w-4 mr-2" />
+                                Protected (within {RETENTION_MONTHS}-month retention)
+                            </Button>
+                            <p className="text-[11px] text-center text-slate-400">
+                                {formatMonth(month)} can be exported but not purged until it is older than {RETENTION_MONTHS} months.
+                            </p>
+                        </div>
+                    ) : !confirmClear ? (
+                        <Button
+                            variant="outline"
+                            className="w-full h-11 border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700"
                             disabled={files.length === 0 || !downloadComplete || clearing || loading}
                             onClick={() => setConfirmClear(true)}
                         >

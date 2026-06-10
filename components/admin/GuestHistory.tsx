@@ -32,9 +32,11 @@ import {
     X,
     StickyNote,
     Moon,
+    Download,
 } from 'lucide-react'
 import { toast } from 'sonner'
 
+import { exportToCSV } from '@/lib/export-csv'
 import type { AdminTabProps } from '@/app/(dashboard)/admin/client'
 
 // ============================================================
@@ -201,6 +203,7 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
     const [expandedId, setExpandedId] = useState<string | null>(null)
     const [signedUrls, setSignedUrls] = useState<Record<string, string>>({})
     const [enlargedPhoto, setEnlargedPhoto] = useState<{ front: string | null; back: string | null; isStitched?: boolean } | null>(null)
+    const [exporting, setExporting] = useState(false)
 
     const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -372,6 +375,211 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
     }, [fetchBookings])
 
     // --------------------------------------------------------
+    // Export full filtered set to CSV (all pages, not just visible 50)
+    // --------------------------------------------------------
+    const handleExportCsv = useCallback(async () => {
+        if (exporting) return
+        setExporting(true)
+        try {
+            // Step 1: Resolve search → matched booking IDs (same logic as fetchBookings)
+            let matchedBookingIds: string[] | null = null
+
+            if (debouncedSearch.trim()) {
+                const term = debouncedSearch.trim()
+                const s = `%${term}%`
+
+                const { data: guestMatches } = await supabase
+                    .from('guests')
+                    .select('booking_id')
+                    .or(`name.ilike.${s},phone.ilike.${s}`)
+
+                const guestBookingIds = (guestMatches || []).map(g => g.booking_id)
+
+                const { data: unitMatches } = await supabase
+                    .from('units')
+                    .select('id')
+                    .ilike('unit_number', s)
+
+                let unitBookingIds: string[] = []
+                if (unitMatches && unitMatches.length > 0) {
+                    const unitIds = unitMatches.map(u => u.id)
+                    const { data: unitBookings } = await supabase
+                        .from('bookings')
+                        .select('id')
+                        .in('unit_id', unitIds)
+                    unitBookingIds = (unitBookings || []).map(b => b.id)
+                }
+
+                matchedBookingIds = [...new Set([...guestBookingIds, ...unitBookingIds])]
+
+                if (matchedBookingIds.length === 0) {
+                    toast.error('No bookings match the current filters')
+                    setExporting(false)
+                    return
+                }
+            }
+
+            // Step 2: Page through ALL matching bookings
+            const allBookings: BookingRow[] = []
+            let pageIdx = 0
+            // Hard ceiling to avoid an unbounded loop if count is ever wrong.
+            const MAX_PAGES = 1000
+            while (pageIdx < MAX_PAGES) {
+                let query = supabase
+                    .from('bookings')
+                    .select(`
+                        id, unit_id, check_in, check_out, guest_count, base_amount, surcharge,
+                        grand_total, status, notes, advance_amount, advance_type, group_id, created_at,
+                        unit:units!inner(id, unit_number, type, hotel_id),
+                        guests(id, name, phone, aadhar_number, aadhar_url_front, aadhar_url_back),
+                        payments(id, amount_cash, amount_digital, total_paid)
+                    `)
+                    .order('check_in', { ascending: false })
+
+                if (hotelId) query = query.eq('unit.hotel_id', hotelId)
+                if (dateFrom) query = query.gte('check_in', dateFrom + 'T00:00:00+05:30')
+                if (dateTo) query = query.lte('check_in', dateTo + 'T23:59:59+05:30')
+                if (statusFilter !== 'ALL') query = query.eq('status', statusFilter)
+                if (matchedBookingIds) query = query.in('id', matchedBookingIds)
+
+                query = query.range(pageIdx * PAGE_SIZE, (pageIdx + 1) * PAGE_SIZE - 1)
+
+                const { data, error } = await query
+                if (error) {
+                    console.error('CSV export bookings error:', error)
+                    toast.error('Export failed while reading bookings')
+                    setExporting(false)
+                    return
+                }
+
+                const rows = (data || []) as unknown as BookingRow[]
+                allBookings.push(...rows)
+
+                if (rows.length < PAGE_SIZE) break // last page reached
+                pageIdx++
+            }
+
+            // Step 3: Fetch the FULL freshup set for the same window (paged)
+            const allFreshups: FreshupHistoryRow[] = []
+            let fPage = 0
+            while (fPage < MAX_PAGES) {
+                let fq = supabase
+                    .from('freshup')
+                    .select('id, guest_name, guest_name_2, phone, guest_phone_2, guest_count, amount, payment_method, ac_type, created_at, aadhar_url_front, aadhar_url_back, unit:units(unit_number), staff:created_by(name)')
+                    .order('created_at', { ascending: false })
+                if (hotelId) fq = fq.eq('hotel_id', hotelId)
+                if (dateFrom) fq = fq.gte('created_at', dateFrom + 'T00:00:00+05:30')
+                if (dateTo) fq = fq.lte('created_at', dateTo + 'T23:59:59+05:30')
+                if (debouncedSearch) {
+                    const term = debouncedSearch.toLowerCase()
+                    fq = fq.or(`guest_name.ilike.%${term}%,phone.ilike.%${term}%,guest_name_2.ilike.%${term}%,guest_phone_2.ilike.%${term}%`)
+                }
+                fq = fq.range(fPage * PAGE_SIZE, (fPage + 1) * PAGE_SIZE - 1)
+
+                const { data: fData, error: fErr } = await fq
+                if (fErr) {
+                    console.error('CSV export freshup error:', fErr)
+                    break // freshups are supplementary — don't abort the whole export
+                }
+                const fRows = (fData || []) as unknown as (FreshupHistoryRow & { aadhar_url_front: string | null; aadhar_url_back: string | null })[]
+                allFreshups.push(...fRows)
+                if (fRows.length < PAGE_SIZE) break
+                fPage++
+            }
+
+            if (allBookings.length === 0 && allFreshups.length === 0) {
+                toast.error('Nothing to export for the current filters')
+                setExporting(false)
+                return
+            }
+
+            // Step 4: Build rows — one per guest, then freshups appended
+            const header = [
+                'Record Type', 'Guest Name', 'Phone', 'Aadhaar Number', 'Unit',
+                'Check In', 'Check Out', 'Nights', 'Booking Status',
+                'Grand Total', 'Cash', 'Digital', 'Payment Status',
+                'Created At', 'Aadhaar Front Path', 'Aadhaar Back Path',
+                'AC Type', 'Guest Count',
+            ]
+
+            const bookingRows = allBookings.flatMap((b) => {
+                const payments = normalizePayments(b.payments)
+                const cash = payments.reduce((sum, p) => sum + Number(p.amount_cash || 0), 0)
+                const digital = payments.reduce((sum, p) => sum + Number(p.amount_digital || 0), 0)
+                const nights = deriveNights(b)
+                const paymentStatus = derivePaymentStatus(b)
+                const createdAt = (b as unknown as { created_at: string | null }).created_at
+
+                // One CSV row per guest. If a booking has no guests, emit a single
+                // row so the booking still appears in the export.
+                const guests = b.guests.length > 0 ? b.guests : [null]
+                return guests.map((g) => [
+                    'BOOKING',
+                    g?.name ?? '',
+                    g?.phone ?? '',
+                    g?.aadhar_number ?? '',
+                    b.unit?.unit_number ?? '',
+                    b.check_in ? new Date(b.check_in) : '',
+                    b.check_out ? new Date(b.check_out) : '',
+                    typeof nights === 'number' ? nights : '',
+                    b.status,
+                    Number(b.grand_total || 0),
+                    cash,
+                    digital,
+                    paymentStatus,
+                    createdAt ? new Date(createdAt) : '',
+                    g?.aadhar_url_front ?? '',
+                    g?.aadhar_url_back ?? '',
+                    '',
+                    b.guests.length,
+                ])
+            })
+
+            const freshupRows = allFreshups.map((f) => {
+                const fr = f as FreshupHistoryRow & { aadhar_url_front?: string | null; aadhar_url_back?: string | null }
+                const names = [f.guest_name, f.guest_name_2].filter(Boolean).join(', ')
+                const phones = [f.phone, f.guest_phone_2].filter(Boolean).join(', ')
+                return [
+                    'FRESHUP',
+                    names,
+                    phones,
+                    '',
+                    f.unit?.unit_number ?? '',
+                    '',
+                    '',
+                    '',
+                    f.payment_method, // booking status column reused: shows payment method context
+                    Number(f.amount || 0),
+                    f.payment_method === 'CASH' ? Number(f.amount || 0) : '',
+                    f.payment_method === 'DIGITAL' ? Number(f.amount || 0) : '',
+                    'Paid',
+                    f.created_at ? new Date(f.created_at) : '',
+                    fr.aadhar_url_front ?? '',
+                    fr.aadhar_url_back ?? '',
+                    f.ac_type ?? '',
+                    f.guest_count,
+                ]
+            })
+
+            // Step 5: Filename — hotel slug + date range
+            const hotelLabel = hotelId
+                ? (hotels.find(h => h.id === hotelId)?.name || 'hotel').replace(/[^a-zA-Z0-9]+/g, '-').toLowerCase()
+                : 'all'
+            const from = dateFrom || 'start'
+            const to = dateTo || 'end'
+            const filename = `guest-history_${hotelLabel}_${from}_to_${to}.csv`
+
+            exportToCSV(filename, [header, ...bookingRows, ...freshupRows])
+            toast.success(`Exported ${bookingRows.length} guest rows + ${freshupRows.length} freshups`)
+        } catch (err) {
+            console.error('CSV export error:', err)
+            toast.error('Export failed')
+        } finally {
+            setExporting(false)
+        }
+    }, [exporting, debouncedSearch, hotelId, dateFrom, dateTo, statusFilter, hotels])
+
+    // --------------------------------------------------------
     // Expand handler — pre-load signed URLs for all guests
     // --------------------------------------------------------
     const handleExpand = useCallback(async (booking: BookingRow) => {
@@ -457,6 +665,24 @@ export function GuestHistory({ hotelId, hotels }: AdminTabProps) {
                         ))}
                     </SelectContent>
                 </Select>
+                <Button
+                    onClick={handleExportCsv}
+                    disabled={exporting || loading}
+                    className="h-11 w-full sm:w-auto bg-slate-900 text-white hover:bg-slate-800"
+                    title="Export the full filtered set (all pages) to CSV"
+                >
+                    {exporting ? (
+                        <>
+                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                            Exporting...
+                        </>
+                    ) : (
+                        <>
+                            <Download className="h-4 w-4 mr-2" />
+                            Export CSV
+                        </>
+                    )}
+                </Button>
             </div>
 
             {/* ==================== Freshup history (page 0 only) ==================== */}

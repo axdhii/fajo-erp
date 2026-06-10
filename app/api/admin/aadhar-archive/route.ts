@@ -2,6 +2,10 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAuth } from '@/lib/auth'
+import { getDevNow } from '@/lib/dev-time'
+
+// Months of Aadhaar PII we must retain before a purge is permitted.
+const RETENTION_MONTHS = 6
 
 // Admin-only Supabase client for storage operations (needs service role for deletion)
 function getAdminClient() {
@@ -13,6 +17,49 @@ function getAdminClient() {
     return createSupabaseClient(url, key, {
         auth: { autoRefreshToken: false, persistSession: false },
     })
+}
+
+/**
+ * Retention guard: a `YYYY-MM` month folder is purgeable ONLY if the LAST day
+ * of that month is strictly before `(now - RETENTION_MONTHS)`.
+ *
+ * Returns null if purgeable; otherwise a human-readable rejection reason.
+ * Computes against `getDevNow()` so dev time-travel is honoured.
+ *
+ * Examples (now = 2026-06-10, retention = 6 months → cutoff = 2025-12-10):
+ *   - "2026-06" (current): last day 2026-06-30 is NOT < cutoff → reject
+ *   - "2025-12" (6 months ago): last day 2025-12-31 is NOT < 2025-12-10 → reject
+ *   - "2025-11" (7 months ago): last day 2025-11-30 IS < 2025-12-10 → allow
+ */
+function retentionRejection(month: string): string | null {
+    const m = /^(\d{4})-(\d{2})$/.exec(month)
+    if (!m) return `Invalid month format "${month}" (expected YYYY-MM).`
+
+    const year = Number(m[1])
+    const monthNum = Number(m[2]) // 1-12
+    if (monthNum < 1 || monthNum > 12) {
+        return `Invalid month "${month}" — month must be 01-12.`
+    }
+
+    // Last instant of the target month, in UTC. `Date.UTC(year, monthNum, 1)` is
+    // the first day of the NEXT month; subtract 1ms to land on this month's end.
+    const lastInstantOfMonth = new Date(Date.UTC(year, monthNum, 1) - 1)
+
+    // Cutoff = now minus RETENTION_MONTHS. Using UTC month math keeps it stable.
+    const now = getDevNow()
+    const cutoff = new Date(Date.UTC(
+        now.getUTCFullYear(),
+        now.getUTCMonth() - RETENTION_MONTHS,
+        now.getUTCDate(),
+        now.getUTCHours(),
+        now.getUTCMinutes(),
+        now.getUTCSeconds(),
+    ))
+
+    if (lastInstantOfMonth.getTime() < cutoff.getTime()) {
+        return null // purgeable
+    }
+    return `Month ${month} is within the ${RETENTION_MONTHS}-month retention window and cannot be purged.`
 }
 
 // ============================================================
@@ -41,6 +88,14 @@ export async function POST(request: NextRequest) {
 
         if (!month || !/^\d{4}-\d{2}$/.test(month)) {
             return NextResponse.json({ error: 'Invalid month format (YYYY-MM)' }, { status: 400 })
+        }
+
+        // Authoritative retention guard: only months strictly older than the
+        // 6-month retention window may be purged. This protects recent/returning
+        // guest PII and is the real safeguard (the client disable is just UX).
+        const rejection = retentionRejection(month)
+        if (rejection) {
+            return NextResponse.json({ error: rejection }, { status: 400 })
         }
 
         const adminClient = getAdminClient()
